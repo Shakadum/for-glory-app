@@ -106,11 +106,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # --- MODELOS ---
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
-class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
 class RequestActionData(BaseModel): request_id: int; action: str
 class DeletePostData(BaseModel): post_id: int; user_id: int
 
-# --- DEPENDÊNCIAS (CORRIGIDO) ---
+# --- DEPENDÊNCIAS ---
 def get_db():
     db = SessionLocal()
     try:
@@ -129,7 +128,7 @@ def startup():
         db.commit()
     db.close()
 
-# --- FRONTEND OTIMIZADO ---
+# --- FRONTEND (LAYOUT CORRIGIDO) ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -179,7 +178,8 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .grid-item{width:100%;aspect-ratio:1/1;object-fit:cover;background:#1a1a1a;cursor:pointer}
 /* UTILS */
 .btn-float{position:fixed;bottom:80px;right:20px;width:55px;height:55px;border-radius:50%;background:var(--primary);border:none;font-size:28px;box-shadow:0 4px 15px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#000}
-.btn-std{background:rgba(255,255,255,0.1);border:1px solid #444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;margin:5px}
+.btn-std{background:rgba(255,255,255,0.1);border:1px solid #444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;flex:1;text-align:center;}
+.btn-std:hover{background:rgba(102,252,241,0.1);border-color:var(--primary)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);z-index:100;display:flex;align-items:center;justify-content:center}
 .hidden{display:none !important}
 .modal-box{background:#111;padding:25px;border-radius:20px;border:1px solid var(--border);width:90%;max-width:350px;text-align:center;box-shadow:0 0 30px rgba(0,0,0,0.8)}
@@ -220,7 +220,29 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
     <div id="content-area">
         <div id="view-chat" class="view active"><div style="padding:15px;border-bottom:1px solid #222;color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;text-align:center">CANAL GERAL</div><div id="chat-list"></div><div id="chat-input-area"><button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888;padding:5px">📎</button><input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()"><input id="chat-msg" placeholder="Mensagem..." onkeypress="if(event.key==='Enter')sendMsg()"><button onclick="openEmoji('chat-msg')" style="background:none;border:none;font-size:22px;cursor:pointer;margin-right:5px">😀</button><button onclick="sendMsg()" style="background:var(--primary);border:none;width:40px;height:40px;border-radius:50%;font-weight:bold;display:flex;align-items:center;justify-content:center">➤</button></div></div>
         <div id="view-feed" class="view"><div id="feed-container"></div><button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button></div>
-        <div id="view-profile" class="view"><img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')"><h2 id="p-name" style="color:white;font-family:'Rajdhani'">...</h2><p id="p-bio" style="color:#888;margin-bottom:20px;font-style:italic">...</p><div id="search-box"><input id="search-input" placeholder="Buscar Soldado..."><button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer">🔍</button></div><div id="search-results"></div><button onclick="toggleRequests()" class="btn-std" style="background:rgba(102,252,241,0.1);border-color:var(--primary)">📩 Solicitações & Amigos</button><div id="requests-list" style="display:none;width:95%;max-width:320px;margin:10px auto"></div><div style="margin-top:30px"><button onclick="logout()" class="btn-std" style="border-color:#ff5555;color:#ff5555">SAIR DO SISTEMA</button></div></div>
+        
+        <div id="view-profile" class="view">
+            <div style="display:flex;flex-direction:column;align-items:center;width:100%;text-align:center;">
+                <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')">
+                <h2 id="p-name" style="color:white;font-family:'Rajdhani';width:100%;text-align:center;margin:10px 0;">...</h2>
+                <p id="p-bio" style="color:#888;width:100%;text-align:center;margin:0 0 20px 0;font-style:italic">...</p>
+            </div>
+
+            <div id="search-box"><input id="search-input" placeholder="Buscar Soldado..."><button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer">🔍</button></div>
+            <div id="search-results"></div>
+            
+            <div style="display:flex;justify-content:center;gap:10px;width:95%;max-width:320px;margin:10px auto;">
+                <button onclick="toggleRequests('requests')" class="btn-std">📩 Solicitações</button>
+                <button onclick="toggleRequests('friends')" class="btn-std">👥 Amigos</button>
+            </div>
+            
+            <div id="requests-list" style="display:none;width:95%;max-width:320px;margin:10px auto"></div>
+            
+            <div style="margin-top:30px;width:100%;display:flex;justify-content:center;">
+                <button onclick="logout()" class="btn-std" style="border-color:#ff5555;color:#ff5555;width:200px;">SAIR DO SISTEMA</button>
+            </div>
+        </div>
+
         <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:15px;left:15px;background:rgba(0,0,0,0.5);border:1px solid #444;color:white;border-radius:8px;padding:5px 10px;cursor:pointer">⬅ Voltar</button><div style="padding-top:50px;width:100%;display:flex;flex-direction:column;align-items:center"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888"><h2 id="pub-name" style="color:white;font-family:'Rajdhani'">...</h2><p id="pub-bio" style="color:#888;margin-bottom:20px">...</p><div id="pub-actions"></div><div id="pub-grid" class="grid"></div></div></div>
     </div>
 </div>
@@ -249,8 +271,34 @@ else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-st
 else ab.innerHTML=`<button class="btn-std" onclick="sendRequest(${uid})" style="border-color:var(--primary)">Adicionar</button>`;
 let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" class="grid-item" controls preload="none"></video>`:`<img src="${p.content_url}" class="grid-item" loading="lazy">`});goView('public-profile')}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Enviado!");openPublicProfile(tid)}}
-async function toggleRequests(){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';b.innerHTML='Carregando...';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML='<h4 style="color:#888;margin:5px 0">Pendentes</h4>';if(!d.requests.length)b.innerHTML+='<small>Nada.</small>';d.requests.forEach(r=>{b.innerHTML+=`<div class="search-res" style="background:rgba(255,255,255,0.05)"><span>${r.username}</span><div><button onclick="handleReq(${r.id},'accept')" style="color:#0f0;background:none;border:none;cursor:pointer">✔</button><button onclick="handleReq(${r.id},'reject')" style="color:red;background:none;border:none;cursor:pointer">✖</button></div></div>`});b.innerHTML+='<h4 style="color:#888;margin:15px 0 5px 0;border-top:1px solid #333">Amigos</h4>';d.friends.forEach(f=>{b.innerHTML+=`<div class="search-res" onclick="openPublicProfile(${f.id})"><img src="${f.avatar_url}" style="width:25px;height:25px;border-radius:50%"> ${f.username}</div>`})}
-async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Feito!");toggleRequests()}}
+
+// NOVA LOGICA DE BOTOES SEPARADOS
+async function toggleRequests(type){
+    let b=document.getElementById('requests-list');
+    // Se clicar no mesmo tipo e ja estiver aberto, fecha
+    if(b.style.display==='block' && b.dataset.type === type){
+        b.style.display='none';
+        return;
+    }
+    b.style.display='block';
+    b.dataset.type = type; // Marca qual esta aberto
+    b.innerHTML='Carregando...';
+    
+    let d=await (await fetch('/friend/requests?uid='+user.id)).json();
+    b.innerHTML='';
+
+    if(type === 'requests') {
+        b.innerHTML = '<h4 style="color:#888;margin:5px 0">Solicitações Recebidas</h4>';
+        if(!d.requests.length) b.innerHTML+='<small>Nenhuma.</small>';
+        d.requests.forEach(r=>{b.innerHTML+=`<div class="search-res" style="background:rgba(255,255,255,0.05)"><span>${r.username}</span><div><button onclick="handleReq(${r.id},'accept')" style="color:#0f0;background:none;border:none;cursor:pointer">✔</button><button onclick="handleReq(${r.id},'reject')" style="color:red;background:none;border:none;cursor:pointer">✖</button></div></div>`});
+    } else {
+        b.innerHTML = '<h4 style="color:#888;margin:5px 0">Meus Amigos</h4>';
+        if(!d.friends.length) b.innerHTML+='<small>Nenhum.</small>';
+        d.friends.forEach(f=>{b.innerHTML+=`<div class="search-res" onclick="openPublicProfile(${f.id})"><img src="${f.avatar_url}" style="width:25px;height:25px;border-radius:50%"> ${f.username}</div>`});
+    }
+}
+
+async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Feito!");toggleRequests('requests')}}
 function submitPost(){let f=document.getElementById('file-upload').files[0];if(!f)return showToast("Arquivo?");if(f.size>100*1024*1024)return showToast("Max 100MB");let fd=new FormData();fd.append('file',f);fd.append('user_id',user.id);fd.append('caption',document.getElementById('caption-upload').value);let x=new XMLHttpRequest();x.open('POST','/upload/post',true);
 x.upload.onprogress=e=>{if(e.lengthComputable){let p=(e.loaded/e.total)*100;document.getElementById('progress-container').style.display='block';document.getElementById('progress-text').style.display='block';document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-text').innerText=Math.round(p)+'%'}};
 x.onload=()=>{if(x.status===200){showToast("Sucesso!");closeUpload();lastFeedHash="";loadFeed()}else showToast("Erro")};x.send(fd);toggleEmoji(true)}
