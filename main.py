@@ -128,7 +128,7 @@ def startup():
         db.commit()
     db.close()
 
-# --- FRONTEND (LAYOUT CORRIGIDO) ---
+# --- FRONTEND (LAYOUT CORRIGIDO V2) ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -238,8 +238,8 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
             
             <div id="requests-list" style="display:none;width:95%;max-width:320px;margin:10px auto"></div>
             
-            <div style="margin-top:30px;width:100%;display:flex;justify-content:center;">
-                <button onclick="logout()" class="btn-std" style="border-color:#ff5555;color:#ff5555;width:200px;">SAIR DO SISTEMA</button>
+            <div style="display:flex;justify-content:center;width:95%;max-width:320px;margin:30px auto 0 auto;">
+                <button onclick="logout()" class="btn-std" style="border-color:#ff5555;color:#ff5555;width:100%;text-align:center;">SAIR DO SISTEMA</button>
             </div>
         </div>
 
