@@ -5,7 +5,7 @@ import random
 import os
 import shutil
 import logging
-from fastapi import FastAPI, WebSocket, Request, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_
@@ -14,7 +14,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-# --- CONFIGURAÇÃO TÁTICA ---
+# --- CONFIGURAÇÃO ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
@@ -67,46 +67,66 @@ class Channel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
 
-try: Base.metadata.create_all(bind=engine)
-except: pass
+try:
+    Base.metadata.create_all(bind=engine)
+except:
+    pass
 
-# --- WEBSOCKET OTIMIZADO ---
+# --- WEBSOCKET ---
 class ConnectionManager:
-    def __init__(self): self.active = {}
+    def __init__(self):
+        self.active = {}
     async def connect(self, ws: WebSocket, chan: str):
         await ws.accept()
-        if chan not in self.active: self.active[chan] = []
+        if chan not in self.active:
+            self.active[chan] = []
         self.active[chan].append(ws)
     def disconnect(self, ws: WebSocket, chan: str):
-        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
+        if chan in self.active and ws in self.active[chan]:
+            self.active[chan].remove(ws)
     async def broadcast(self, msg: dict, chan: str):
         for conn in self.active.get(chan, []):
-            try: await conn.send_text(json.dumps(msg))
-            except: pass
+            try:
+                await conn.send_text(json.dumps(msg))
+            except:
+                pass
 
 manager = ConnectionManager()
 app = FastAPI(title="For Glory Optimized")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- MODELOS ---
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
+class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
 class RequestActionData(BaseModel): request_id: int; action: str
 class DeletePostData(BaseModel): post_id: int; user_id: int
 
-# --- DEPENDENCIAS ---
-def get_db(): 
-    db = SessionLocal(); try: yield db
-    finally: db.close()
+# --- DEPENDÊNCIAS (CORRIGIDO) ---
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+def criptografar(s):
+    return hashlib.sha256(s.encode()).hexdigest()
 
 @app.on_event("startup")
 def startup():
     db = SessionLocal()
-    if not db.query(Channel).first(): db.add(Channel(name="Geral")); db.commit()
+    if not db.query(Channel).first():
+        db.add(Channel(name="Geral"))
+        db.commit()
     db.close()
 
 # --- FRONTEND OTIMIZADO ---
@@ -255,37 +275,47 @@ async def get(): return HTMLResponse(content=html_content)
 # --- ENDPOINTS ---
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
-    if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
-    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password))); db.commit()
+    if db.query(User).filter(User.username==d.username).first():
+        raise HTTPException(400, "User existe")
+    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password)))
+    db.commit()
     return {"status":"ok"}
 
 @app.post("/login")
 async def log(d: LoginData, db: Session=Depends(get_db)):
-    u=db.query(User).filter(User.username==d.username).first()
-    if not u or u.password_hash!=criptografar(d.password): raise HTTPException(400, "Erro")
+    u = db.query(User).filter(User.username==d.username).first()
+    if not u or u.password_hash != criptografar(d.password):
+        raise HTTPException(400, "Erro")
     return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "bio":u.bio}
 
 @app.post("/upload/post")
 async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
     filename = f"post_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-    with open(f"static/{filename}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    with open(f"static/{filename}", "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
     m_type = "video" if file.content_type.startswith("video") else "image"
-    db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption)); db.commit()
+    db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption))
+    db.commit()
     return {"status":"ok"}
 
 @app.post("/post/delete")
 async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
     post = db.query(Post).filter(Post.id == d.post_id).first()
-    if not post or post.user_id != d.user_id: return {"status": "error"}
-    try: os.remove(f".{post.content_url}")
-    except: pass
-    db.delete(post); db.commit()
+    if not post or post.user_id != d.user_id:
+        return {"status": "error"}
+    try:
+        os.remove(f".{post.content_url}")
+    except:
+        pass
+    db.delete(post)
+    db.commit()
     return {"status": "ok"}
 
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
     filename = f"chat_{random.randint(10000,99999)}_{file.filename}"
-    with open(f"static/{filename}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    with open(f"static/{filename}", "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
     return {"url": f"/static/{filename}"}
 
 @app.get("/posts")
@@ -295,11 +325,11 @@ async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
     my_friends_ids = [f.id for f in me.friends] if me else []
     return [{
         "id": p.id,
-        "content_url": p.content_url, 
-        "media_type": p.media_type, 
-        "caption": p.caption, 
-        "author_name": p.author.username, 
-        "author_avatar": p.author.avatar_url, 
+        "content_url": p.content_url,
+        "media_type": p.media_type,
+        "caption": p.caption,
+        "author_name": p.author.username,
+        "author_avatar": p.author.avatar_url,
         "author_id": p.author.id,
         "is_friend": p.author.id in my_friends_ids
     } for p in posts]
@@ -314,9 +344,11 @@ async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: Upl
     u = db.query(User).filter(User.id == user_id).first()
     if file:
         fname = f"av_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-        with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        with open(f"static/{fname}", "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
         u.avatar_url = f"/static/{fname}"
-    if bio: u.bio = bio
+    if bio:
+        u.bio = bio
     db.commit()
     return {"avatar_url": u.avatar_url, "bio": u.bio}
 
@@ -326,10 +358,13 @@ async def send_req(d: dict, db: Session=Depends(get_db)):
     target_id = d.get('target_id')
     me = db.query(User).filter(User.id == sender_id).first()
     target = db.query(User).filter(User.id == target_id).first()
-    if target in me.friends: return {"status": "already_friends"}
+    if target in me.friends:
+        return {"status": "already_friends"}
     existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id))).first()
-    if existing: return {"status": "pending"}
-    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id)); db.commit()
+    if existing:
+        return {"status": "pending"}
+    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id))
+    db.commit()
     return {"status": "sent"}
 
 @app.get("/friend/requests")
@@ -346,36 +381,47 @@ async def get_reqs(uid: int, db: Session=Depends(get_db)):
 @app.post("/friend/handle")
 async def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
     req = db.query(FriendRequest).filter(FriendRequest.id == d.request_id).first()
-    if not req: return {"status": "error"}
+    if not req:
+        return {"status": "error"}
     if d.action == 'accept':
-        u1, u2 = db.query(User).filter(User.id == req.sender_id).first(), db.query(User).filter(User.id == req.receiver_id).first()
-        u1.friends.append(u2); u2.friends.append(u1)
-        db.delete(req); db.commit()
-    elif d.action == 'reject': db.delete(req); db.commit()
+        u1 = db.query(User).filter(User.id == req.sender_id).first()
+        u2 = db.query(User).filter(User.id == req.receiver_id).first()
+        u1.friends.append(u2)
+        u2.friends.append(u1)
+        db.delete(req)
+        db.commit()
+    elif d.action == 'reject':
+        db.delete(req)
+        db.commit()
     return {"status": "ok"}
 
 @app.get("/user/{target_id}")
 async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
-    target, viewer = db.query(User).filter(User.id == target_id).first(), db.query(User).filter(User.id == viewer_id).first()
+    target = db.query(User).filter(User.id == target_id).first()
+    viewer = db.query(User).filter(User.id == viewer_id).first()
     posts = db.query(Post).filter(Post.user_id == target_id).order_by(Post.timestamp.desc()).all()
     posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
     status = "friends" if target in viewer.friends else "none"
     if status == "none":
         sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
         received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
-        if sent: status = "pending_sent"
-        if received: status = "pending_received"; req_id = received.id
+        if sent:
+            status = "pending_sent"
+        if received:
+            status = "pending_received"
+            req_id = received.id
     return {"username": target.username, "avatar_url": target.avatar_url, "bio": target.bio, "posts": posts_data, "friend_status": status, "request_id": locals().get('req_id')}
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
-    await manager.connect(ws,ch)
+    await manager.connect(ws, ch)
     try:
         while True:
-            txt=await ws.receive_text()
+            txt = await ws.receive_text()
             u_fresh = db.query(User).filter(User.id == uid).first()
-            await manager.broadcast({"user_id": u_fresh.id, "username":u_fresh.username, "avatar":u_fresh.avatar_url, "content":txt}, ch)
-    except: manager.disconnect(ws,ch)
+            await manager.broadcast({"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}, ch)
+    except:
+        manager.disconnect(ws, ch)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=10000)
