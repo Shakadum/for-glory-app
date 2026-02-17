@@ -1,16 +1,18 @@
 import uvicorn
 import json
 import hashlib
+import smtplib
 import random
 import os
 import shutil
 import logging
-from fastapi import FastAPI, WebSocket, Request, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
 from datetime import datetime
+from typing import List, Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -27,6 +29,7 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# Tabela de Amizades
 friendship = Table(
     'friendships', Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
@@ -67,6 +70,7 @@ class Channel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
 
+# Cria tabelas
 try:
     Base.metadata.create_all(bind=engine)
 except: pass
@@ -103,6 +107,7 @@ class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
 class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
 class RequestActionData(BaseModel): request_id: int; action: str
+class DeletePostData(BaseModel): post_id: int; user_id: int
 
 # --- FUNÇÕES ---
 def get_db(): 
@@ -161,6 +166,8 @@ body{background-color:#0b0c10;color:#e0e0e0;font-family:'Inter',sans-serif;margi
 .post-media{width:100%;max-height:500px;object-fit:contain;background:black;display:block}
 .post-caption{padding:10px;color:#ccc;font-size:14px}
 .add-friend-btn{background:transparent;border:1px solid var(--primary);color:var(--primary);padding:5px 10px;border-radius:15px;cursor:pointer;font-size:12px}
+.delete-btn{background:transparent;border:none;color:#666;font-size:16px;cursor:pointer;}
+.delete-btn:hover{color:red;}
 #profile-view,#public-profile-view{padding:30px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .profile-pic-lg{width:120px;height:120px;border-radius:50%;object-fit:cover;border:4px solid var(--primary);margin:0 auto 15px auto;cursor:pointer}
 #p-name,#p-bio,#pub-name,#pub-bio{width:100%;text-align:center}
@@ -199,7 +206,7 @@ body{background-color:#0b0c10;color:#e0e0e0;font-family:'Inter',sans-serif;margi
 <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:10px;left:10px;background:none;border:none;color:white;font-size:20px;">⬅ Voltar</button><div style="padding-top:40px;width:100%;display:flex;flex-direction:column;align-items:center;"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888;"><h2 id="pub-name" style="color:white;font-family:'Rajdhani'">...</h2><p id="pub-bio" style="color:#888;margin-bottom:20px">...</p><div id="pub-actions"></div><div id="pub-grid" class="grid"></div></div></div>
 </div></div>
 <script>
-var user=null;var ws=null;var syncInterval=null;
+var user=null;var ws=null;var syncInterval=null;var lastFeedHash="";
 function showToast(msg){var x=document.getElementById("toast");x.innerText=msg;x.className="show";setTimeout(function(){x.className=x.className.replace("show","")},3000)}
 function toggleAuth(mode){document.getElementById('login-form').classList.toggle('hidden',mode==='register');document.getElementById('register-form').classList.toggle('hidden',mode!=='register')}
 async function doLogin(){let u=document.getElementById('l-user').value,p=document.getElementById('l-pass').value;try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});if(!r.ok)throw new Error("Erro Login");user=await r.json();startApp()}catch(e){showToast("Falha no Login!")}}
@@ -213,12 +220,15 @@ async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id
 async function sendRequest(targetId){let r=await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:targetId,sender_id:user.id})});if(r.ok){showToast("Solicitação enviada!");openPublicProfile(targetId)}}
 async function toggleRequests(){let box=document.getElementById('requests-list');if(box.style.display==='block'){box.style.display='none';return}box.style.display='block';box.innerHTML='Carregando...';let r=await fetch('/friend/requests?uid='+user.id);let data=await r.json();box.innerHTML='<h4 style="margin:10px 0;color:#888">Solicitações Pendentes</h4>';if(data.requests.length===0)box.innerHTML+='<p style="font-size:12px">Nenhuma solicitação.</p>';data.requests.forEach(req=>{box.innerHTML+=`<div class="req-row"><span>${req.username}</span><div><button class="btn-sm" style="background:#0f0;color:black" onclick="handleReq(${req.id}, 'accept')">V</button><button class="btn-sm" style="background:red;color:white" onclick="handleReq(${req.id}, 'reject')">X</button></div></div>`});box.innerHTML+='<h4 style="margin:10px 0;color:#888;border-top:1px solid #333;paddingTop:10px;">Meus Amigos</h4>';data.friends.forEach(f=>{box.innerHTML+=`<div class="search-res" onclick="openPublicProfile(${f.id})"><img src="${f.avatar_url}" style="width:30px;height:30px;border-radius:50%"><span>${f.username}</span></div>`})}
 async function handleReq(rid,action){let r=await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:action})});if(r.ok){showToast("Feito!");toggleRequests()}}
-function submitPost(){let file=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!file)return showToast("Selecione um arquivo!");let fd=new FormData();fd.append('file',file);fd.append('user_id',user.id);fd.append('caption',cap);let xhr=new XMLHttpRequest();xhr.open('POST','/upload/post',true);xhr.upload.onprogress=function(e){if(e.lengthComputable){let percent=(e.loaded/e.total)*100;document.getElementById('progress-container').style.display='block';document.getElementById('progress-text').style.display='block';document.getElementById('progress-bar').style.width=percent+'%';document.getElementById('progress-text').innerText=`Enviando... ${Math.round(percent)}%`}};xhr.onload=function(){if(xhr.status===200){showToast("Postado!");closeUpload();loadFeed();loadMyPosts()}else{showToast("Erro envio")}};xhr.send(fd)}
+function submitPost(){let file=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!file)return showToast("Selecione um arquivo!");let fd=new FormData();fd.append('file',file);fd.append('user_id',user.id);fd.append('caption',cap);let xhr=new XMLHttpRequest();xhr.open('POST','/upload/post',true);xhr.upload.onprogress=function(e){if(e.lengthComputable){let percent=(e.loaded/e.total)*100;document.getElementById('progress-container').style.display='block';document.getElementById('progress-text').style.display='block';document.getElementById('progress-bar').style.width=percent+'%';document.getElementById('progress-text').innerText=`Enviando... ${Math.round(percent)}%`}};xhr.onload=function(){if(xhr.status===200){showToast("Postado!");closeUpload();lastFeedHash="";loadFeed();loadMyPosts()}else{showToast("Erro envio")}};xhr.send(fd)}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden');document.getElementById('progress-container').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%'}
+async function deletePost(pid){if(!confirm("Apagar post?"))return;let r=await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})});if(r.ok){showToast("Apagado!");lastFeedHash="";loadFeed();loadMyPosts()}}
 function connectWS(){if(ws)ws.close();let proto=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${proto}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=(e)=>{let d=JSON.parse(e.data);let box=document.getElementById('chat-list');let isMine=d.username===user.username;let cls=isMine?'mine':'other';let content=d.content.includes('/static/')?`<img src="${d.content}" class="chat-img" onclick="window.open(this.src)">`:d.content;let avatarUrl=`${d.avatar}?t=${new Date().getTime()}`;box.innerHTML+=`<div class="msg-row ${cls}"><img src="${avatarUrl}" class="msg-av"><div><span class="msg-user" style="font-size:0.7em;color:var(--primary);font-weight:bold;display:block;margin-bottom:4px;">${d.username}</span><div class="msg-bubble">${content}</div></div></div>`;box.scrollTop=box.scrollHeight}}
 function sendMsg(){let inp=document.getElementById('chat-msg');if(inp.value.trim()){ws.send(inp.value);inp.value=''}}
 async function uploadChatImage(){let file=document.getElementById('chat-file').files[0];if(!file)return;let fd=new FormData();fd.append('file',file);let r=await fetch('/upload/chat',{method:'POST',body:fd});if(r.ok){let data=await r.json();ws.send(data.url)}}
-async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id);if(!r.ok)return;let posts=await r.json();let html='';posts.forEach(p=>{let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media" preload="metadata" playsinline></video>`:`<img src="${p.content_url}" class="post-media">`;let btn=(p.author_id!==user.id&&!p.is_friend)?`<button class="add-friend-btn" onclick="addFriend(${p.author_id})">ADD</button>`:'';if(p.is_friend)btn='<span style="color:#0f0;font-size:12px">✔ Amigo</span>';html+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer;" onclick="openPublicProfile(${p.author_id})"><img src="${p.author_avatar}?t=${new Date().getTime()}" class="post-av"><span class="post-user">${p.author_name}</span></div>${btn}</div>${media}<div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div></div>`});let container=document.getElementById('feed-container');if(container.innerHTML.length!==html.length){container.innerHTML=html}}catch(e){}}
+async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id);if(!r.ok)return;let posts=await r.json();
+let currentHash=JSON.stringify(posts.map(p=>p.id));if(currentHash===lastFeedHash)return;lastFeedHash=currentHash;
+let html='';posts.forEach(p=>{let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media" preload="metadata" playsinline></video>`:`<img src="${p.content_url}" class="post-media">`;let actionBtn=(p.author_id===user.id)?`<button class="delete-btn" onclick="deletePost(${p.id})">🗑️</button>`:(p.is_friend?'<span style="color:#0f0;font-size:12px">✔ Amigo</span>':`<button class="add-friend-btn" onclick="openPublicProfile(${p.author_id})">ADD</button>`);html+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer;" onclick="openPublicProfile(${p.author_id})"><img src="${p.author_avatar}?t=${new Date().getTime()}" class="post-av"><span class="post-user">${p.author_name}</span></div>${actionBtn}</div>${media}<div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div></div>`});document.getElementById('feed-container').innerHTML=html}catch(e){}}
 async function loadMyPosts(){let r=await fetch('/user/'+user.id+'?viewer_id='+user.id);let data=await r.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';data.posts.forEach(p=>{let content=p.media_type==='video'?`<video src="${p.content_url}" class="grid-item" preload="metadata"></video>`:`<img src="${p.content_url}" class="grid-item">`;grid.innerHTML+=content})}
 async function updateProfile(){let file=document.getElementById('avatar-upload').files[0];let bio=document.getElementById('bio-update').value;let fd=new FormData();fd.append('user_id',user.id);if(file)fd.append('file',file);if(bio)fd.append('bio',bio);let r=await fetch('/profile/update',{method:'POST',body:fd});if(r.ok){let d=await r.json();user.avatar_url=d.avatar_url;user.bio=d.bio;updateProfileUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Perfil Atualizado!")}}
 </script>
@@ -250,6 +260,15 @@ async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: U
     db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption)); db.commit()
     return {"status":"ok"}
 
+@app.post("/post/delete")
+async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
+    post = db.query(Post).filter(Post.id == d.post_id).first()
+    if not post or post.user_id != d.user_id: return {"status": "error"}
+    try: os.remove(f".{post.content_url}")
+    except: pass
+    db.delete(post); db.commit()
+    return {"status": "ok"}
+
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
     filename = f"chat_{random.randint(10000,99999)}_{file.filename}"
@@ -262,6 +281,7 @@ async def get_posts(uid: int, db: Session=Depends(get_db)):
     me = db.query(User).filter(User.id == uid).first()
     my_friends_ids = [f.id for f in me.friends] if me else []
     return [{
+        "id": p.id,
         "content_url": p.content_url, 
         "media_type": p.media_type, 
         "caption": p.caption, 
@@ -288,13 +308,15 @@ async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: Upl
     return {"avatar_url": u.avatar_url, "bio": u.bio}
 
 @app.post("/friend/request")
-async def send_req(d: FriendReqData, db: Session=Depends(get_db)):
-    me = db.query(User).filter(User.id == d.sender_id).first()
-    target = db.query(User).filter(User.id == d.target_id).first()
+async def send_req(d: dict, db: Session=Depends(get_db)):
+    sender_id = d.get('sender_id')
+    target_id = d.get('target_id')
+    me = db.query(User).filter(User.id == sender_id).first()
+    target = db.query(User).filter(User.id == target_id).first()
     if target in me.friends: return {"status": "already_friends"}
-    existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==d.sender_id, FriendRequest.receiver_id==d.target_id),and_(FriendRequest.sender_id==d.target_id, FriendRequest.receiver_id==d.sender_id))).first()
+    existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id))).first()
     if existing: return {"status": "pending"}
-    db.add(FriendRequest(sender_id=d.sender_id, receiver_id=d.target_id)); db.commit()
+    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id)); db.commit()
     return {"status": "sent"}
 
 @app.get("/friend/requests")
