@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
 from datetime import datetime
+from typing import List, Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,11 +24,12 @@ if not os.path.exists("static"):
     os.makedirs("static")
 
 # --- BANCO DE DADOS ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory.db" 
+SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# Tabela de Amizades
 friendship = Table(
     'friendships', Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
@@ -59,6 +61,7 @@ class Channel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
 
+# Cria tabelas se não existirem
 try:
     Base.metadata.create_all(bind=engine)
 except: pass
@@ -112,7 +115,7 @@ def startup():
         db.commit(); db.close()
     except: pass
 
-# --- HTML FRONTEND CORRIGIDO ---
+# --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
 <html>
@@ -127,7 +130,6 @@ html_content = """
         
         #app { display: flex; flex: 1; overflow: hidden; position: relative; }
         
-        /* SIDEBAR */
         #sidebar { width: 80px; background: rgba(11, 12, 16, 0.95); border-right: 1px solid var(--glass-border); display: flex; flex-direction: column; align-items: center; padding: 20px 0; z-index: 10; }
         .nav-btn { width: 50px; height: 50px; border-radius: 15px; border: none; background: transparent; color: #666; font-size: 24px; margin-bottom: 20px; cursor: pointer; }
         .nav-btn.active { background: rgba(102, 252, 241, 0.15); color: var(--primary); border: 1px solid var(--glass-border); }
@@ -137,29 +139,46 @@ html_content = """
         .view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
         .view.active { display: flex; }
 
-        /* MODALS (CORRIGIDO) */
+        /* CHAT */
+        #chat-list { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .msg-row { display: flex; gap: 10px; max-width: 85%; }
+        .msg-row.mine { align-self: flex-end; flex-direction: row-reverse; }
+        .msg-av { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; }
+        .msg-bubble { padding: 10px 15px; border-radius: 15px; background: #222; color: #ddd; word-break: break-word; }
+        .msg-row.mine .msg-bubble { background: linear-gradient(135deg, #45a29e, #2f807c); color: white; }
+        .chat-img { max-width: 100%; border-radius: 10px; margin-top: 5px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); }
+        
+        #chat-input-area { background: #111; padding: 15px; display: flex; gap: 10px; align-items: center; }
+        #chat-msg { flex: 1; background: #222; border: 1px solid #444; border-radius: 20px; padding: 10px; color: white; outline: none; }
+
+        /* FEED */
+        #feed-container { flex: 1; overflow-y: auto; padding: 0; }
+        .post-card { background: rgba(11, 12, 16, 0.6); margin-bottom: 10px; border-bottom: 1px solid var(--glass-border); }
+        .post-header { padding: 10px; display: flex; align-items: center; justify-content: space-between; }
+        .post-av { width: 36px; height: 36px; border-radius: 50%; margin-right: 10px; object-fit: cover; border: 1px solid var(--primary); }
+        .post-media { width: 100%; max-height: 500px; object-fit: contain; background: black; display: block; }
+        .post-caption { padding: 10px; color: #ccc; font-size: 14px; }
+        .add-friend-btn { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; }
+
+        /* PROFILE */
+        #profile-view { padding: 30px; align-items: center; overflow-y: auto; text-align: center; }
+        .profile-pic-lg { width: 110px; height: 110px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary); margin-bottom: 15px; cursor: pointer; }
+        
+        #search-box { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin-bottom: 20px; display:flex; gap:5px; }
+        #search-input { flex:1; background: #000; border: 1px solid #444; padding: 8px; color: white; border-radius: 5px; }
+        .search-res { padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); margin-top: 5px; }
+        
+        /* MODALS */
         .modal { position: fixed; inset: 0; background: #000; z-index: 200; display: flex; align-items: center; justify-content: center; }
-        
-        /* O ERRO ESTAVA AQUI: removido !important */
-        .hidden { display: none; } 
-        
+        .hidden { display: none; }
         .modal-box { background: #111; padding: 30px; border-radius: 20px; border: 1px solid var(--glass-border); width: 90%; max-width: 350px; text-align: center; }
         .inp { width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #444; color: white; border-radius: 8px; text-align: center; font-size: 16px; }
         .btn { width: 100%; padding: 12px; margin-top: 10px; background: var(--primary); border: none; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
-        
-        .link-text { color:#888; text-decoration:underline; cursor:pointer; font-size:14px; margin-top:15px; display:inline-block; }
 
-        /* CHAT & FEED ESTILOS BASICOS */
-        #chat-list { flex: 1; padding: 20px; overflow-y: auto; }
-        .msg-bubble { background: #222; padding: 10px; border-radius: 10px; margin-bottom: 10px; }
-        #chat-input-area { padding: 15px; background: #111; display: flex; gap: 10px; }
-        #chat-msg { flex: 1; padding: 10px; border-radius: 20px; border: none; background: #333; color: white; }
-        
-        #feed-container { flex: 1; overflow-y: auto; padding: 10px; }
-        .post-card { background: #111; margin-bottom: 15px; border-radius: 10px; overflow: hidden; border: 1px solid #333; }
-        .post-media { width: 100%; max-height: 400px; object-fit: contain; background: black; }
-        .post-header { padding: 10px; display: flex; align-items: center; gap: 10px; }
-        .add-friend-btn { background: var(--primary); border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        /* PROGRESS BAR */
+        #progress-container { width: 100%; background: #333; height: 10px; border-radius: 5px; margin-top: 15px; display: none; overflow: hidden; }
+        #progress-bar { width: 0%; height: 100%; background: #0f0; transition: width 0.2s; }
+        #progress-text { color: #0f0; font-size: 12px; margin-top: 5px; display: none; }
 
         @media (max-width: 768px) { #app { flex-direction: column-reverse; } #sidebar { width: 100%; height: 60px; flex-direction: row; justify-content: space-around; } }
     </style>
@@ -168,26 +187,47 @@ html_content = """
 
     <div id="modal-login" class="modal">
         <div class="modal-box">
-            <h1 style="color:var(--primary); font-family:'Rajdhani'; font-size:2.5em; margin-bottom:20px;">FOR GLORY</h1>
-            
+            <h1 style="color:var(--primary); font-family:'Rajdhani'">FOR GLORY</h1>
             <div id="login-form">
                 <input id="l-user" class="inp" placeholder="CODINOME">
                 <input id="l-pass" class="inp" type="password" placeholder="SENHA">
                 <button onclick="doLogin()" class="btn">ENTRAR</button>
-                
                 <div style="display:flex; justify-content:space-between; margin-top:15px;">
-                    <span class="link-text" onclick="toggleAuth('register')">Criar Conta</span>
-                    <span class="link-text" onclick="alert('Funcionalidade em manutenção.')">Esqueci Senha</span>
+                    <span onclick="toggleAuth('register')" style="color:#888; text-decoration:underline; cursor:pointer;">Criar Conta</span>
+                    <span style="color:#888; text-decoration:underline; cursor:pointer;">Esqueci Senha</span>
                 </div>
             </div>
-
             <div id="register-form" class="hidden">
-                <input id="r-user" class="inp" placeholder="NOVO CODINOME">
-                <input id="r-email" class="inp" placeholder="EMAIL TÁTICO">
+                <input id="r-user" class="inp" placeholder="NOVO USUÁRIO">
+                <input id="r-email" class="inp" placeholder="EMAIL">
                 <input id="r-pass" class="inp" type="password" placeholder="SENHA">
-                <button onclick="doRegister()" class="btn">CADASTRAR</button>
-                <p class="link-text" onclick="toggleAuth('login')">Voltar ao Login</p>
+                <button onclick="doRegister()" class="btn">REGISTRAR</button>
+                <p onclick="toggleAuth('login')" style="color:#888; text-decoration:underline; cursor:pointer; margin-top:10px;">Voltar</p>
             </div>
+        </div>
+    </div>
+
+    <div id="modal-upload" class="modal hidden" style="background:rgba(0,0,0,0.9);">
+        <div class="modal-box">
+            <h2 style="color:white">NOVO POST</h2>
+            <input type="file" id="file-upload" class="inp" accept="image/*,video/*">
+            <input type="text" id="caption-upload" class="inp" placeholder="Legenda...">
+            
+            <div id="progress-container"><div id="progress-bar"></div></div>
+            <div id="progress-text">Carregando... 0%</div>
+            
+            <button onclick="submitPost()" class="btn">PUBLICAR</button>
+            <button onclick="closeUpload()" class="btn" style="background:#333; color:white">CANCELAR</button>
+        </div>
+    </div>
+
+    <div id="modal-profile" class="modal hidden" style="background:rgba(0,0,0,0.9);">
+        <div class="modal-box">
+            <h2 style="color:var(--primary); font-family:'Rajdhani'">PERFIL</h2>
+            <input type="file" id="avatar-upload" class="inp" accept="image/*">
+            <input type="text" id="bio-update" class="inp" placeholder="Bio...">
+            <button onclick="updateProfile()" class="btn">SALVAR</button>
+            <button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn" style="background:#333; color:white">CANCELAR</button>
         </div>
     </div>
 
@@ -195,7 +235,9 @@ html_content = """
         <div id="sidebar">
             <button class="nav-btn active" onclick="goView('chat')">💬</button>
             <button class="nav-btn" onclick="goView('feed')">🎬</button>
-            <button class="nav-btn" onclick="goView('profile')">👤</button>
+            <button class="nav-btn" onclick="goView('profile')">
+                <img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://via.placeholder.com/40'">
+            </button>
         </div>
 
         <div id="content-area">
@@ -203,21 +245,35 @@ html_content = """
                 <div style="padding:15px; border-bottom:1px solid #333; color:var(--primary); font-family:'Rajdhani'">GERAL</div>
                 <div id="chat-list"></div>
                 <div id="chat-input-area">
+                    <button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888;">📎</button>
+                    <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()">
                     <input id="chat-msg" placeholder="Mensagem...">
-                    <button onclick="sendMsg()" style="background:var(--primary); border:none; width:40px; height:40px; border-radius:50%">➤</button>
+                    <button onclick="sendMsg()" style="background:var(--primary); border:none; width:40px; height:40px; border-radius:50%; font-weight:bold;">➤</button>
                 </div>
             </div>
 
             <div id="view-feed" class="view">
                 <div id="feed-container"></div>
-                <button onclick="document.getElementById('file-input').click()" style="position:fixed; bottom:80px; right:20px; width:60px; height:60px; border-radius:50%; background:var(--primary); border:none; font-size:30px; box-shadow:0 0 20px rgba(102,252,241,0.5); cursor:pointer;">+</button>
-                <input type="file" id="file-input" style="display:none" onchange="uploadPost()">
+                <button onclick="document.getElementById('modal-upload').classList.remove('hidden')" style="position:fixed; bottom:80px; right:20px; width:60px; height:60px; border-radius:50%; background:var(--primary); border:none; font-size:30px; box-shadow:0 0 20px rgba(102,252,241,0.5); cursor:pointer;">+</button>
             </div>
 
-            <div id="view-profile" class="view" style="padding:20px; text-align:center;">
-                <img id="p-avatar" src="" style="width:100px; height:100px; border-radius:50%; border:3px solid var(--primary);">
-                <h2 id="p-name" style="color:white; margin-top:10px;">...</h2>
-                <button onclick="logout()" style="background:transparent; border:1px solid red; color:red; padding:10px 20px; border-radius:20px; margin-top:20px;">SAIR</button>
+            <div id="view-profile" class="view">
+                <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')">
+                <h2 id="p-name" style="color:white; font-family:'Rajdhani'">...</h2>
+                <p id="p-bio" style="color:#888; margin-bottom:20px">...</p>
+                
+                <div id="search-box">
+                    <input id="search-input" placeholder="Buscar Soldado...">
+                    <button onclick="searchUsers()" style="background:var(--primary); border:none; padding:8px; border-radius:5px; cursor:pointer;">🔍</button>
+                </div>
+                <div id="search-results"></div>
+                
+                <button onclick="toggleFriends()" style="background:rgba(255,255,255,0.1); border:none; color:white; padding:8px 15px; border-radius:10px; cursor:pointer; margin:20px 0;">Meus Amigos</button>
+                <div id="friends-list" style="display:none; text-align:left; margin:0 auto; width:100%; max-width:350px;"></div>
+
+                <div style="margin-top:20px;">
+                    <button onclick="logout()" style="background:transparent; border:1px solid red; color:red; padding:10px 20px; border-radius:20px;">SAIR</button>
+                </div>
             </div>
         </div>
     </div>
@@ -243,7 +299,6 @@ html_content = """
                 user=await r.json(); startApp();
             } catch(e){ alert(e.message); }
         }
-
         async function doRegister() {
             let u=document.getElementById('r-user').value, e=document.getElementById('r-email').value, p=document.getElementById('r-pass').value;
             try {
@@ -252,14 +307,17 @@ html_content = """
                 alert("Sucesso! Faça Login."); toggleAuth('login');
             } catch(e){ alert(e.message); }
         }
-
         function startApp() {
-            document.getElementById('modal-login').style.display = 'none';
-            document.getElementById('p-avatar').src = user.avatar_url;
-            document.getElementById('p-name').innerText = user.username;
-            loadFeed(); connectWS();
+            document.getElementById('modal-login').classList.add('hidden');
+            updateProfileUI(); loadFeed(); connectWS();
         }
-        
+        function updateProfileUI() {
+            let ts = new Date().getTime();
+            document.getElementById('p-avatar').src = user.avatar_url + "?t=" + ts;
+            document.getElementById('nav-avatar').src = user.avatar_url + "?t=" + ts;
+            document.getElementById('p-name').innerText = user.username;
+            document.getElementById('p-bio').innerText = user.bio;
+        }
         function logout() { location.reload(); }
 
         function goView(v) {
@@ -269,41 +327,132 @@ html_content = """
             event.currentTarget.classList.add('active');
         }
 
-        // FEED
-        async function loadFeed() {
-            let r=await fetch('/posts?uid='+user.id);
-            let posts=await r.json();
-            let html='';
-            posts.forEach(p => {
-                let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media"></video>`:`<img src="${p.content_url}" class="post-media">`;
-                html+=`<div class="post-card"><div class="post-header"><span>${p.author_name}</span></div>${media}<div style="padding:10px">${p.caption}</div></div>`;
+        // --- BUSCA E AMIGOS ---
+        async function searchUsers() {
+            let q = document.getElementById('search-input').value;
+            if(!q) return;
+            let r = await fetch('/users/search?q=' + q);
+            let res = await r.json();
+            let box = document.getElementById('search-results');
+            box.innerHTML = '';
+            if(res.length === 0) box.innerHTML = '<p style="color:#666">Nada.</p>';
+            res.forEach(u => {
+                if(u.id !== user.id) {
+                    box.innerHTML += `<div class="search-res">
+                        <span style="color:white; font-weight:bold">${u.username}</span>
+                        <button class="add-friend-btn" onclick="addFriend(${u.id})">ADD</button>
+                    </div>`;
+                }
             });
-            document.getElementById('feed-container').innerHTML=html;
         }
 
-        async function uploadPost() {
-            let file = document.getElementById('file-input').files[0];
-            if(!file) return;
-            let cap = prompt("Legenda:");
-            let fd = new FormData(); fd.append('file', file); fd.append('user_id', user.id); fd.append('caption', cap || "");
-            alert("Enviando... aguarde.");
-            let r = await fetch('/upload/post', {method:'POST', body:fd});
-            if(r.ok) { alert("Sucesso!"); loadFeed(); }
+        async function addFriend(fid) {
+            let r = await fetch('/friend/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id: user.id, friend_id: fid})});
+            if(r.ok) { alert("Amigo adicionado!"); loadFeed(); toggleFriends(); }
+        }
+        
+        async function toggleFriends() {
+            let box = document.getElementById('friends-list');
+            if(box.style.display === 'block') { box.style.display='none'; return; }
+            box.style.display='block'; box.innerHTML='Carregando...';
+            let r=await fetch('/friends/'+user.id);
+            let friends=await r.json();
+            box.innerHTML = friends.length ? '' : '<p style="color:#666">Sem amigos.</p>';
+            friends.forEach(f => {
+                box.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333; display:flex; align-items:center; gap:10px;">
+                    <img src="${f.avatar_url}" style="width:30px;height:30px;border-radius:50%">
+                    <span style="color:white">${f.username}</span>
+                </div>`;
+            });
         }
 
-        // CHAT
+        // --- UPLOAD COM PROGRESS BAR ---
+        function submitPost() {
+            let file = document.getElementById('file-upload').files[0];
+            let cap = document.getElementById('caption-upload').value;
+            if(!file) return alert("Selecione um arquivo!");
+            let fd = new FormData(); fd.append('file', file); fd.append('user_id', user.id); fd.append('caption', cap);
+            
+            let xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload/post', true);
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    let percent = (e.loaded / e.total) * 100;
+                    document.getElementById('progress-container').style.display = 'block';
+                    document.getElementById('progress-text').style.display = 'block';
+                    document.getElementById('progress-bar').style.width = percent + '%';
+                    document.getElementById('progress-text').innerText = `Enviando... ${Math.round(percent)}%`;
+                }
+            };
+            xhr.onload = function() {
+                if (xhr.status === 200) { alert("Postado!"); closeUpload(); loadFeed(); } else { alert("Erro envio"); }
+            };
+            xhr.send(fd);
+        }
+
+        function closeUpload() {
+            document.getElementById('modal-upload').classList.add('hidden');
+            document.getElementById('progress-container').style.display = 'none';
+            document.getElementById('progress-text').style.display = 'none';
+            document.getElementById('progress-bar').style.width = '0%';
+        }
+
+        // --- CHAT ---
         function connectWS() {
+            if(ws) ws.close();
             let proto = location.protocol==='https:'?'wss:':'ws:';
             ws = new WebSocket(`${proto}//${location.host}/ws/Geral/${user.id}`);
             ws.onmessage = (e) => {
                 let d=JSON.parse(e.data);
                 let box=document.getElementById('chat-list');
-                box.innerHTML+=`<div class="msg-bubble"><b>${d.username}:</b> ${d.content}</div>`;
+                let isMine=d.username===user.username;
+                let cls=isMine?'mine':'other';
+                let content = d.content.includes('/static/') ? `<img src="${d.content}" class="chat-img" onclick="window.open(this.src)">` : d.content;
+                box.innerHTML+=`<div class="msg-row ${cls}"><img src="${d.avatar}" class="msg-av"><div><span class="msg-user">${d.username}</span><div class="msg-bubble">${content}</div></div></div>`;
+                box.scrollTop=box.scrollHeight;
             }
         }
         function sendMsg() {
             let inp=document.getElementById('chat-msg');
-            if(inp.value){ ws.send(inp.value); inp.value=''; }
+            if(inp.value.trim()){ ws.send(inp.value); inp.value=''; }
+        }
+        async function uploadChatImage() {
+            let file = document.getElementById('chat-file').files[0];
+            if(!file) return;
+            let fd = new FormData(); fd.append('file', file);
+            let r = await fetch('/upload/chat', {method:'POST', body:fd});
+            if(r.ok) { let data = await r.json(); ws.send(data.url); }
+        }
+
+        async function loadFeed() {
+            let r=await fetch('/posts?uid='+user.id);
+            if(!r.ok) return;
+            let posts=await r.json();
+            let html='';
+            posts.forEach(p => {
+                let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media"></video>`:`<img src="${p.content_url}" class="post-media">`;
+                let btn = (p.author_id !== user.id && !p.is_friend) ? `<button class="add-friend-btn" onclick="addFriend(${p.author_id})">ADD</button>` : '';
+                if(p.is_friend) btn = '<span style="color:#0f0; font-size:12px">✔ Amigo</span>';
+                
+                html+=`<div class="post-card">
+                    <div class="post-header">
+                        <div style="display:flex;align-items:center"><img src="${p.author_avatar}" class="post-av"><span class="post-user">${p.author_name}</span></div>
+                        ${btn}
+                    </div>
+                    ${media}
+                    <div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div>
+                </div>`;
+            });
+            document.getElementById('feed-container').innerHTML=html;
+        }
+
+        async function updateProfile() {
+            let file=document.getElementById('avatar-upload').files[0];
+            let bio=document.getElementById('bio-update').value;
+            let fd=new FormData(); fd.append('user_id', user.id);
+            if(file) fd.append('file', file); if(bio) fd.append('bio', bio);
+            let r=await fetch('/profile/update',{method:'POST',body:fd});
+            if(r.ok) { let d=await r.json(); user.avatar_url=d.avatar_url; user.bio=d.bio; updateProfileUI(); document.getElementById('modal-profile').classList.add('hidden'); }
         }
     </script>
 </body>
@@ -334,19 +483,66 @@ async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: U
     db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption)); db.commit()
     return {"status":"ok"}
 
+@app.post("/upload/chat")
+async def upload_chat(file: UploadFile = File(...)):
+    filename = f"chat_{random.randint(10000,99999)}_{file.filename}"
+    with open(f"static/{filename}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    return {"url": f"/static/{filename}"}
+
 @app.get("/posts")
 async def get_posts(uid: int, db: Session=Depends(get_db)):
     posts = db.query(Post).order_by(Post.timestamp.desc()).all()
-    return [{"content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username} for p in posts]
+    me = db.query(User).filter(User.id == uid).first()
+    my_friends_ids = [f.id for f in me.friends] if me else []
+    return [{
+        "content_url": p.content_url, 
+        "media_type": p.media_type, 
+        "caption": p.caption, 
+        "author_name": p.author.username, 
+        "author_avatar": p.author.avatar_url, 
+        "author_id": p.author.id,
+        "is_friend": p.author.id in my_friends_ids
+    } for p in posts]
+
+@app.get("/users/search")
+async def search_users(q: str, db: Session=Depends(get_db)):
+    users = db.query(User).filter(User.username.like(f"%{q}%")).limit(5).all()
+    return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
+
+@app.post("/friend/add")
+async def add_friend(r: FriendRequest, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == r.user_id).first()
+    f = db.query(User).filter(User.id == r.friend_id).first()
+    if u and f and f not in u.friends:
+        u.friends.append(f)
+        f.friends.append(u)
+        db.commit()
+    return {"status": "ok"}
+
+@app.get("/friends/{user_id}")
+async def get_friends(user_id: int, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    return [{"username": f.username, "avatar_url": f.avatar_url} for f in u.friends] if u else []
+
+@app.post("/profile/update")
+async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    if file:
+        fname = f"av_{user_id}_{random.randint(1000,9999)}_{file.filename}"
+        with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        u.avatar_url = f"/static/{fname}"
+    if bio: u.bio = bio
+    db.commit()
+    return {"avatar_url": u.avatar_url, "bio": u.bio}
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     await manager.connect(ws,ch)
     try:
-        u = db.query(User).filter(User.id == uid).first()
         while True:
             txt=await ws.receive_text()
-            await manager.broadcast({"username":u.username, "content":txt}, ch)
+            u_fresh = db.query(User).filter(User.id == uid).first()
+            await manager.broadcast({"username":u_fresh.username, "avatar":u_fresh.avatar_url, "content":txt}, ch)
     except: manager.disconnect(ws,ch)
 
 if __name__ == "__main__":
