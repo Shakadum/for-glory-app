@@ -356,7 +356,7 @@ html_content = """
             updateProfileUI(); loadFeed(); connectWS();
         }
         function updateProfileUI() {
-            let ts = new Date().getTime(); // Truque do Cache
+            let ts = new Date().getTime();
             document.getElementById('p-avatar').src = user.avatar_url + "?t=" + ts;
             document.getElementById('nav-avatar').src = user.avatar_url + "?t=" + ts;
             document.getElementById('p-name').innerText = user.username;
@@ -531,3 +531,93 @@ html_content = """
     </script>
 </body>
 </html>
+"""
+
+@app.get("/", response_class=HTMLResponse)
+async def get(): return HTMLResponse(content=html_content)
+
+# --- ENDPOINTS ---
+@app.post("/register")
+async def reg(d: RegisterData, db: Session=Depends(get_db)):
+    if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
+    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password))); db.commit()
+    return {"status":"ok"}
+
+@app.post("/login")
+async def log(d: LoginData, db: Session=Depends(get_db)):
+    u=db.query(User).filter(User.username==d.username).first()
+    if not u or u.password_hash!=criptografar(d.password): raise HTTPException(400, "Erro")
+    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "bio":u.bio}
+
+@app.post("/upload/post")
+async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
+    filename = f"post_{user_id}_{random.randint(1000,9999)}_{file.filename}"
+    with open(f"static/{filename}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    m_type = "video" if file.content_type.startswith("video") else "image"
+    db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption)); db.commit()
+    return {"status":"ok"}
+
+@app.post("/upload/chat")
+async def upload_chat(file: UploadFile = File(...)):
+    filename = f"chat_{random.randint(10000,99999)}_{file.filename}"
+    with open(f"static/{filename}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    return {"url": f"/static/{filename}"}
+
+@app.get("/posts")
+async def get_posts(uid: int, db: Session=Depends(get_db)):
+    posts = db.query(Post).order_by(Post.timestamp.desc()).all()
+    me = db.query(User).filter(User.id == uid).first()
+    my_friends_ids = [f.id for f in me.friends] if me else []
+    return [{
+        "content_url": p.content_url, 
+        "media_type": p.media_type, 
+        "caption": p.caption, 
+        "author_name": p.author.username, 
+        "author_avatar": p.author.avatar_url, 
+        "author_id": p.author.id,
+        "is_friend": p.author.id in my_friends_ids
+    } for p in posts]
+
+@app.get("/users/search")
+async def search_users(q: str, db: Session=Depends(get_db)):
+    users = db.query(User).filter(User.username.like(f"%{q}%")).limit(5).all()
+    return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
+
+@app.post("/friend/add")
+async def add_friend(r: FriendRequest, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == r.user_id).first()
+    f = db.query(User).filter(User.id == r.friend_id).first()
+    if u and f and f not in u.friends:
+        u.friends.append(f)
+        f.friends.append(u)
+        db.commit()
+    return {"status": "ok"}
+
+@app.get("/friends/{user_id}")
+async def get_friends(user_id: int, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    return [{"username": f.username, "avatar_url": f.avatar_url} for f in u.friends] if u else []
+
+@app.post("/profile/update")
+async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    if file:
+        fname = f"av_{user_id}_{random.randint(1000,9999)}_{file.filename}"
+        with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        u.avatar_url = f"/static/{fname}"
+    if bio: u.bio = bio
+    db.commit()
+    return {"avatar_url": u.avatar_url, "bio": u.bio}
+
+@app.websocket("/ws/{ch}/{uid}")
+async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
+    await manager.connect(ws,ch)
+    try:
+        while True:
+            txt=await ws.receive_text()
+            u_fresh = db.query(User).filter(User.id == uid).first()
+            await manager.broadcast({"username":u_fresh.username, "avatar":u_fresh.avatar_url, "content":txt}, ch)
+    except: manager.disconnect(ws,ch)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=10000)
