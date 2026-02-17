@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
 from datetime import datetime
 from typing import List, Optional
@@ -23,8 +23,8 @@ logger = logging.getLogger("ForGlory")
 if not os.path.exists("static"):
     os.makedirs("static")
 
-# --- BANCO DE DADOS ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory.db"
+# --- BANCO DE DADOS (NOVO NOME PARA RESETAR TUDO) ---
+SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory_v2.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -46,6 +46,15 @@ class User(Base):
     bio = Column(String, default="Soldado do For Glory")
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
+class FriendRequest(Base):
+    __tablename__ = "friend_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    receiver_id = Column(Integer, ForeignKey("users.id"))
+    timestamp = Column(DateTime, default=datetime.now)
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])
+
 class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -61,7 +70,7 @@ class Channel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
 
-# Cria tabelas se não existirem
+# Cria tabelas
 try:
     Base.metadata.create_all(bind=engine)
 except: pass
@@ -96,7 +105,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # --- MODELOS ---
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
-class FriendRequest(BaseModel): user_id: int; friend_id: int
+class FriendReqData(BaseModel): target_id: int
+class RequestActionData(BaseModel): request_id: int; action: str
 
 # --- FUNÇÕES ---
 def get_db(): 
@@ -115,7 +125,7 @@ def startup():
         db.commit(); db.close()
     except: pass
 
-# --- FRONTEND COMPLETO ---
+# --- FRONTEND ---
 html_content = """
 <!DOCTYPE html>
 <html>
@@ -135,8 +145,8 @@ html_content = """
         .nav-btn.active { background: rgba(102, 252, 241, 0.15); color: var(--primary); border: 1px solid var(--glass-border); }
         .my-avatar-mini { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid var(--glass-border); }
 
-        #content-area { flex: 1; display: flex; flex-direction: column; position: relative; }
-        .view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+        #content-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .view { display: none; flex: 1; flex-direction: column; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; height: 100%; width: 100%; }
         .view.active { display: flex; }
 
         /* CHAT */
@@ -148,69 +158,33 @@ html_content = """
         .msg-row.mine .msg-bubble { background: linear-gradient(135deg, #45a29e, #2f807c); color: white; }
         .chat-img { max-width: 100%; border-radius: 10px; margin-top: 5px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); }
         
-        #chat-input-area { background: #111; padding: 15px; display: flex; gap: 10px; align-items: center; }
+        #chat-input-area { background: #111; padding: 15px; display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
         #chat-msg { flex: 1; background: #222; border: 1px solid #444; border-radius: 20px; padding: 10px; color: white; outline: none; }
 
         /* FEED */
-        #feed-container { flex: 1; overflow-y: auto; padding: 0; }
+        #feed-container { flex: 1; overflow-y: auto; padding: 0; padding-bottom: 80px; }
         .post-card { background: rgba(11, 12, 16, 0.6); margin-bottom: 10px; border-bottom: 1px solid var(--glass-border); }
         .post-header { padding: 10px; display: flex; align-items: center; justify-content: space-between; }
         .post-av { width: 36px; height: 36px; border-radius: 50%; margin-right: 10px; object-fit: cover; border: 1px solid var(--primary); }
         .post-media { width: 100%; max-height: 500px; object-fit: contain; background: black; display: block; }
         .post-caption { padding: 10px; color: #ccc; font-size: 14px; }
-        .add-friend-btn { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; }
-
-        /* PROFILE (Centralização Forçada) */
-        #profile-view { 
-            padding: 30px; 
-            overflow-y: auto; 
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
         
-        .profile-pic-lg { 
-            width: 120px; height: 120px; 
-            border-radius: 50%; object-fit: cover; 
-            border: 4px solid var(--primary); 
-            margin: 0 auto 15px auto;
-            cursor: pointer; 
-        }
+        /* PROFILE */
+        #profile-view, #public-profile-view { padding: 30px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        .profile-pic-lg { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary); margin: 0 auto 15px auto; cursor: pointer; }
         
-        #p-name, #p-bio { width: 100%; text-align: center; }
-        
-        #search-box { 
-            width: 90%; 
-            max-width: 280px;
-            background: rgba(255,255,255,0.1); 
-            padding: 10px; 
-            border-radius: 10px; 
-            margin: 10px auto 20px auto; 
-            display:flex; 
-            gap:5px; 
-        }
-        
+        #search-box { width: 90%; max-width: 280px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin: 10px auto 20px auto; display:flex; gap:5px; }
         #search-input { flex:1; background: #000; border: 1px solid #444; padding: 8px; color: white; border-radius: 5px; }
         #search-results { width: 100%; max-width: 280px; margin: 0 auto 20px auto; }
-        
         .search-res { padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); margin-top: 5px; border-radius: 5px;}
         
-        .profile-btn {
-            display: block; 
-            background: rgba(255,255,255,0.1); 
-            border: 1px solid #444; 
-            color: white; 
-            padding: 10px 0; 
-            width: 180px;
-            border-radius: 10px; 
-            cursor: pointer; 
-            margin: 10px auto;
-            transition: 0.2s;
-        }
-        .profile-btn:hover { background: rgba(255,255,255,0.2); }
-        .logout-btn { border: 1px solid red; color: red; background: transparent; margin-top: 30px;}
-        .logout-btn:hover { background: rgba(255,0,0,0.1); }
+        .profile-btn { display: block; background: rgba(255,255,255,0.1); border: 1px solid #444; color: white; padding: 10px 0; width: 180px; border-radius: 10px; cursor: pointer; margin: 10px auto; transition: 0.2s; }
+        .request-btn { background: var(--primary); color: black; border: none; font-weight: bold; width: auto; padding: 10px 20px; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; width: 100%; max-width: 400px; margin-top: 20px; }
+        .grid-item { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #222; }
+        
+        .req-row { background: rgba(100, 255, 100, 0.1); padding: 10px; margin: 5px auto; width: 100%; max-width: 280px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-sm { padding: 5px 10px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px; margin-left: 5px; }
 
         /* MODALS */
         .modal { position: fixed; inset: 0; background: #000; z-index: 200; display: flex; align-items: center; justify-content: center; }
@@ -219,7 +193,6 @@ html_content = """
         .inp { width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #444; color: white; border-radius: 8px; text-align: center; font-size: 16px; }
         .btn { width: 100%; padding: 12px; margin-top: 10px; background: var(--primary); border: none; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
 
-        /* PROGRESS BAR */
         #progress-container { width: 100%; background: #333; height: 10px; border-radius: 5px; margin-top: 15px; display: none; overflow: hidden; }
         #progress-bar { width: 0%; height: 100%; background: #0f0; transition: width 0.2s; }
         #progress-text { color: #0f0; font-size: 12px; margin-top: 5px; display: none; }
@@ -238,7 +211,6 @@ html_content = """
                 <button onclick="doLogin()" class="btn">ENTRAR</button>
                 <div style="display:flex; justify-content:space-between; margin-top:15px;">
                     <span onclick="toggleAuth('register')" style="color:#888; text-decoration:underline; cursor:pointer;">Criar Conta</span>
-                    <span style="color:#888; text-decoration:underline; cursor:pointer;">Esqueci Senha</span>
                 </div>
             </div>
             <div id="register-form" class="hidden">
@@ -256,10 +228,8 @@ html_content = """
             <h2 style="color:white">NOVO POST</h2>
             <input type="file" id="file-upload" class="inp" accept="image/*,video/*">
             <input type="text" id="caption-upload" class="inp" placeholder="Legenda...">
-            
             <div id="progress-container"><div id="progress-bar"></div></div>
             <div id="progress-text">Carregando... 0%</div>
-            
             <button onclick="submitPost()" class="btn">PUBLICAR</button>
             <button onclick="closeUpload()" class="btn" style="background:#333; color:white">CANCELAR</button>
         </div>
@@ -267,7 +237,7 @@ html_content = """
 
     <div id="modal-profile" class="modal hidden" style="background:rgba(0,0,0,0.9);">
         <div class="modal-box">
-            <h2 style="color:var(--primary); font-family:'Rajdhani'">PERFIL</h2>
+            <h2 style="color:var(--primary); font-family:'Rajdhani'">EDITAR PERFIL</h2>
             <input type="file" id="avatar-upload" class="inp" accept="image/*">
             <input type="text" id="bio-update" class="inp" placeholder="Bio...">
             <button onclick="updateProfile()" class="btn">SALVAR</button>
@@ -285,13 +255,14 @@ html_content = """
         </div>
 
         <div id="content-area">
+            
             <div id="view-chat" class="view active">
                 <div style="padding:15px; border-bottom:1px solid #333; color:var(--primary); font-family:'Rajdhani'">GERAL</div>
                 <div id="chat-list"></div>
                 <div id="chat-input-area">
                     <button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888;">📎</button>
                     <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()">
-                    <input id="chat-msg" placeholder="Mensagem...">
+                    <input id="chat-msg" placeholder="Mensagem..." onkeypress="if(event.key === 'Enter') sendMsg()">
                     <button onclick="sendMsg()" style="background:var(--primary); border:none; width:40px; height:40px; border-radius:50%; font-weight:bold;">➤</button>
                 </div>
             </div>
@@ -312,13 +283,28 @@ html_content = """
                 </div>
                 <div id="search-results"></div>
                 
-                <button onclick="toggleFriends()" class="profile-btn">Meus Amigos</button>
-                <div id="friends-list" style="display:none; width:100%; max-width:280px; margin: 0 auto;"></div>
+                <button onclick="toggleRequests()" class="profile-btn">Solicitações & Amigos</button>
+                <div id="requests-list" style="display:none; width:100%; max-width:280px; margin: 0 auto;"></div>
 
                 <div style="margin-top:20px;">
-                    <button onclick="logout()" class="profile-btn logout-btn">SAIR</button>
+                    <button onclick="logout()" class="profile-btn" style="border:1px solid red; color:red; background:transparent">SAIR</button>
+                </div>
+                <div id="my-posts-grid" class="grid"></div>
+            </div>
+
+            <div id="view-public-profile" class="view">
+                <button onclick="goView('feed')" style="position:absolute; top:10px; left:10px; background:none; border:none; color:white; font-size:20px;">⬅ Voltar</button>
+                <div style="padding-top:40px; width:100%; display:flex; flex-direction:column; align-items:center;">
+                    <img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default; border-color:#888;">
+                    <h2 id="pub-name" style="color:white; font-family:'Rajdhani'">...</h2>
+                    <p id="pub-bio" style="color:#888; margin-bottom:20px">...</p>
+                    
+                    <div id="pub-actions"></div>
+                    
+                    <div id="pub-grid" class="grid"></div>
                 </div>
             </div>
+
         </div>
     </div>
 
@@ -326,15 +312,9 @@ html_content = """
         var user = null; var ws = null;
 
         function toggleAuth(mode) {
-            if(mode === 'register') {
-                document.getElementById('login-form').classList.add('hidden');
-                document.getElementById('register-form').classList.remove('hidden');
-            } else {
-                document.getElementById('login-form').classList.remove('hidden');
-                document.getElementById('register-form').classList.add('hidden');
-            }
+            document.getElementById('login-form').classList.toggle('hidden', mode === 'register');
+            document.getElementById('register-form').classList.toggle('hidden', mode !== 'register');
         }
-
         async function doLogin() {
             let u=document.getElementById('l-user').value, p=document.getElementById('l-pass').value;
             try {
@@ -353,7 +333,7 @@ html_content = """
         }
         function startApp() {
             document.getElementById('modal-login').classList.add('hidden');
-            updateProfileUI(); loadFeed(); connectWS();
+            updateProfileUI(); loadFeed(); connectWS(); loadMyPosts();
         }
         function updateProfileUI() {
             let ts = new Date().getTime();
@@ -368,10 +348,11 @@ html_content = """
             document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
             document.getElementById('view-'+v).classList.add('active');
             document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-            event.currentTarget.classList.add('active');
+            if(v === 'public-profile') return; 
+            // Botões principais
         }
 
-        // --- BUSCA E AMIGOS ---
+        // --- SISTEMA DE AMIGOS ---
         async function searchUsers() {
             let q = document.getElementById('search-input').value;
             if(!q) return;
@@ -379,38 +360,90 @@ html_content = """
             let res = await r.json();
             let box = document.getElementById('search-results');
             box.innerHTML = '';
-            if(res.length === 0) box.innerHTML = '<p style="color:#666">Nada.</p>';
             res.forEach(u => {
                 if(u.id !== user.id) {
-                    box.innerHTML += `<div class="search-res">
-                        <span style="color:white; font-weight:bold">${u.username}</span>
-                        <button class="add-friend-btn" onclick="addFriend(${u.id})">ADD</button>
+                    box.innerHTML += `<div class="search-res" onclick="openPublicProfile(${u.id})">
+                        <div style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                            <img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%">
+                            <span style="color:white; font-weight:bold;">${u.username}</span>
+                        </div>
                     </div>`;
                 }
             });
         }
 
-        async function addFriend(fid) {
-            let r = await fetch('/friend/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id: user.id, friend_id: fid})});
-            if(r.ok) { alert("Amigo adicionado!"); loadFeed(); toggleFriends(); }
+        async function openPublicProfile(uid) {
+            let r = await fetch('/user/' + uid + '?viewer_id=' + user.id);
+            let data = await r.json();
+            
+            document.getElementById('pub-avatar').src = data.avatar_url;
+            document.getElementById('pub-name').innerText = data.username;
+            document.getElementById('pub-bio').innerText = data.bio;
+            
+            let actionBox = document.getElementById('pub-actions');
+            actionBox.innerHTML = '';
+            
+            if (data.friend_status === 'friends') {
+                actionBox.innerHTML = '<span style="color:#0f0">✔ Amigos</span>';
+            } else if (data.friend_status === 'pending_sent') {
+                actionBox.innerHTML = '<span style="color:orange">⌛ Solicitação Enviada</span>';
+            } else if (data.friend_status === 'pending_received') {
+                actionBox.innerHTML = `<button class="profile-btn request-btn" onclick="handleReq(${data.request_id}, 'accept')">Aceitar Solicitação</button>`;
+            } else {
+                actionBox.innerHTML = `<button class="profile-btn request-btn" onclick="sendRequest(${uid})">Enviar Solicitação de Amizade</button>`;
+            }
+
+            let grid = document.getElementById('pub-grid');
+            grid.innerHTML = '';
+            data.posts.forEach(p => {
+                let content = p.media_type === 'video' ? `<video src="${p.content_url}" class="grid-item"></video>` : `<img src="${p.content_url}" class="grid-item">`;
+                grid.innerHTML += content;
+            });
+
+            goView('public-profile');
         }
-        
-        async function toggleFriends() {
-            let box = document.getElementById('friends-list');
+
+        async function sendRequest(targetId) {
+            let r = await fetch('/friend/request', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id: targetId, sender_id: user.id})});
+            if(r.ok) { alert("Solicitação enviada!"); openPublicProfile(targetId); }
+        }
+
+        async function toggleRequests() {
+            let box = document.getElementById('requests-list');
             if(box.style.display === 'block') { box.style.display='none'; return; }
             box.style.display='block'; box.innerHTML='Carregando...';
-            let r=await fetch('/friends/'+user.id);
-            let friends=await r.json();
-            box.innerHTML = friends.length ? '' : '<p style="color:#666">Sem amigos.</p>';
-            friends.forEach(f => {
-                box.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333; display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.3); margin-top:5px; border-radius:5px;">
-                    <img src="${f.avatar_url}?t=${new Date().getTime()}" style="width:30px;height:30px;border-radius:50%">
-                    <span style="color:white">${f.username}</span>
+            
+            let r = await fetch('/friend/requests?uid='+user.id);
+            let data = await r.json();
+            
+            box.innerHTML = '<h4 style="margin:10px 0; color:#888">Solicitações Pendentes</h4>';
+            if(data.requests.length === 0) box.innerHTML += '<p style="font-size:12px">Nenhuma solicitação.</p>';
+            
+            data.requests.forEach(req => {
+                box.innerHTML += `<div class="req-row">
+                    <span>${req.username}</span>
+                    <div>
+                        <button class="btn-sm" style="background:#0f0;color:black" onclick="handleReq(${req.id}, 'accept')">V</button>
+                        <button class="btn-sm" style="background:red;color:white" onclick="handleReq(${req.id}, 'reject')">X</button>
+                    </div>
+                </div>`;
+            });
+
+            box.innerHTML += '<h4 style="margin:10px 0; color:#888; border-top:1px solid #333; paddingTop:10px;">Meus Amigos</h4>';
+            data.friends.forEach(f => {
+                box.innerHTML += `<div class="search-res" onclick="openPublicProfile(${f.id})">
+                    <img src="${f.avatar_url}" style="width:30px;height:30px;border-radius:50%">
+                    <span>${f.username}</span>
                 </div>`;
             });
         }
 
-        // --- UPLOAD COM PROGRESS BAR ---
+        async function handleReq(rid, action) {
+            let r = await fetch('/friend/handle', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id: rid, action: action})});
+            if(r.ok) { alert("Feito!"); toggleRequests(); }
+        }
+
+        // --- UPLOAD ---
         function submitPost() {
             let file = document.getElementById('file-upload').files[0];
             let cap = document.getElementById('caption-upload').value;
@@ -429,11 +462,10 @@ html_content = """
                 }
             };
             xhr.onload = function() {
-                if (xhr.status === 200) { alert("Postado!"); closeUpload(); loadFeed(); } else { alert("Erro envio"); }
+                if (xhr.status === 200) { alert("Postado!"); closeUpload(); loadFeed(); loadMyPosts(); } else { alert("Erro envio"); }
             };
             xhr.send(fd);
         }
-
         function closeUpload() {
             document.getElementById('modal-upload').classList.add('hidden');
             document.getElementById('progress-container').style.display = 'none';
@@ -441,7 +473,7 @@ html_content = """
             document.getElementById('progress-bar').style.width = '0%';
         }
 
-        // --- CHAT (CORREÇÃO DE CACHE) ---
+        // --- CHAT ---
         function connectWS() {
             if(ws) ws.close();
             let proto = location.protocol==='https:'?'wss:':'ws:';
@@ -452,10 +484,7 @@ html_content = """
                 let isMine=d.username===user.username;
                 let cls=isMine?'mine':'other';
                 let content = d.content.includes('/static/') ? `<img src="${d.content}" class="chat-img" onclick="window.open(this.src)">` : d.content;
-                
-                // AQUI ESTÁ O TRUQUE: ?t=... na imagem do avatar
                 let avatarUrl = `${d.avatar}?t=${new Date().getTime()}`;
-                
                 box.innerHTML+=`
                 <div class="msg-row ${cls}">
                     <img src="${avatarUrl}" class="msg-av">
@@ -487,19 +516,12 @@ html_content = """
             let html='';
             posts.forEach(p => {
                 let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media"></video>`:`<img src="${p.content_url}" class="post-media">`;
-                let btn = (p.author_id !== user.id && !p.is_friend) ? `<button class="add-friend-btn" onclick="addFriend(${p.author_id})">ADD</button>` : '';
-                if(p.is_friend) btn = '<span style="color:#0f0; font-size:12px">✔ Amigo</span>';
-                
-                // Cache Buster também no feed
-                let avatarUrl = `${p.author_avatar}?t=${new Date().getTime()}`;
-
                 html+=`<div class="post-card">
                     <div class="post-header">
-                        <div style="display:flex;align-items:center">
-                            <img src="${avatarUrl}" class="post-av">
+                        <div style="display:flex;align-items:center; cursor:pointer;" onclick="openPublicProfile(${p.author_id})">
+                            <img src="${p.author_avatar}?t=${new Date().getTime()}" class="post-av">
                             <span class="post-user">${p.author_name}</span>
                         </div>
-                        ${btn}
                     </div>
                     ${media}
                     <div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div>
@@ -508,25 +530,24 @@ html_content = """
             document.getElementById('feed-container').innerHTML=html;
         }
 
+        async function loadMyPosts() {
+            let r = await fetch('/user/' + user.id + '?viewer_id=' + user.id);
+            let data = await r.json();
+            let grid = document.getElementById('my-posts-grid');
+            grid.innerHTML = '';
+            data.posts.forEach(p => {
+                let content = p.media_type === 'video' ? `<video src="${p.content_url}" class="grid-item"></video>` : `<img src="${p.content_url}" class="grid-item">`;
+                grid.innerHTML += content;
+            });
+        }
+
         async function updateProfile() {
             let file=document.getElementById('avatar-upload').files[0];
             let bio=document.getElementById('bio-update').value;
             let fd=new FormData(); fd.append('user_id', user.id);
             if(file) fd.append('file', file); if(bio) fd.append('bio', bio);
             let r=await fetch('/profile/update',{method:'POST',body:fd});
-            
-            if(r.ok) { 
-                let d=await r.json(); 
-                user.avatar_url=d.avatar_url; 
-                user.bio=d.bio; 
-                
-                // Força atualização em TUDO
-                updateProfileUI(); 
-                loadFeed();
-                
-                document.getElementById('modal-profile').classList.add('hidden'); 
-                alert("Perfil Atualizado!");
-            }
+            if(r.ok) { let d=await r.json(); user.avatar_url=d.avatar_url; user.bio=d.bio; updateProfileUI(); document.getElementById('modal-profile').classList.add('hidden'); }
         }
     </script>
 </body>
@@ -566,37 +587,12 @@ async def upload_chat(file: UploadFile = File(...)):
 @app.get("/posts")
 async def get_posts(uid: int, db: Session=Depends(get_db)):
     posts = db.query(Post).order_by(Post.timestamp.desc()).all()
-    me = db.query(User).filter(User.id == uid).first()
-    my_friends_ids = [f.id for f in me.friends] if me else []
-    return [{
-        "content_url": p.content_url, 
-        "media_type": p.media_type, 
-        "caption": p.caption, 
-        "author_name": p.author.username, 
-        "author_avatar": p.author.avatar_url, 
-        "author_id": p.author.id,
-        "is_friend": p.author.id in my_friends_ids
-    } for p in posts]
+    return [{"content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_id": p.author.id} for p in posts]
 
 @app.get("/users/search")
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(5).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
-
-@app.post("/friend/add")
-async def add_friend(r: FriendRequest, db: Session=Depends(get_db)):
-    u = db.query(User).filter(User.id == r.user_id).first()
-    f = db.query(User).filter(User.id == r.friend_id).first()
-    if u and f and f not in u.friends:
-        u.friends.append(f)
-        f.friends.append(u)
-        db.commit()
-    return {"status": "ok"}
-
-@app.get("/friends/{user_id}")
-async def get_friends(user_id: int, db: Session=Depends(get_db)):
-    u = db.query(User).filter(User.id == user_id).first()
-    return [{"username": f.username, "avatar_url": f.avatar_url} for f in u.friends] if u else []
 
 @app.post("/profile/update")
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), db: Session=Depends(get_db)):
@@ -608,6 +604,95 @@ async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: Upl
     if bio: u.bio = bio
     db.commit()
     return {"avatar_url": u.avatar_url, "bio": u.bio}
+
+# --- SISTEMA DE AMIGOS NOVO ---
+@app.post("/friend/request")
+async def send_req_real(d: FriendReqData, sender_id: int = 0, db: Session=Depends(get_db)):
+    # Hack: Pegando sender_id do body no modelo, ajustado abaixo
+    pass
+
+@app.post("/friend/request")
+async def send_req(d: dict, db: Session=Depends(get_db)):
+    sender_id = d.get('sender_id')
+    target_id = d.get('target_id')
+    
+    me = db.query(User).filter(User.id == sender_id).first()
+    target = db.query(User).filter(User.id == target_id).first()
+    
+    if target in me.friends: return {"status": "already_friends"}
+    
+    existing = db.query(FriendRequest).filter(
+        or_(
+            and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),
+            and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id)
+        )
+    ).first()
+    if existing: return {"status": "pending"}
+    
+    new_req = FriendRequest(sender_id=sender_id, receiver_id=target_id)
+    db.add(new_req)
+    db.commit()
+    return {"status": "sent"}
+
+@app.get("/friend/requests")
+async def get_reqs(uid: int, db: Session=Depends(get_db)):
+    reqs = db.query(FriendRequest).filter(FriendRequest.receiver_id == uid).all()
+    requests_data = []
+    for r in reqs:
+        sender = db.query(User).filter(User.id == r.sender_id).first()
+        requests_data.append({"id": r.id, "username": sender.username, "avatar": sender.avatar_url})
+    
+    me = db.query(User).filter(User.id == uid).first()
+    friends_data = [{"id": f.id, "username": f.username, "avatar_url": f.avatar_url} for f in me.friends]
+    
+    return {"requests": requests_data, "friends": friends_data}
+
+@app.post("/friend/handle")
+async def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
+    req = db.query(FriendRequest).filter(FriendRequest.id == d.request_id).first()
+    if not req: return {"status": "error"}
+    
+    if d.action == 'accept':
+        u1 = db.query(User).filter(User.id == req.sender_id).first()
+        u2 = db.query(User).filter(User.id == req.receiver_id).first()
+        u1.friends.append(u2)
+        u2.friends.append(u1)
+        db.delete(req)
+        db.commit()
+    elif d.action == 'reject':
+        db.delete(req)
+        db.commit()
+        
+    return {"status": "ok"}
+
+@app.get("/user/{target_id}")
+async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
+    target = db.query(User).filter(User.id == target_id).first()
+    viewer = db.query(User).filter(User.id == viewer_id).first()
+    
+    posts = db.query(Post).filter(Post.user_id == target_id).order_by(Post.timestamp.desc()).all()
+    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
+    
+    status = "none"
+    if target in viewer.friends:
+        status = "friends"
+    else:
+        sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
+        received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
+        if sent: status = "pending_sent"
+        if received: 
+            status = "pending_received"
+            req_id = received.id
+        else: req_id = None
+
+    return {
+        "username": target.username,
+        "avatar_url": target.avatar_url,
+        "bio": target.bio,
+        "posts": posts_data,
+        "friend_status": status,
+        "request_id": req_id if 'req_id' in locals() else None
+    }
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
