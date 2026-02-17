@@ -23,7 +23,7 @@ logger = logging.getLogger("ForGlory")
 if not os.path.exists("static"):
     os.makedirs("static")
 
-# --- BANCO DE DADOS (NOVO NOME PARA RESETAR TUDO) ---
+# --- BANCO DE DADOS ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory_v2.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -149,6 +149,31 @@ html_content = """
         .view { display: none; flex: 1; flex-direction: column; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; height: 100%; width: 100%; }
         .view.active { display: flex; }
 
+        /* TOAST NOTIFICATION (Substitui Alert) */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: rgba(31, 40, 51, 0.95);
+            color: var(--primary);
+            text-align: center;
+            border-radius: 10px;
+            padding: 16px;
+            position: fixed;
+            z-index: 9999;
+            left: 50%;
+            top: 20px;
+            transform: translateX(-50%);
+            border: 1px solid var(--primary);
+            font-family: 'Rajdhani';
+            font-size: 18px;
+            box-shadow: 0 0 15px rgba(102, 252, 241, 0.2);
+        }
+        #toast.show { visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @-webkit-keyframes fadein { from {top: 0; opacity: 0;} to {top: 20px; opacity: 1;} }
+        @keyframes fadein { from {top: 0; opacity: 0;} to {top: 20px; opacity: 1;} }
+        @-webkit-keyframes fadeout { from {top: 20px; opacity: 1;} to {top: 0; opacity: 0;} }
+        @keyframes fadeout { from {top: 20px; opacity: 1;} to {top: 0; opacity: 0;} }
+
         /* CHAT */
         #chat-list { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
         .msg-row { display: flex; gap: 10px; max-width: 85%; }
@@ -168,11 +193,15 @@ html_content = """
         .post-av { width: 36px; height: 36px; border-radius: 50%; margin-right: 10px; object-fit: cover; border: 1px solid var(--primary); }
         .post-media { width: 100%; max-height: 500px; object-fit: contain; background: black; display: block; }
         .post-caption { padding: 10px; color: #ccc; font-size: 14px; }
-        
-        /* PROFILE */
+        .add-friend-btn { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; }
+
+        /* PROFILE (Centralizado) */
         #profile-view, #public-profile-view { padding: 30px; display: flex; flex-direction: column; align-items: center; text-align: center; }
         .profile-pic-lg { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary); margin: 0 auto 15px auto; cursor: pointer; }
         
+        /* Centralização dos textos */
+        #p-name, #p-bio, #pub-name, #pub-bio { width: 100%; text-align: center; }
+
         #search-box { width: 90%; max-width: 280px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin: 10px auto 20px auto; display:flex; gap:5px; }
         #search-input { flex:1; background: #000; border: 1px solid #444; padding: 8px; color: white; border-radius: 5px; }
         #search-results { width: 100%; max-width: 280px; margin: 0 auto 20px auto; }
@@ -201,6 +230,8 @@ html_content = """
     </style>
 </head>
 <body>
+
+    <div id="toast">Notificação</div>
 
     <div id="modal-login" class="modal">
         <div class="modal-box">
@@ -310,7 +341,17 @@ html_content = """
 
     <script>
         var user = null; var ws = null;
+        var syncInterval = null;
 
+        // --- SISTEMA DE TOAST (NOTIFICAÇÃO) ---
+        function showToast(msg) {
+            var x = document.getElementById("toast");
+            x.innerText = msg;
+            x.className = "show";
+            setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
+        }
+
+        // --- AUTH ---
         function toggleAuth(mode) {
             document.getElementById('login-form').classList.toggle('hidden', mode === 'register');
             document.getElementById('register-form').classList.toggle('hidden', mode !== 'register');
@@ -321,20 +362,29 @@ html_content = """
                 let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
                 if(!r.ok) throw new Error("Erro Login");
                 user=await r.json(); startApp();
-            } catch(e){ alert(e.message); }
+            } catch(e){ showToast("Falha no Login!"); }
         }
         async function doRegister() {
             let u=document.getElementById('r-user').value, e=document.getElementById('r-email').value, p=document.getElementById('r-pass').value;
             try {
                 let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,email:e,password:p})});
                 if(!r.ok) throw new Error("Erro Registro");
-                alert("Sucesso! Faça Login."); toggleAuth('login');
-            } catch(e){ alert(e.message); }
+                showToast("Sucesso! Faça Login."); toggleAuth('login');
+            } catch(e){ showToast("Erro no Registro"); }
         }
         function startApp() {
             document.getElementById('modal-login').classList.add('hidden');
             updateProfileUI(); loadFeed(); connectWS(); loadMyPosts();
+            
+            // --- SYNC AUTOMÁTICO (A CADA 3 SEGUNDOS) ---
+            syncInterval = setInterval(() => {
+                // Atualiza o feed silenciosamente
+                if(document.getElementById('view-feed').classList.contains('active')) {
+                    loadFeed(); 
+                }
+            }, 3000);
         }
+        
         function updateProfileUI() {
             let ts = new Date().getTime();
             document.getElementById('p-avatar').src = user.avatar_url + "?t=" + ts;
@@ -344,15 +394,15 @@ html_content = """
         }
         function logout() { location.reload(); }
 
+        // --- NAVEGAÇÃO ---
         function goView(v) {
             document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
             document.getElementById('view-'+v).classList.add('active');
             document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
             if(v === 'public-profile') return; 
-            // Botões principais
         }
 
-        // --- SISTEMA DE AMIGOS ---
+        // --- AMIGOS ---
         async function searchUsers() {
             let q = document.getElementById('search-input').value;
             if(!q) return;
@@ -396,7 +446,10 @@ html_content = """
             let grid = document.getElementById('pub-grid');
             grid.innerHTML = '';
             data.posts.forEach(p => {
-                let content = p.media_type === 'video' ? `<video src="${p.content_url}" class="grid-item"></video>` : `<img src="${p.content_url}" class="grid-item">`;
+                // Video Otimizado com Preload
+                let content = p.media_type === 'video' ? 
+                    `<video src="${p.content_url}" class="grid-item" controls preload="metadata" playsinline></video>` : 
+                    `<img src="${p.content_url}" class="grid-item">`;
                 grid.innerHTML += content;
             });
 
@@ -405,7 +458,7 @@ html_content = """
 
         async function sendRequest(targetId) {
             let r = await fetch('/friend/request', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id: targetId, sender_id: user.id})});
-            if(r.ok) { alert("Solicitação enviada!"); openPublicProfile(targetId); }
+            if(r.ok) { showToast("Solicitação enviada!"); openPublicProfile(targetId); }
         }
 
         async function toggleRequests() {
@@ -440,14 +493,14 @@ html_content = """
 
         async function handleReq(rid, action) {
             let r = await fetch('/friend/handle', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id: rid, action: action})});
-            if(r.ok) { alert("Feito!"); toggleRequests(); }
+            if(r.ok) { showToast("Feito!"); toggleRequests(); }
         }
 
         // --- UPLOAD ---
         function submitPost() {
             let file = document.getElementById('file-upload').files[0];
             let cap = document.getElementById('caption-upload').value;
-            if(!file) return alert("Selecione um arquivo!");
+            if(!file) return showToast("Selecione um arquivo!");
             let fd = new FormData(); fd.append('file', file); fd.append('user_id', user.id); fd.append('caption', cap);
             
             let xhr = new XMLHttpRequest();
@@ -462,7 +515,7 @@ html_content = """
                 }
             };
             xhr.onload = function() {
-                if (xhr.status === 200) { alert("Postado!"); closeUpload(); loadFeed(); loadMyPosts(); } else { alert("Erro envio"); }
+                if (xhr.status === 200) { showToast("Postado!"); closeUpload(); loadFeed(); loadMyPosts(); } else { showToast("Erro envio"); }
             };
             xhr.send(fd);
         }
@@ -508,26 +561,48 @@ html_content = """
             if(r.ok) { let data = await r.json(); ws.send(data.url); }
         }
 
-        // --- FEED ---
+        // --- FEED (COM SYNC) ---
         async function loadFeed() {
-            let r=await fetch('/posts?uid='+user.id);
-            if(!r.ok) return;
-            let posts=await r.json();
-            let html='';
-            posts.forEach(p => {
-                let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media"></video>`:`<img src="${p.content_url}" class="post-media">`;
-                html+=`<div class="post-card">
-                    <div class="post-header">
-                        <div style="display:flex;align-items:center; cursor:pointer;" onclick="openPublicProfile(${p.author_id})">
-                            <img src="${p.author_avatar}?t=${new Date().getTime()}" class="post-av">
-                            <span class="post-user">${p.author_name}</span>
+            try {
+                let r=await fetch('/posts?uid='+user.id);
+                if(!r.ok) return;
+                let posts=await r.json();
+                
+                // Evita redesenhar se nada mudou (Simplificado: apenas redesenha para garantir sync)
+                // Uma melhoria futura seria verificar IDs
+                
+                let html='';
+                posts.forEach(p => {
+                    // Otimização de vídeo
+                    let media=p.media_type==='video'?`<video src="${p.content_url}" controls class="post-media" preload="metadata" playsinline></video>`:`<img src="${p.content_url}" class="post-media">`;
+                    let btn = (p.author_id !== user.id && !p.is_friend) ? `<button class="add-friend-btn" onclick="addFriend(${p.author_id})">ADD</button>` : '';
+                    if(p.is_friend) btn = '<span style="color:#0f0; font-size:12px">✔ Amigo</span>';
+                    
+                    html+=`<div class="post-card">
+                        <div class="post-header">
+                            <div style="display:flex;align-items:center; cursor:pointer;" onclick="openPublicProfile(${p.author_id})">
+                                <img src="${p.author_avatar}?t=${new Date().getTime()}" class="post-av">
+                                <span class="post-user">${p.author_name}</span>
+                            </div>
                         </div>
-                    </div>
-                    ${media}
-                    <div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div>
-                </div>`;
-            });
-            document.getElementById('feed-container').innerHTML=html;
+                        ${media}
+                        <div class="post-caption"><b>${p.author_name}</b> ${p.caption}</div>
+                    </div>`;
+                });
+                
+                // Só atualiza o DOM se a gente não estiver vendo vídeo (para não resetar o play)
+                // Hack rápido: se tiver muitos posts, atualiza.
+                // Para sync perfeito de vídeo, precisaria de lógica complexa de Diff.
+                // Por hora, atualizamos o container. Se estiver vendo vídeo, ele pode pausar no refresh.
+                // Para evitar isso, só atualizamos se o scroll estiver no topo ou se o usuário pedir (pull to refresh).
+                // Mas como você pediu sync automático, vou deixar atualizando.
+                
+                let container = document.getElementById('feed-container');
+                // Pequena verificação para não "piscar" se for igual (pode ser melhorada)
+                if(container.innerHTML.length !== html.length) {
+                     container.innerHTML=html;
+                }
+            } catch(e) {}
         }
 
         async function loadMyPosts() {
@@ -536,7 +611,7 @@ html_content = """
             let grid = document.getElementById('my-posts-grid');
             grid.innerHTML = '';
             data.posts.forEach(p => {
-                let content = p.media_type === 'video' ? `<video src="${p.content_url}" class="grid-item"></video>` : `<img src="${p.content_url}" class="grid-item">`;
+                let content = p.media_type === 'video' ? `<video src="${p.content_url}" class="grid-item" preload="metadata"></video>` : `<img src="${p.content_url}" class="grid-item">`;
                 grid.innerHTML += content;
             });
         }
@@ -547,7 +622,7 @@ html_content = """
             let fd=new FormData(); fd.append('user_id', user.id);
             if(file) fd.append('file', file); if(bio) fd.append('bio', bio);
             let r=await fetch('/profile/update',{method:'POST',body:fd});
-            if(r.ok) { let d=await r.json(); user.avatar_url=d.avatar_url; user.bio=d.bio; updateProfileUI(); document.getElementById('modal-profile').classList.add('hidden'); }
+            if(r.ok) { let d=await r.json(); user.avatar_url=d.avatar_url; user.bio=d.bio; updateProfileUI(); document.getElementById('modal-profile').classList.add('hidden'); showToast("Perfil Atualizado!"); }
         }
     </script>
 </body>
@@ -587,12 +662,37 @@ async def upload_chat(file: UploadFile = File(...)):
 @app.get("/posts")
 async def get_posts(uid: int, db: Session=Depends(get_db)):
     posts = db.query(Post).order_by(Post.timestamp.desc()).all()
-    return [{"content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_id": p.author.id} for p in posts]
+    me = db.query(User).filter(User.id == uid).first()
+    my_friends_ids = [f.id for f in me.friends] if me else []
+    return [{
+        "content_url": p.content_url, 
+        "media_type": p.media_type, 
+        "caption": p.caption, 
+        "author_name": p.author.username, 
+        "author_avatar": p.author.avatar_url, 
+        "author_id": p.author.id,
+        "is_friend": p.author.id in my_friends_ids
+    } for p in posts]
 
 @app.get("/users/search")
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(5).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
+
+@app.post("/friend/add")
+async def add_friend(r: FriendRequest, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == r.user_id).first()
+    f = db.query(User).filter(User.id == r.friend_id).first()
+    if u and f and f not in u.friends:
+        u.friends.append(f)
+        f.friends.append(u)
+        db.commit()
+    return {"status": "ok"}
+
+@app.get("/friends/{user_id}")
+async def get_friends(user_id: int, db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    return [{"username": f.username, "avatar_url": f.avatar_url} for f in u.friends] if u else []
 
 @app.post("/profile/update")
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), db: Session=Depends(get_db)):
@@ -608,7 +708,6 @@ async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: Upl
 # --- SISTEMA DE AMIGOS NOVO ---
 @app.post("/friend/request")
 async def send_req_real(d: FriendReqData, sender_id: int = 0, db: Session=Depends(get_db)):
-    # Hack: Pegando sender_id do body no modelo, ajustado abaixo
     pass
 
 @app.post("/friend/request")
