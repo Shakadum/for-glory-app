@@ -40,7 +40,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     avatar_url = Column(String, default="https://api.dicebear.com/7.x/notionists/svg?seed=Glory")
-    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY") # NOVA CAPA
+    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Soldado do For Glory")
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
@@ -129,7 +129,8 @@ def startup():
         db.add(Channel(name="Geral"))
         db.commit()
     db.close()
-    # --- FRONTEND ---
+
+# --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -170,12 +171,11 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .post-av{width:40px;height:40px;border-radius:50%;margin-right:10px;object-fit:cover;border:1px solid var(--primary)}
 .post-media{width:100%;max-height:500px;object-fit:contain;background:black;display:block}
 .post-caption{padding:12px;color:#ccc;font-size:14px}
-/* PROFILE (HEADER CAPA + FOTO) */
+/* PROFILE */
 #profile-view,#public-profile-view{padding:0;display:flex;flex-direction:column;align-items:center;text-align:center}
-.profile-header-container { position: relative; width: 100%; height: 200px; margin-bottom: 50px; }
-.profile-cover { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; mask-image: linear-gradient(to bottom, black 50%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%); }
-.profile-pic-lg { position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--dark-bg); box-shadow: 0 0 20px var(--primary); cursor: pointer; }
-
+.profile-header-container{position:relative;width:100%;height:200px;margin-bottom:50px}
+.profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.8;mask-image:linear-gradient(to bottom,black 50%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,black 50%,transparent 100%)}
+.profile-pic-lg{position:absolute;bottom:-40px;left:50%;transform:translateX(-50%);width:120px;height:120px;border-radius:50%;object-fit:cover;border:4px solid var(--dark-bg);box-shadow:0 0 20px var(--primary);cursor:pointer}
 #search-box{width:95%;max-width:320px;background:rgba(255,255,255,0.05);padding:8px;border-radius:12px;margin:15px auto;display:flex;gap:5px;border:1px solid #333}
 #search-input{flex:1;background:transparent;border:none;color:white;font-size:16px;outline:none}
 .search-res{padding:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.4);margin-top:5px;border-radius:8px}
@@ -185,7 +185,7 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .btn-float{position:fixed;bottom:80px;right:20px;width:55px;height:55px;border-radius:50%;background:var(--primary);border:none;font-size:28px;box-shadow:0 4px 15px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#000}
 .btn-std{background:rgba(255,255,255,0.1);border:1px solid #444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;flex:1;text-align:center;}
 .btn-std:hover{background:rgba(102,252,241,0.1);border-color:var(--primary)}
-/* MODAL */
+/* MODAL - FIX LOGIN BG */
 .modal{position:fixed;inset:0;background:#0b0c10;z-index:9000;display:flex;align-items:center;justify-content:center}
 .modal.transparent-bg{background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);}
 .hidden{display:none !important}
@@ -194,7 +194,7 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .btn-main{width:100%;padding:12px;margin-top:10px;background:var(--primary);border:none;font-weight:700;border-radius:8px;cursor:pointer;font-size:16px;color:#000}
 #toast{visibility:hidden;min-width:200px;background:var(--glass);color:var(--primary);text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);border:1px solid var(--primary);font-weight:600}
 #toast.show{visibility:visible;animation:fadeInOut 3s}
-/* EMOJI PICKER Z-INDEX */
+/* EMOJI PICKER - Z-INDEX 10001 */
 #emoji-picker{position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:var(--glass);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8)}
 .emoji-header{padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333;background:rgba(102,252,241,0.05)}
 .emoji-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:10px;max-height:220px;overflow-y:auto}
@@ -283,7 +283,7 @@ async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Sucesso!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},3000)}
 
-// --- UI UPDATE COM CAPA ---
+// --- UI UPDATE COM CAPA E CACHE ---
 function updateUI(){
     let t = new Date().getTime();
     let url = user.avatar_url + "?t=" + t;
@@ -430,6 +430,8 @@ function addEmoji(e){if(currentEmojiTarget){let i=document.getElementById(curren
 </script>
 </body>
 </html>
+"""
+
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
 
