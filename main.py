@@ -40,6 +40,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     avatar_url = Column(String, default="https://api.dicebear.com/7.x/notionists/svg?seed=Glory")
+    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY") # NOVA CAPA
     bio = Column(String, default="Soldado do For Glory")
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
@@ -169,9 +170,12 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .post-av{width:40px;height:40px;border-radius:50%;margin-right:10px;object-fit:cover;border:1px solid var(--primary)}
 .post-media{width:100%;max-height:500px;object-fit:contain;background:black;display:block}
 .post-caption{padding:12px;color:#ccc;font-size:14px}
-/* PROFILE */
-#profile-view,#public-profile-view{padding:20px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.profile-pic-lg{width:130px;height:130px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);margin:10px auto;box-shadow:0 0 20px rgba(102,252,241,0.15)}
+/* PROFILE (HEADER CAPA + FOTO) */
+#profile-view,#public-profile-view{padding:0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.profile-header-container { position: relative; width: 100%; height: 200px; margin-bottom: 50px; }
+.profile-cover { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; mask-image: linear-gradient(to bottom, black 50%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%); }
+.profile-pic-lg { position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--dark-bg); box-shadow: 0 0 20px var(--primary); cursor: pointer; }
+
 #search-box{width:95%;max-width:320px;background:rgba(255,255,255,0.05);padding:8px;border-radius:12px;margin:15px auto;display:flex;gap:5px;border:1px solid #333}
 #search-input{flex:1;background:transparent;border:none;color:white;font-size:16px;outline:none}
 .search-res{padding:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.4);margin-top:5px;border-radius:8px}
@@ -181,7 +185,7 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .btn-float{position:fixed;bottom:80px;right:20px;width:55px;height:55px;border-radius:50%;background:var(--primary);border:none;font-size:28px;box-shadow:0 4px 15px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#000}
 .btn-std{background:rgba(255,255,255,0.1);border:1px solid #444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;flex:1;text-align:center;}
 .btn-std:hover{background:rgba(102,252,241,0.1);border-color:var(--primary)}
-/* MODAL FIX */
+/* MODAL */
 .modal{position:fixed;inset:0;background:#0b0c10;z-index:9000;display:flex;align-items:center;justify-content:center}
 .modal.transparent-bg{background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);}
 .hidden{display:none !important}
@@ -190,7 +194,7 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .btn-main{width:100%;padding:12px;margin-top:10px;background:var(--primary);border:none;font-weight:700;border-radius:8px;cursor:pointer;font-size:16px;color:#000}
 #toast{visibility:hidden;min-width:200px;background:var(--glass);color:var(--primary);text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);border:1px solid var(--primary);font-weight:600}
 #toast.show{visibility:visible;animation:fadeInOut 3s}
-/* EMOJI PICKER Z-INDEX ULTIMATE */
+/* EMOJI PICKER Z-INDEX */
 #emoji-picker{position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:var(--glass);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8)}
 .emoji-header{padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333;background:rgba(102,252,241,0.05)}
 .emoji-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:10px;max-height:220px;overflow-y:auto}
@@ -216,7 +220,13 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 
 <div id="modal-upload" class="modal hidden transparent-bg"><div class="modal-box"><h2 style="color:white">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*"><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0"><button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:22px;cursor:pointer">😀</button></div><div id="progress-container" style="display:none;background:#333;height:6px;border-radius:3px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.3s"></div></div><div id="progress-text" style="font-size:12px;color:var(--primary);margin-top:5px;display:none">0%</div><button onclick="submitPost()" class="btn-main">PUBLICAR</button><button onclick="closeUpload()" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
 
-<div id="modal-profile" class="modal hidden transparent-bg"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR</h2><input type="file" id="avatar-upload" class="inp" accept="image/*"><input type="text" id="bio-update" class="inp" placeholder="Bio..."><button onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
+<div id="modal-profile" class="modal hidden transparent-bg"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR</h2>
+<label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Foto de Perfil</label>
+<input type="file" id="avatar-upload" class="inp" accept="image/*">
+<label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Capa de Fundo (Banner)</label>
+<input type="file" id="cover-upload" class="inp" accept="image/*">
+<input type="text" id="bio-update" class="inp" placeholder="Bio...">
+<button onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
 
 <div id="app">
     <div id="sidebar"><button class="nav-btn active" onclick="goView('chat')">💬</button><button class="nav-btn" onclick="goView('feed')">🎬</button><button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini"></button></div>
@@ -225,9 +235,12 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
         <div id="view-feed" class="view"><div id="feed-container"></div><button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button></div>
         
         <div id="view-profile" class="view">
-            <div style="display:flex;flex-direction:column;align-items:center;width:100%;text-align:center;">
+            <div class="profile-header-container">
+                <img id="p-cover" src="" class="profile-cover">
                 <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')">
-                <h2 id="p-name" style="color:white;font-family:'Rajdhani';width:100%;text-align:center;margin:10px 0;">...</h2>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;width:100%;text-align:center;margin-top:10px;">
+                <h2 id="p-name" style="color:white;font-family:'Rajdhani';width:100%;text-align:center;margin:5px 0;">...</h2>
                 <p id="p-bio" style="color:#888;width:100%;text-align:center;margin:0 0 20px 0;font-style:italic">...</p>
             </div>
             <div id="search-box"><input id="search-input" placeholder="Buscar Soldado..."><button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer">🔍</button></div>
@@ -242,7 +255,17 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
             </div>
         </div>
 
-        <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:15px;left:15px;background:rgba(0,0,0,0.5);border:1px solid #444;color:white;border-radius:8px;padding:5px 10px;cursor:pointer">⬅ Voltar</button><div style="padding-top:50px;width:100%;display:flex;flex-direction:column;align-items:center"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888;"><h2 id="pub-name" style="color:white;font-family:'Rajdhani'">...</h2><p id="pub-bio" style="color:#888;margin-bottom:20px">...</p><div id="pub-actions"></div><div id="pub-grid" class="grid"></div></div></div>
+        <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:15px;left:15px;z-index:10;background:rgba(0,0,0,0.5);border:1px solid #444;color:white;border-radius:8px;padding:5px 10px;cursor:pointer">⬅ Voltar</button>
+            <div class="profile-header-container">
+                <img id="pub-cover" src="" class="profile-cover">
+                <img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888">
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:10px">
+                <h2 id="pub-name" style="color:white;font-family:'Rajdhani'">...</h2><p id="pub-bio" style="color:#888;margin-bottom:20px">...</p>
+                <div id="pub-actions"></div>
+                <div id="pub-grid" class="grid"></div>
+            </div>
+        </div>
     </div>
 </div>
 <script>
@@ -260,13 +283,14 @@ async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Sucesso!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},3000)}
 
-// --- CORREÇÃO DA FOTO (CACHE BUSTER) ---
+// --- UI UPDATE COM CAPA ---
 function updateUI(){
     let t = new Date().getTime();
     let url = user.avatar_url + "?t=" + t;
-    document.querySelectorAll('.my-avatar-mini, .profile-pic-lg, .msg-row.mine .msg-av').forEach(img => {
-        img.src = url;
-    });
+    let cover = (user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY") + "?t=" + t;
+    
+    document.querySelectorAll('.my-avatar-mini, #p-avatar, .msg-row.mine .msg-av').forEach(img => { img.src = url; });
+    document.getElementById('p-cover').src = cover;
     document.getElementById('p-name').innerText=user.username;
     document.getElementById('p-bio').innerText=user.bio;
 }
@@ -274,12 +298,25 @@ function updateUI(){
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.currentTarget.classList.add('active')}
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div class="search-res" onclick="openPublicProfile(${u.id})"><div style="display:flex;align-items:center;gap:10px"><img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%"><b>${u.username}</b></div></div>`})}
-async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+new Date().getTime();document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;let ab=document.getElementById('pub-actions');ab.innerHTML='';
-if(d.friend_status==='friends')ab.innerHTML='<span style="color:#0f0">✔ Amigos</span>';
-else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Solicitado</span>';
-else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-std" onclick="handleReq(${d.request_id},'accept')">Aceitar</button>`;
-else ab.innerHTML=`<button class="btn-std" onclick="sendRequest(${uid})" style="border-color:var(--primary)">Adicionar</button>`;
-let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" class="grid-item" controls preload="none"></video>`:`<img src="${p.content_url}" class="grid-item" loading="lazy">`});goView('public-profile')}
+
+// --- PUBLIC PROFILE COM CAPA ---
+async function openPublicProfile(uid){
+    let r=await fetch('/user/'+uid+'?viewer_id='+user.id);
+    let d=await r.json();
+    let t = new Date().getTime();
+    document.getElementById('pub-avatar').src=d.avatar_url+"?t="+t;
+    document.getElementById('pub-cover').src=(d.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY") + "?t=" + t;
+    document.getElementById('pub-name').innerText=d.username;
+    document.getElementById('pub-bio').innerText=d.bio;
+    let ab=document.getElementById('pub-actions');ab.innerHTML='';
+    if(d.friend_status==='friends')ab.innerHTML='<span style="color:#0f0">✔ Amigos</span>';
+    else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Solicitado</span>';
+    else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-std" onclick="handleReq(${d.request_id},'accept')">Aceitar</button>`;
+    else ab.innerHTML=`<button class="btn-std" onclick="sendRequest(${uid})" style="border-color:var(--primary)">Adicionar</button>`;
+    let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" class="grid-item" controls preload="none"></video>`:`<img src="${p.content_url}" class="grid-item" loading="lazy">`});
+    goView('public-profile')
+}
+
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Enviado!");openPublicProfile(tid)}}
 async function toggleRequests(type){
     let b=document.getElementById('requests-list');
@@ -298,19 +335,15 @@ async function toggleRequests(type){
 }
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Feito!");toggleRequests('requests')}}
 
-// --- CORE: INSTANT FEED & CHAT ---
 function submitPost(){
     let f=document.getElementById('file-upload').files[0];
     let cap=document.getElementById('caption-upload').value;
     if(!f)return showToast("Arquivo?");
-    
-    // UI INSTANTANEA
     let blob = URL.createObjectURL(f);
     let m = f.type.startsWith('video') ? `<video src="${blob}" class="post-media" controls></video>` : `<img src="${blob}" class="post-media">`;
     let html = `<div class="post-card" style="opacity:0.7"><div class="post-header"><div style="display:flex;align-items:center"><img src="${user.avatar_url}" class="post-av"><b>${user.username}</b></div><span>Enviando...</span></div>${m}<div class="post-caption"><b>${user.username}</b> ${cap}</div></div>`;
     document.getElementById('feed-container').insertAdjacentHTML('afterbegin', html);
     closeUpload();
-
     let fd=new FormData();fd.append('file',f);fd.append('user_id',user.id);fd.append('caption',cap);
     let x=new XMLHttpRequest();x.open('POST','/upload/post',true);
     x.onload=()=>{if(x.status===200){showToast("Enviado!");lastFeedHash="";loadFeed()}else showToast("Erro")};x.send(fd);
@@ -320,13 +353,10 @@ function sendMsg(){
     let i=document.getElementById('chat-msg');
     let txt = i.value.trim();
     if(!txt) return;
-    
-    // UI INSTANTANEA
     let b=document.getElementById('chat-list');
     let html = `<div class="msg-row mine temp"><img src="${user.avatar_url}" class="msg-av"><div><div class="msg-bubble">${txt}</div></div></div>`;
     b.insertAdjacentHTML('beforeend', html);
     b.scrollTop=b.scrollHeight;
-    
     ws.send(txt);
     i.value='';toggleEmoji(true);
 }
@@ -334,14 +364,11 @@ function sendMsg(){
 async function uploadChatImage(){
     let f=document.getElementById('chat-file').files[0];
     if(!f)return;
-    
-    // UI INSTANTANEA
     let blob = URL.createObjectURL(f);
     let b=document.getElementById('chat-list');
     let html = `<div class="msg-row mine temp"><img src="${user.avatar_url}" class="msg-av"><div><div class="msg-bubble"><img src="${blob}" class="chat-img"></div></div></div>`;
     b.insertAdjacentHTML('beforeend', html);
     b.scrollTop=b.scrollHeight;
-
     let fd=new FormData();fd.append('file',f);let r=await fetch('/upload/chat',{method:'POST',body:fd});
     if(r.ok){let d=await r.json();ws.send(d.url)}
 }
@@ -352,18 +379,14 @@ function connectWS(){
     ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
     ws.onmessage=e=>{
         let d=JSON.parse(e.data);
-        
-        // Remove mensagens temporarias se for minha msg
         if(d.user_id === user.id) {
             let temps = document.querySelectorAll('.msg-row.mine.temp');
             if(temps.length > 0) temps[temps.length-1].remove(); 
         }
-
         let b=document.getElementById('chat-list');
         let m=d.user_id===user.id;
         let c=d.content.includes('/static/')?`<img src="${d.content}" class="chat-img" onclick="window.open(this.src)" loading="lazy">`:d.content;
         let a=`${d.avatar}?t=${new Date().getTime()}`;
-        
         let html = `<div class="msg-row ${m?'mine':''}"><img src="${a}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:var(--primary);margin-bottom:2px;cursor:pointer" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
         b.insertAdjacentHTML('beforeend', html);
         b.scrollTop=b.scrollHeight;
@@ -371,7 +394,6 @@ function connectWS(){
     ws.onclose=()=>setTimeout(connectWS,2000);
 }
 
-// --- UTILS ---
 function closeUpload(){
     document.getElementById('modal-upload').classList.add('hidden');
     document.getElementById('progress-container').style.display='none';
@@ -381,16 +403,21 @@ function closeUpload(){
 }
 async function deletePost(pid){if(!confirm("Apagar?"))return;if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){showToast("Apagado!");lastFeedHash="";loadFeed()}}
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls preload="none" playsinline poster="${x.content_url}#t=0.5"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let btn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;font-size:18px">🗑️</span>`:x.is_friend?'<span style="color:#0f0;font-size:12px">✔</span>':`<button onclick="openPublicProfile(${x.author_id})" class="btn-std" style="padding:2px 8px;font-size:11px">ADD</button>`;ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><b>${x.author_name}</b></div>${btn}</div>${m}<div class="post-caption"><b>${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht}catch(e){}}
+
+// --- ATUALIZAR PERFIL COM CAPA ---
 async function updateProfile(){
     let f=document.getElementById('avatar-upload').files[0];
+    let c=document.getElementById('cover-upload').files[0];
     let b=document.getElementById('bio-update').value;
     let fd=new FormData();fd.append('user_id',user.id);
     if(f)fd.append('file',f);
+    if(c)fd.append('cover',c); // Envia capa
     if(b)fd.append('bio',b);
     let r=await fetch('/profile/update',{method:'POST',body:fd});
     if(r.ok){
         let d=await r.json();
         user.avatar_url=d.avatar_url;
+        user.cover_url=d.cover_url;
         user.bio=d.bio;
         updateUI();
         document.getElementById('modal-profile').classList.add('hidden');
@@ -403,12 +430,10 @@ function addEmoji(e){if(currentEmojiTarget){let i=document.getElementById(curren
 </script>
 </body>
 </html>
-"""
-
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
 
-# --- ENDPOINTS ---
+# --- API ---
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first():
@@ -422,11 +447,11 @@ async def log(d: LoginData, db: Session=Depends(get_db)):
     u = db.query(User).filter(User.username==d.username).first()
     if not u or u.password_hash != criptografar(d.password):
         raise HTTPException(400, "Erro")
-    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "bio":u.bio}
+    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio}
 
 @app.post("/upload/post")
 async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
-    filename = f"post_{user_id}_{random.randint(1000,9999)}_{file.filename}"
+    filename = f"p_{user_id}_{random.randint(1000,9999)}_{file.filename}"
     with open(f"static/{filename}", "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     m_type = "video" if file.content_type.startswith("video") else "image"
@@ -449,7 +474,7 @@ async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
 
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
-    filename = f"chat_{random.randint(10000,99999)}_{file.filename}"
+    filename = f"c_{random.randint(10000,99999)}_{file.filename}"
     with open(f"static/{filename}", "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return {"url": f"/static/{filename}"}
@@ -459,16 +484,7 @@ async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
     posts = db.query(Post).order_by(Post.timestamp.desc()).limit(limit).all()
     me = db.query(User).filter(User.id == uid).first()
     my_friends_ids = [f.id for f in me.friends] if me else []
-    return [{
-        "id": p.id,
-        "content_url": p.content_url,
-        "media_type": p.media_type,
-        "caption": p.caption,
-        "author_name": p.author.username,
-        "author_avatar": p.author.avatar_url,
-        "author_id": p.author.id,
-        "is_friend": p.author.id in my_friends_ids
-    } for p in posts]
+    return [{"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_id": p.author.id, "is_friend": p.author.id in my_friends_ids} for p in posts]
 
 @app.get("/users/search")
 async def search_users(q: str, db: Session=Depends(get_db)):
@@ -476,17 +492,22 @@ async def search_users(q: str, db: Session=Depends(get_db)):
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
 
 @app.post("/profile/update")
-async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), db: Session=Depends(get_db)):
+async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
     if file:
-        fname = f"av_{user_id}_{random.randint(1000,9999)}_{file.filename}"
+        fname = f"a_{user_id}_{random.randint(1000,9999)}_{file.filename}"
         with open(f"static/{fname}", "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         u.avatar_url = f"/static/{fname}"
+    if cover:
+        cname = f"cv_{user_id}_{random.randint(1000,9999)}_{cover.filename}"
+        with open(f"static/{cname}", "wb") as buffer:
+            shutil.copyfileobj(cover.file, buffer)
+        u.cover_url = f"/static/{cname}"
     if bio:
         u.bio = bio
     db.commit()
-    return {"avatar_url": u.avatar_url, "bio": u.bio}
+    return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio}
 
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
@@ -546,7 +567,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
         if received:
             status = "pending_received"
             req_id = received.id
-    return {"username": target.username, "avatar_url": target.avatar_url, "bio": target.bio, "posts": posts_data, "friend_status": status, "request_id": locals().get('req_id')}
+    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "posts": posts_data, "friend_status": status, "request_id": locals().get('req_id')}
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
