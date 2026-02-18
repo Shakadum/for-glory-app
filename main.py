@@ -110,7 +110,7 @@ class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
 class RequestActionData(BaseModel): request_id: int; action: str
 class DeletePostData(BaseModel): post_id: int; user_id: int
 
-# --- DEPENDÊNCIAS (CORRIGIDO) ---
+# --- DEPENDÊNCIAS ---
 def get_db():
     db = SessionLocal()
     try:
@@ -129,7 +129,7 @@ def startup():
         db.commit()
     db.close()
 
-# --- FRONTEND ---
+# --- FRONTEND (AJUSTADO: LOGIN ESCURO, EMOJI DIREITA, FOTOS FIX) ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -182,15 +182,17 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 .btn-float{position:fixed;bottom:80px;right:20px;width:55px;height:55px;border-radius:50%;background:var(--primary);border:none;font-size:28px;box-shadow:0 4px 15px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#000}
 .btn-std{background:rgba(255,255,255,0.1);border:1px solid #444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;flex:1;text-align:center;}
 .btn-std:hover{background:rgba(102,252,241,0.1);border-color:var(--primary)}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);z-index:100;display:flex;align-items:center;justify-content:center}
+/* MODAL FIX */
+.modal{position:fixed;inset:0;background:#0b0c10;z-index:9999;display:flex;align-items:center;justify-content:center} /* FUNDO SÓLIDO */
+.modal.transparent-bg{background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);} /* Para outros modais */
 .hidden{display:none !important}
 .modal-box{background:#111;padding:25px;border-radius:20px;border:1px solid var(--border);width:90%;max-width:350px;text-align:center;box-shadow:0 0 30px rgba(0,0,0,0.8)}
 .inp{width:100%;padding:12px;margin:8px 0;background:#222;border:1px solid #444;color:white;border-radius:8px;text-align:center;font-size:16px}
 .btn-main{width:100%;padding:12px;margin-top:10px;background:var(--primary);border:none;font-weight:700;border-radius:8px;cursor:pointer;font-size:16px;color:#000}
 #toast{visibility:hidden;min-width:200px;background:var(--glass);color:var(--primary);text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);border:1px solid var(--primary);font-weight:600}
 #toast.show{visibility:visible;animation:fadeInOut 3s}
-/* EMOJI PICKER Z-INDEX FIX */
-#emoji-picker{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);width:95%;max-width:340px;background:var(--glass);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:3000;box-shadow:0 0 25px rgba(0,0,0,0.8)}
+/* EMOJI PICKER DIREITA */
+#emoji-picker{position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:var(--glass);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:3000;box-shadow:0 0 25px rgba(0,0,0,0.8)}
 .emoji-header{padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333;background:rgba(102,252,241,0.05)}
 .emoji-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:10px;max-height:220px;overflow-y:auto}
 .emoji-btn{font-size:22px;padding:8px;cursor:pointer;border-radius:5px;text-align:center}
@@ -213,9 +215,9 @@ body{background-color:var(--dark-bg);color:#e0e0e0;font-family:'Inter',sans-seri
 
 <div id="modal-login" class="modal"><div class="modal-box"><h1 style="color:var(--primary);font-family:'Rajdhani';font-size:32px;margin:0 0 20px 0">FOR GLORY</h1><div id="login-form"><input id="l-user" class="inp" placeholder="CODINOME"><input id="l-pass" class="inp" type="password" placeholder="SENHA"><button onclick="doLogin()" class="btn-main">ENTRAR</button><div style="margin-top:15px;font-size:14px;color:#888"><span onclick="toggleAuth('register')" style="text-decoration:underline;cursor:pointer">Criar Conta</span></div></div><div id="register-form" class="hidden"><input id="r-user" class="inp" placeholder="NOVO USUÁRIO"><input id="r-email" class="inp" placeholder="EMAIL"><input id="r-pass" class="inp" type="password" placeholder="SENHA"><button onclick="doRegister()" class="btn-main">REGISTRAR</button><p onclick="toggleAuth('login')" style="color:#888;text-decoration:underline;cursor:pointer;margin-top:15px">Voltar</p></div></div></div>
 
-<div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*"><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0"><button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:22px;cursor:pointer">😀</button></div><div id="progress-container" style="display:none;background:#333;height:6px;border-radius:3px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.3s"></div></div><div id="progress-text" style="font-size:12px;color:var(--primary);margin-top:5px;display:none">0%</div><button onclick="submitPost()" class="btn-main">PUBLICAR</button><button onclick="closeUpload()" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
+<div id="modal-upload" class="modal hidden transparent-bg"><div class="modal-box"><h2 style="color:white">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*"><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0"><button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:22px;cursor:pointer">😀</button></div><div id="progress-container" style="display:none;background:#333;height:6px;border-radius:3px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.3s"></div></div><div id="progress-text" style="font-size:12px;color:var(--primary);margin-top:5px;display:none">0%</div><button onclick="submitPost()" class="btn-main">PUBLICAR</button><button onclick="closeUpload()" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR</h2><input type="file" id="avatar-upload" class="inp" accept="image/*"><input type="text" id="bio-update" class="inp" placeholder="Bio..."><button onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
+<div id="modal-profile" class="modal hidden transparent-bg"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR</h2><input type="file" id="avatar-upload" class="inp" accept="image/*"><input type="text" id="bio-update" class="inp" placeholder="Bio..."><button onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-std" style="width:100%;margin:10px 0 0 0">CANCELAR</button></div></div>
 
 <div id="app">
     <div id="sidebar"><button class="nav-btn active" onclick="goView('chat')">💬</button><button class="nav-btn" onclick="goView('feed')">🎬</button><button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini"></button></div>
@@ -258,11 +260,17 @@ function toggleAuth(m){document.getElementById('login-form').classList.toggle('h
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro no Login")}}
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Sucesso!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},3000)}
-function updateUI(){let t=new Date().getTime();document.getElementById('p-avatar').src=user.avatar_url+"?t="+t;document.getElementById('nav-avatar').src=user.avatar_url+"?t="+t;document.getElementById('p-name').innerText=user.username;document.getElementById('p-bio').innerText=user.bio}
+function updateUI(){
+    let t=new Date().getTime();
+    document.getElementById('p-avatar').src=user.avatar_url+"?t="+t;
+    document.getElementById('nav-avatar').src=user.avatar_url+"?t="+t;
+    document.getElementById('p-name').innerText=user.username;
+    document.getElementById('p-bio').innerText=user.bio;
+}
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.currentTarget.classList.add('active')}
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div class="search-res" onclick="openPublicProfile(${u.id})"><div style="display:flex;align-items:center;gap:10px"><img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%"><b>${u.username}</b></div></div>`})}
-async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;let ab=document.getElementById('pub-actions');ab.innerHTML='';
+async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+new Date().getTime();document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;let ab=document.getElementById('pub-actions');ab.innerHTML='';
 if(d.friend_status==='friends')ab.innerHTML='<span style="color:#0f0">✔ Amigos</span>';
 else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Solicitado</span>';
 else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-std" onclick="handleReq(${d.request_id},'accept')">Aceitar</button>`;
@@ -361,9 +369,13 @@ function connectWS(){
 
 // --- UTILS ---
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden');document.getElementById('progress-container').style.display='none';document.getElementById('progress-bar').style.width='0%';toggleEmoji(true)}
+
 async function deletePost(pid){if(!confirm("Apagar?"))return;if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){showToast("Apagado!");lastFeedHash="";loadFeed()}}
+
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls preload="none" playsinline poster="${x.content_url}#t=0.5"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let btn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;font-size:18px">🗑️</span>`:x.is_friend?'<span style="color:#0f0;font-size:12px">✔</span>':`<button onclick="openPublicProfile(${x.author_id})" class="btn-std" style="padding:2px 8px;font-size:11px">ADD</button>`;ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><b>${x.author_name}</b></div>${btn}</div>${m}<div class="post-caption"><b>${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht}catch(e){}}
+
 async function updateProfile(){let f=document.getElementById('avatar-upload').files[0];let b=document.getElementById('bio-update').value;let fd=new FormData();fd.append('user_id',user.id);if(f)fd.append('file',f);if(b)fd.append('bio',b);let r=await fetch('/profile/update',{method:'POST',body:fd});if(r.ok){let d=await r.json();user.avatar_url=d.avatar_url;user.bio=d.bio;updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}
+
 function openEmoji(id){currentEmojiTarget=id;document.getElementById('emoji-picker').style.display='flex'}
 function toggleEmoji(forceClose){let e=document.getElementById('emoji-picker');if(forceClose===true){e.style.display='none'}else{e.style.display=e.style.display==='flex'?'none':'flex'}}
 function addEmoji(e){if(currentEmojiTarget){let i=document.getElementById(currentEmojiTarget);i.value+=e}}
