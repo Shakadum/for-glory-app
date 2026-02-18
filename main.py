@@ -138,7 +138,7 @@ def startup():
         db.add(Channel(name="Geral"))
         db.commit()
     db.close()
-# --- FRONTEND COMPLETO ---
+    # --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -194,6 +194,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .progress-wrapper{width:100%;background:#333;height:10px;border-radius:5px;margin-top:10px;overflow:hidden;display:none}
 .progress-fill{height:100%;background:var(--primary);width:0%;transition:width 0.2s}
 .hidden{display:none !important}
+#toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#000;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;box-shadow:0 5px 15px rgba(102,252,241,0.4);transition:opacity 0.3s, visibility 0.3s}
+#toast.show{visibility:visible;opacity:1}
 
 @keyframes fadeInView{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
@@ -242,12 +244,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="content-area">
 <div id="view-chat" class="view active"><div style="padding:15px;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;text-align:center;background:rgba(0,0,0,0.2)">CANAL GERAL</div><div id="chat-list"></div><div id="chat-input-area"><button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888;padding:5px">📎</button><input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()"><input id="chat-msg" placeholder="Enviar mensagem..." onkeypress="if(event.key==='Enter')sendMsg()"><button onclick="openEmoji('chat-msg')" style="background:none;border:none;font-size:22px;cursor:pointer;margin-right:5px">😀</button><button onclick="sendMsg()" style="background:var(--primary);border:none;width:45px;height:45px;border-radius:12px;font-weight:bold;display:flex;align-items:center;justify-content:center;color:#0b0c10;box-shadow:0 0 10px rgba(102,252,241,0.3)">➤</button></div></div>
 <div id="view-feed" class="view"><div id="feed-container"></div><button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button></div>
-<div id="view-profile" class="view"><div class="profile-header-container"><img id="p-cover" src="" class="profile-cover"><img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')"></div><div style="display:flex;flex-direction:column;align-items:center;width:100%;text-align:center;margin-top:20px;"><h2 id="p-name" style="color:white;font-family:'Rajdhani';margin:5px 0;font-size:28px">...</h2><div id="p-rank" style="background:rgba(102,252,241,0.15);color:var(--primary);padding:4px 12px;border-radius:20px;font-weight:bold;font-size:12px;margin-bottom:10px;border:1px solid rgba(102,252,241,0.3)">REC</div><p id="p-bio" style="color:#888;width:80%;margin:0 0 20px 0;font-style:italic">...</p></div><div style="width:90%;max-width:400px;margin:0 auto"><div style="display:flex;background:rgba(255,255,255,0.05);border-radius:12px;padding:5px;margin-bottom:20px"><input id="search-input" placeholder="Buscar Soldado..." style="flex:1;background:transparent;border:none;color:white;padding:10px;outline:none"><button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;padding:0 15px">🔍</button></div><div id="search-results"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><button onclick="toggleRequests('requests')" style="padding:12px;background:rgba(255,255,255,0.05);border:1px solid #333;color:white;border-radius:8px;cursor:pointer">📩 Solicitações</button><button onclick="toggleRequests('friends')" style="padding:12px;background:rgba(255,255,255,0.05);border:1px solid #333;color:white;border-radius:8px;cursor:pointer">👥 Pelotão</button></div><div id="requests-list" style="display:none;margin-top:15px;background:rgba(0,0,0,0.3);padding:10px;border-radius:10px"></div><button onclick="logout()" style="width:100%;margin-top:40px;padding:15px;background:transparent;border:1px solid #ff5555;color:#ff5555;border-radius:10px;cursor:pointer;font-weight:bold">DESCONECTAR</button></div></div>
-<div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);backdrop-filter:blur(5px);border:1px solid #444;color:white;border-radius:8px;padding:8px 15px;cursor:pointer">⬅ Voltar</button><div class="profile-header-container"><img id="pub-cover" src="" class="profile-cover"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:20px"><h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin-bottom:5px">...</h2><span id="pub-rank" style="color:var(--primary);font-size:12px;font-weight:bold;margin-bottom:10px;text-transform:uppercase">...</span><p id="pub-bio" style="color:#888;margin-bottom:20px;width:80%">...</p><div id="pub-actions" style="margin-bottom:20px"></div><div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:100%;max-width:500px"></div></div></div></div></div>
+<div id="view-profile" class="view"><div class="profile-header-container"><img id="p-cover" src="" class="profile-cover" onerror="this.style.display='none'" onload="this.style.display='block'"><img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')"></div><div style="display:flex;flex-direction:column;align-items:center;width:100%;text-align:center;margin-top:20px;"><h2 id="p-name" style="color:white;font-family:'Rajdhani';margin:5px 0;font-size:28px">...</h2><div id="p-rank" style="background:rgba(102,252,241,0.15);color:var(--primary);padding:4px 12px;border-radius:20px;font-weight:bold;font-size:12px;margin-bottom:10px;border:1px solid rgba(102,252,241,0.3)">REC</div><p id="p-bio" style="color:#888;width:80%;margin:0 0 20px 0;font-style:italic">...</p></div><div style="width:90%;max-width:400px;margin:0 auto"><div style="display:flex;background:rgba(255,255,255,0.05);border-radius:12px;padding:5px;margin-bottom:20px"><input id="search-input" placeholder="Buscar Soldado..." style="flex:1;background:transparent;border:none;color:white;padding:10px;outline:none"><button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;padding:0 15px">🔍</button></div><div id="search-results"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><button onclick="toggleRequests('requests')" style="padding:12px;background:rgba(255,255,255,0.05);border:1px solid #333;color:white;border-radius:8px;cursor:pointer">📩 Solicitações</button><button onclick="toggleRequests('friends')" style="padding:12px;background:rgba(255,255,255,0.05);border:1px solid #333;color:white;border-radius:8px;cursor:pointer">👥 Pelotão</button></div><div id="requests-list" style="display:none;margin-top:15px;background:rgba(0,0,0,0.3);padding:10px;border-radius:10px"></div><button onclick="logout()" style="width:100%;margin-top:40px;padding:15px;background:transparent;border:1px solid #ff5555;color:#ff5555;border-radius:10px;cursor:pointer;font-weight:bold">DESCONECTAR</button></div></div>
+<div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);backdrop-filter:blur(5px);border:1px solid #444;color:white;border-radius:8px;padding:8px 15px;cursor:pointer">⬅ Voltar</button><div class="profile-header-container"><img id="pub-cover" src="" class="profile-cover" onerror="this.style.display='none'" onload="this.style.display='block'"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:20px"><h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin-bottom:5px">...</h2><span id="pub-rank" style="color:var(--primary);font-size:12px;font-weight:bold;margin-bottom:10px;text-transform:uppercase">...</span><p id="pub-bio" style="color:#888;margin-bottom:20px;width:80%">...</p><div id="pub-actions" style="margin-bottom:20px"></div><div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:100%;max-width:500px"></div></div></div></div></div>
 <script>
 var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
-function showToast(m){let x=document.createElement("div");x.innerText=m;x.style.cssText="position:fixed;top:30px;left:50%;transform:translateX(-50%);background:rgba(102,252,241,0.9);color:#000;padding:12px 24px;border-radius:30px;font-weight:bold;z-index:10000;box-shadow:0 5px 15px rgba(0,0,0,0.5);animation:fadeInOut 3s forwards";document.body.appendChild(x);setTimeout(()=>x.remove(),3000)}
+
+function showToast(m){
+    let x = document.getElementById("toast");
+    x.innerText = m;
+    x.className = "show";
+    setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
+}
+
 function toggleAuth(m){document.getElementById('login-form').classList.toggle('hidden',m==='register');document.getElementById('register-form').classList.toggle('hidden',m!=='register')}
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Credenciais Inválidas")}}
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Recruta Registrado!");toggleAuth('login')}catch(e){showToast("Erro ao Registrar")}}
@@ -256,15 +265,27 @@ function startApp(){document.getElementById('modal-login').classList.add('hidden
 function updateUI(){
     if(!user) return;
     let t=new Date().getTime();
-    // Atualiza TODAS as instâncias do avatar do usuário na tela
-    let baseAvatar = user.avatar_url.split("?")[0];
-    document.querySelectorAll('img').forEach(img => {
-        if(img.src.includes(baseAvatar)) img.src = baseAvatar + "?t=" + t;
-    });
-    // Atualiza avatares específicos da UI
-    document.querySelectorAll('.my-avatar-mini, #p-avatar').forEach(img=>{img.src=user.avatar_url+"?t="+t;});
     
-    document.getElementById('p-cover').src=(user.cover_url||"https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")+"?t="+t;
+    // ATUALIZAÇÃO FORÇADA E AGRESSIVA DAS IMAGENS
+    let elements = document.getElementsByTagName('img');
+    let baseAvatar = user.avatar_url.split("?")[0];
+    
+    for(let i=0; i<elements.length; i++){
+        let img = elements[i];
+        // Se a imagem for o avatar do usuário, atualiza a source
+        if(img.src.includes(baseAvatar) || img.classList.contains('my-avatar-mini') || img.id === 'p-avatar'){
+            img.src = baseAvatar + "?t=" + t;
+        }
+    }
+
+    document.getElementById('nav-avatar').src = user.avatar_url + "?t=" + t;
+    
+    // Tratamento da capa: Se for vazia ou placeholder padrão, não precisa esconder, só atualizar
+    let cv = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
+    let pCover = document.getElementById('p-cover');
+    pCover.src = cv + "?t=" + t;
+    pCover.style.display = 'block'; // Tenta mostrar
+
     document.getElementById('p-name').innerText=user.username;
     document.getElementById('p-bio').innerText=user.bio;
     document.getElementById('p-rank').innerText=user.rank;
@@ -272,7 +293,7 @@ function updateUI(){
 
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile'){document.querySelector(`.nav-btn[onclick="goView('${v}')"]`).classList.add('active')}}
-async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+t;document.getElementById('pub-cover').src=d.cover_url+"?t="+t;document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
+async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+t;let pc=document.getElementById('pub-cover');pc.src=d.cover_url+"?t="+t;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
 function submitPost(){
@@ -313,14 +334,33 @@ function submitPost(){
     xhr.send(fd);
 }
 
-function connectWS(){if(ws)ws.close();let p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('chat-list');let m=d.user_id===user.id;let c=d.content.includes('/static/')?`<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;let html=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:#888;margin-bottom:2px">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;b.insertAdjacentHTML('beforeend',html);b.scrollTop=b.scrollHeight;};}
+function connectWS(){
+    if(ws)ws.close();
+    let p=location.protocol==='https:'?'wss:':'ws:';
+    ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
+    ws.onmessage=e=>{
+        let d=JSON.parse(e.data);
+        let b=document.getElementById('chat-list');
+        
+        // CORREÇÃO CRÍTICA DO LADO DA MENSAGEM
+        // Força comparação de Inteiros para não ter erro
+        let currentUserId = parseInt(user.id);
+        let msgUserId = parseInt(d.user_id);
+        let m = (msgUserId === currentUserId);
+        
+        let c=d.content.includes('/static/')?`<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;
+        let html=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:#888;margin-bottom:2px">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+        b.insertAdjacentHTML('beforeend',html);
+        b.scrollTop=b.scrollHeight;
+    };
+}
 
 function sendMsg(){
     let i=document.getElementById('chat-msg');
     if(i.value.trim()){
         ws.send(i.value.trim());
         i.value='';
-        toggleEmoji(true); // Fecha emoji ao enviar
+        toggleEmoji(true);
     }
 }
 
@@ -331,7 +371,6 @@ async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST'
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
 async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
 
-// --- FUNÇÃO CORRIGIDA COM FEEDBACK VISUAL ---
 async function updateProfile(){
     let btn = document.getElementById('btn-save-profile');
     btn.innerText = "PROCESSANDO...";
@@ -339,7 +378,7 @@ async function updateProfile(){
 
     try {
         let fd=new FormData();
-        fd.append('user_id', user.id); // Garante que o ID vai
+        fd.append('user_id', user.id);
         
         let f=document.getElementById('avatar-upload').files[0];
         let c=document.getElementById('cover-upload').files[0];
@@ -354,7 +393,7 @@ async function updateProfile(){
         if(r.ok){
             let d=await r.json();
             Object.assign(user,d);
-            updateUI();
+            updateUI(); // Chama a atualização agressiva
             document.getElementById('modal-profile').classList.add('hidden');
             showToast("Perfil Atualizado!");
         } else {
@@ -387,7 +426,7 @@ window.onload=()=>{
             if(currentEmojiTarget){
                 let inp = document.getElementById(currentEmojiTarget);
                 inp.value+=e;
-                inp.focus(); // Retorna o foco pro input para permitir Enter imediato
+                inp.focus();
             }
         };
         g.appendChild(s)
@@ -470,20 +509,15 @@ async def search_users(q: str, db: Session=Depends(get_db)):
 @app.post("/profile/update")
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
-    
-    # Validação extra: Só salva se o arquivo tiver nome (não for vazio)
     if file and file.filename:
         fname = f"a_{user_id}_{random.randint(1000,9999)}_{file.filename}"
         with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
         u.avatar_url = f"/static/{fname}"
-        
     if cover and cover.filename:
         cname = f"cv_{user_id}_{random.randint(1000,9999)}_{cover.filename}"
         with open(f"static/{cname}", "wb") as buffer: shutil.copyfileobj(cover.file, buffer)
         u.cover_url = f"/static/{cname}"
-        
     if bio: u.bio = bio
-    
     db.commit()
     return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
@@ -554,8 +588,3 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
