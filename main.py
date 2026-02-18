@@ -3,7 +3,6 @@ import json
 import hashlib
 import random
 import os
-import shutil
 import logging
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse
@@ -13,17 +12,35 @@ from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
 from datetime import datetime
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import cloudinary
+import cloudinary.uploader
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURAÇÃO DE LOGS ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
-if not os.path.exists("static"):
-    os.makedirs("static")
+# --- CONFIGURAÇÃO DO CLOUDINARY (Arquivos) ---
+# O código tentará pegar do ambiente, senão usa string vazia (vai dar erro se não configurar no Render)
+cloudinary.config( 
+  cloud_name = os.environ.get('CLOUDINARY_NAME'), 
+  api_key = os.environ.get('CLOUDINARY_KEY'), 
+  api_secret = os.environ.get('CLOUDINARY_SECRET'),
+  secure = True
+)
 
-# --- BANCO DE DADOS ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./for_glory_v2.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# --- BANCO DE DADOS (PostgreSQL via Neon) ---
+# Pega a URL do ambiente. Se não tiver, tenta local (mas no Render PRECISA da variável)
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v2.db")
+
+# Correção para o SQLAlchemy (o Neon dá postgres:// mas o lib pede postgresql://)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if "sqlite" in DATABASE_URL:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -40,6 +57,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     xp = Column(Integer, default=0)
+    # Avatar padrão agora é um link direto
     avatar_url = Column(String, default="https://api.dicebear.com/7.x/notionists/svg?seed=Glory")
     cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
@@ -58,7 +76,7 @@ class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    content_url = Column(String)
+    content_url = Column(String) # Agora guarda URL do Cloudinary
     media_type = Column(String)
     caption = Column(String)
     timestamp = Column(DateTime, default=datetime.now)
@@ -71,8 +89,8 @@ class Channel(Base):
 
 try:
     Base.metadata.create_all(bind=engine)
-except:
-    pass
+except Exception as e:
+    logger.error(f"Erro ao criar tabelas: {e}")
     # --- LÓGICA DE PATENTES ---
 def calcular_patente(xp):
     if xp < 100: return "Recruta 🔰"
@@ -102,7 +120,7 @@ class ConnectionManager:
                 pass
 
 manager = ConnectionManager()
-app = FastAPI(title="For Glory Optimized")
+app = FastAPI(title="For Glory Cloud")
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,6 +129,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# A pasta static fica vazia agora, mas mantemos para evitar erros de legacy
+if not os.path.exists("static"): os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- MODELOS ---
@@ -134,9 +154,13 @@ def criptografar(s):
 @app.on_event("startup")
 def startup():
     db = SessionLocal()
-    if not db.query(Channel).first():
-        db.add(Channel(name="Geral"))
-        db.commit()
+    # Verifica conexão
+    try:
+        if not db.query(Channel).first():
+            db.add(Channel(name="Geral"))
+            db.commit()
+    except:
+        pass # Pode falhar na primeira conexão se tabela não existir
     db.close()
     # --- FRONTEND COMPLETO ---
 html_content = """
@@ -183,7 +207,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10;transition:transform 0.2s}
 .btn-float:active{transform:scale(0.9)}
 
-/* MODAL ESCURO (Blackout) E PROGRESSO */
+/* MODAL ESCURO E PROGRESSO */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
 .modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
@@ -222,7 +246,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
         <div id="upload-progress" class="progress-wrapper"><div id="progress-bar" class="progress-fill"></div></div>
         <div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none">0%</div>
-        <button onclick="submitPost()" class="btn-main">PUBLICAR (+50 XP)</button>
+        <button id="btn-upload-post" onclick="submitPost()" class="btn-main">PUBLICAR (+50 XP)</button>
         <button onclick="closeUpload()" style="width:100%;padding:12px;margin-top:10px;background:transparent;border:1px solid #444;color:#888;border-radius:10px;cursor:pointer">CANCELAR</button>
     </div>
 </div>
@@ -250,12 +274,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
-function showToast(m){
-    let x = document.getElementById("toast");
-    x.innerText = m;
-    x.className = "show";
-    setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
-}
+function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=x.className.replace("show","")},3000)}
 
 function toggleAuth(m){document.getElementById('login-form').classList.toggle('hidden',m==='register');document.getElementById('register-form').classList.toggle('hidden',m!=='register')}
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Credenciais Inválidas")}}
@@ -266,25 +285,28 @@ function updateUI(){
     if(!user) return;
     let t=new Date().getTime();
     
-    // ATUALIZAÇÃO FORÇADA E AGRESSIVA DAS IMAGENS
+    // Atualização visual das imagens
     let elements = document.getElementsByTagName('img');
     let baseAvatar = user.avatar_url.split("?")[0];
     
     for(let i=0; i<elements.length; i++){
         let img = elements[i];
-        // Se a imagem for o avatar do usuário, atualiza a source
         if(img.src.includes(baseAvatar) || img.classList.contains('my-avatar-mini') || img.id === 'p-avatar'){
-            img.src = baseAvatar + "?t=" + t;
+            // Adiciona timestamp para forçar reload, mas usa a URL Cloudinary direto
+            if(user.avatar_url.includes('cloudinary')){
+                 img.src = user.avatar_url; // Cloudinary já é rápido, cache é bom
+            } else {
+                 img.src = baseAvatar + "?t=" + t;
+            }
         }
     }
-
-    document.getElementById('nav-avatar').src = user.avatar_url + "?t=" + t;
     
-    // Tratamento da capa: Se for vazia ou placeholder padrão, não precisa esconder, só atualizar
+    document.getElementById('nav-avatar').src = user.avatar_url;
+
     let cv = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
     let pCover = document.getElementById('p-cover');
-    pCover.src = cv + "?t=" + t;
-    pCover.style.display = 'block'; // Tenta mostrar
+    pCover.src = cv;
+    pCover.style.display = 'block';
 
     document.getElementById('p-name').innerText=user.username;
     document.getElementById('p-bio').innerText=user.bio;
@@ -293,7 +315,7 @@ function updateUI(){
 
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile'){document.querySelector(`.nav-btn[onclick="goView('${v}')"]`).classList.add('active')}}
-async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+t;let pc=document.getElementById('pub-cover');pc.src=d.cover_url+"?t="+t;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
+async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
 function submitPost(){
@@ -305,7 +327,10 @@ function submitPost(){
     document.getElementById('upload-progress').style.display='block';
     let pBar = document.getElementById('progress-bar');
     let pText = document.getElementById('progress-text');
+    let btn = document.getElementById('btn-upload-post');
     pText.style.display='block';
+    btn.disabled = true;
+    btn.innerText = "ENVIANDO PARA A NUVEM...";
 
     let fd=new FormData();fd.append('file',f);fd.append('user_id',user.id);fd.append('caption',cap);
     let xhr = new XMLHttpRequest();
@@ -320,12 +345,14 @@ function submitPost(){
     };
 
     xhr.onload = function() {
+        btn.disabled = false;
+        btn.innerText = "PUBLICAR (+50 XP)";
         if (xhr.status === 200) {
-            showToast("Publicado! +50 XP");
+            showToast("Publicado com Sucesso!");
             user.xp+=50; lastFeedHash=""; loadFeed(); closeUpload();
             fetch('/login',{method:'POST',body:JSON.stringify({username:user.username,password:''})}).then(r=>r.json()).then(u=>{user=u;updateUI()});
         } else {
-            showToast("Falha no envio");
+            showToast("Falha: " + xhr.statusText);
         }
         document.getElementById('upload-progress').style.display='none';
         pText.style.display='none';
@@ -342,13 +369,11 @@ function connectWS(){
         let d=JSON.parse(e.data);
         let b=document.getElementById('chat-list');
         
-        // CORREÇÃO CRÍTICA DO LADO DA MENSAGEM
-        // Força comparação de Inteiros para não ter erro
         let currentUserId = parseInt(user.id);
         let msgUserId = parseInt(d.user_id);
         let m = (msgUserId === currentUserId);
         
-        let c=d.content.includes('/static/')?`<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;
+        let c=d.content.includes('http') && (d.content.includes('.jpg') || d.content.includes('.png')) ? `<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;
         let html=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:#888;margin-bottom:2px">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
         b.insertAdjacentHTML('beforeend',html);
         b.scrollTop=b.scrollHeight;
@@ -364,7 +389,19 @@ function sendMsg(){
     }
 }
 
-async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];let fd=new FormData();fd.append('file',f);let r=await fetch('/upload/chat',{method:'POST',body:fd});if(r.ok){let d=await r.json();ws.send(d.url)}}
+async function uploadChatImage(){
+    let f=document.getElementById('chat-file').files[0];
+    let fd=new FormData();fd.append('file',f);
+    showToast("Enviando imagem...");
+    let r=await fetch('/upload/chat',{method:'POST',body:fd});
+    if(r.ok){
+        let d=await r.json();
+        ws.send(d.url)
+    } else {
+        showToast("Erro ao enviar imagem");
+    }
+}
+
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%"><span>${u.username}</span></div>`})}
 async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div>${r.username} <button onclick="handleReq(${r.id},'accept')">✅</button></div>`).join(''):'Sem convites'):(d.friends.length?d.friends.map(f=>`<div onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'Sem aliados')}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
@@ -373,7 +410,7 @@ async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/
 
 async function updateProfile(){
     let btn = document.getElementById('btn-save-profile');
-    btn.innerText = "PROCESSANDO...";
+    btn.innerText = "ENVIANDO DADOS...";
     btn.disabled = true;
 
     try {
@@ -393,11 +430,11 @@ async function updateProfile(){
         if(r.ok){
             let d=await r.json();
             Object.assign(user,d);
-            updateUI(); // Chama a atualização agressiva
+            updateUI(); 
             document.getElementById('modal-profile').classList.add('hidden');
             showToast("Perfil Atualizado!");
         } else {
-            alert("Erro no servidor: " + r.status);
+            alert("Erro no servidor: " + r.statusText);
         }
     } catch(e) {
         alert("Erro na conexão: " + e);
@@ -440,9 +477,7 @@ window.onload=()=>{
 
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-# --- API ENDPOINTS OTIMIZADOS ---
-import asyncio 
-
+    # --- API ENDPOINTS (Cloudinary) ---
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first():
@@ -464,54 +499,38 @@ async def log(d: LoginData, db: Session=Depends(get_db)):
 
 @app.post("/upload/post")
 async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
-    # 1. Validação de Tamanho (Proteção contra travamento)
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    await file.seek(0)
-    
-    # Limite de 100MB no código (O Render pode cortar antes, mas protege a RAM)
-    if file_size > 100 * 1024 * 1024: 
-        raise HTTPException(400, "Arquivo muito grande (Max 100MB)")
-
-    filename = f"p_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-    file_path = f"static/{filename}"
-
-    # 2. Gravação em CHUNKS (Não estoura a memória RAM)
     try:
-        with open(file_path, "wb") as buffer:
-            while content := await file.read(1024 * 1024): # Lê 1MB por vez
-                buffer.write(content)
+        # Envia para o Cloudinary (detecta se é imagem ou vídeo automaticamente)
+        res = cloudinary.uploader.upload(file.file, resource_type = "auto", folder="for_glory/posts")
+        url = res["secure_url"]
+        m_type = "video" if res["resource_type"] == "video" else "image"
+        
+        db.add(Post(user_id=user_id, content_url=url, media_type=m_type, caption=caption))
+        user = db.query(User).filter(User.id == user_id).first()
+        if user: user.xp += 50 
+        db.commit()
+        return {"status":"ok", "url": url}
     except Exception as e:
-        logger.error(f"Erro no upload: {e}")
-        raise HTTPException(500, "Falha na gravação do arquivo")
-
-    m_type = "video" if file.content_type.startswith("video") else "image"
-    db.add(Post(user_id=user_id, content_url=f"/{file_path}", media_type=m_type, caption=caption))
-    
-    user = db.query(User).filter(User.id == user_id).first()
-    if user: user.xp += 50 
-    db.commit()
-    return {"status":"ok"}
+        logger.error(f"Erro Cloudinary: {e}")
+        raise HTTPException(500, f"Erro no upload: {str(e)}")
 
 @app.post("/post/delete")
 async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
     post = db.query(Post).filter(Post.id == d.post_id).first()
     if not post or post.user_id != d.user_id:
         return {"status": "error"}
-    try: os.remove(f".{post.content_url}")
-    except: pass
+    # Opcional: deletar do Cloudinary também (requer guardar o public_id)
     db.delete(post)
     db.commit()
     return {"status": "ok"}
 
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
-    filename = f"c_{random.randint(10000,99999)}_{file.filename}"
-    filepath = f"static/{filename}"
-    with open(filepath, "wb") as buffer:
-        while content := await file.read(1024 * 1024):
-            buffer.write(content)
-    return {"url": f"/{filepath}"}
+    try:
+        res = cloudinary.uploader.upload(file.file, resource_type = "auto", folder="for_glory/chat")
+        return {"url": res["secure_url"]}
+    except Exception as e:
+        raise HTTPException(500, "Erro upload chat")
 
 @app.get("/posts")
 async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
@@ -534,18 +553,12 @@ async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: Upl
     u = db.query(User).filter(User.id == user_id).first()
     
     if file and file.filename:
-        fname = f"a_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-        with open(f"static/{fname}", "wb") as buffer:
-            while content := await file.read(1024 * 1024):
-                buffer.write(content)
-        u.avatar_url = f"/static/{fname}"
+        res = cloudinary.uploader.upload(file.file, folder="for_glory/avatars")
+        u.avatar_url = res["secure_url"]
         
     if cover and cover.filename:
-        cname = f"cv_{user_id}_{random.randint(1000,9999)}_{cover.filename}"
-        with open(f"static/{cname}", "wb") as buffer:
-            while content := await cover.read(1024 * 1024):
-                buffer.write(content)
-        u.cover_url = f"/static/{cname}"
+        res = cloudinary.uploader.upload(cover.file, folder="for_glory/covers")
+        u.cover_url = res["secure_url"]
         
     if bio: u.bio = bio
     
@@ -616,9 +629,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     except:
         manager.disconnect(ws, ch)
 
-# --- INICIALIZAÇÃO COM TIMEOUT AUMENTADO ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    # Aumentei o timeout para 120s para dar chance do vídeo subir
-    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=120)
-
+    uvicorn.run(app, host="0.0.0.0", port=port)
