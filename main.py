@@ -440,7 +440,9 @@ window.onload=()=>{
 
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-    # --- API ENDPOINTS ---
+# --- API ENDPOINTS OTIMIZADOS ---
+import asyncio 
+
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first():
@@ -462,11 +464,30 @@ async def log(d: LoginData, db: Session=Depends(get_db)):
 
 @app.post("/upload/post")
 async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
+    # 1. Validação de Tamanho (Proteção contra travamento)
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    await file.seek(0)
+    
+    # Limite de 100MB no código (O Render pode cortar antes, mas protege a RAM)
+    if file_size > 100 * 1024 * 1024: 
+        raise HTTPException(400, "Arquivo muito grande (Max 100MB)")
+
     filename = f"p_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-    with open(f"static/{filename}", "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_path = f"static/{filename}"
+
+    # 2. Gravação em CHUNKS (Não estoura a memória RAM)
+    try:
+        with open(file_path, "wb") as buffer:
+            while content := await file.read(1024 * 1024): # Lê 1MB por vez
+                buffer.write(content)
+    except Exception as e:
+        logger.error(f"Erro no upload: {e}")
+        raise HTTPException(500, "Falha na gravação do arquivo")
+
     m_type = "video" if file.content_type.startswith("video") else "image"
-    db.add(Post(user_id=user_id, content_url=f"/static/{filename}", media_type=m_type, caption=caption))
+    db.add(Post(user_id=user_id, content_url=f"/{file_path}", media_type=m_type, caption=caption))
+    
     user = db.query(User).filter(User.id == user_id).first()
     if user: user.xp += 50 
     db.commit()
@@ -486,9 +507,11 @@ async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
     filename = f"c_{random.randint(10000,99999)}_{file.filename}"
-    with open(f"static/{filename}", "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return {"url": f"/static/{filename}"}
+    filepath = f"static/{filename}"
+    with open(filepath, "wb") as buffer:
+        while content := await file.read(1024 * 1024):
+            buffer.write(content)
+    return {"url": f"/{filepath}"}
 
 @app.get("/posts")
 async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
@@ -509,15 +532,23 @@ async def search_users(q: str, db: Session=Depends(get_db)):
 @app.post("/profile/update")
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
+    
     if file and file.filename:
         fname = f"a_{user_id}_{random.randint(1000,9999)}_{file.filename}"
-        with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        with open(f"static/{fname}", "wb") as buffer:
+            while content := await file.read(1024 * 1024):
+                buffer.write(content)
         u.avatar_url = f"/static/{fname}"
+        
     if cover and cover.filename:
         cname = f"cv_{user_id}_{random.randint(1000,9999)}_{cover.filename}"
-        with open(f"static/{cname}", "wb") as buffer: shutil.copyfileobj(cover.file, buffer)
+        with open(f"static/{cname}", "wb") as buffer:
+            while content := await cover.read(1024 * 1024):
+                buffer.write(content)
         u.cover_url = f"/static/{cname}"
+        
     if bio: u.bio = bio
+    
     db.commit()
     return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
@@ -585,6 +616,9 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     except:
         manager.disconnect(ws, ch)
 
+# --- INICIALIZAÇÃO COM TIMEOUT AUMENTADO ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Aumentei o timeout para 120s para dar chance do vídeo subir
+    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=120)
+
