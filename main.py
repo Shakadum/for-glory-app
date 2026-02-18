@@ -138,7 +138,7 @@ def startup():
         db.add(Channel(name="Geral"))
         db.commit()
     db.close()
-    # --- FRONTEND COMPLETO ---
+# --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -190,6 +190,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .inp:focus{border-color:var(--primary);outline:none}
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase;letter-spacing:1px;transition:0.2s}
 .btn-main:hover{box-shadow:0 0 15px rgba(102,252,241,0.4)}
+.btn-main:disabled{opacity:0.5;cursor:not-allowed}
 .progress-wrapper{width:100%;background:#333;height:10px;border-radius:5px;margin-top:10px;overflow:hidden;display:none}
 .progress-fill{height:100%;background:var(--primary);width:0%;transition:width 0.2s}
 .hidden{display:none !important}
@@ -224,7 +225,18 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">DADOS DO SOLDADO</h2><label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Capa de Fundo</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input type="text" id="bio-update" class="inp" placeholder="Bio..."><button onclick="updateProfile()" class="btn-main">SALVAR ALTERAÇÕES</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" style="width:100%;padding:12px;margin-top:10px;background:transparent;border:1px solid #444;color:#888;border-radius:10px;cursor:pointer">FECHAR</button></div></div>
+<div id="modal-profile" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary)">DADOS DO SOLDADO</h2>
+        <label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Foto de Perfil</label>
+        <input type="file" id="avatar-upload" class="inp" accept="image/*">
+        <label style="color:#aaa;font-size:12px;display:block;margin-top:10px">Capa de Fundo</label>
+        <input type="file" id="cover-upload" class="inp" accept="image/*">
+        <input type="text" id="bio-update" class="inp" placeholder="Bio...">
+        <button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR ALTERAÇÕES</button>
+        <button onclick="document.getElementById('modal-profile').classList.add('hidden')" style="width:100%;padding:12px;margin-top:10px;background:transparent;border:1px solid #444;color:#888;border-radius:10px;cursor:pointer">FECHAR</button>
+    </div>
+</div>
 
 <div id="app"><div id="sidebar"><button class="nav-btn active" onclick="goView('chat')">💬</button><button class="nav-btn" onclick="goView('feed')">🎬</button><button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini"></button></div>
 <div id="content-area">
@@ -263,7 +275,6 @@ function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.rem
 async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url+"?t="+t;document.getElementById('pub-cover').src=d.cover_url+"?t="+t;document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
-// UPLOAD COM PROGRESSO (AJAX)
 function submitPost(){
     let f=document.getElementById('file-upload').files[0];
     let cap=document.getElementById('caption-upload').value;
@@ -319,7 +330,43 @@ async function toggleRequests(type){let b=document.getElementById('requests-list
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
 async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
-async function updateProfile(){let fd=new FormData();fd.append('user_id',user.id);let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;if(f)fd.append('file',f);if(c)fd.append('cover',c);if(b)fd.append('bio',b);let r=await fetch('/profile/update',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Perfil Atualizado!")}}
+
+// --- FUNÇÃO CORRIGIDA COM FEEDBACK VISUAL ---
+async function updateProfile(){
+    let btn = document.getElementById('btn-save-profile');
+    btn.innerText = "PROCESSANDO...";
+    btn.disabled = true;
+
+    try {
+        let fd=new FormData();
+        fd.append('user_id', user.id); // Garante que o ID vai
+        
+        let f=document.getElementById('avatar-upload').files[0];
+        let c=document.getElementById('cover-upload').files[0];
+        let b=document.getElementById('bio-update').value;
+        
+        if(f) fd.append('file',f);
+        if(c) fd.append('cover',c);
+        if(b) fd.append('bio',b);
+
+        let r=await fetch('/profile/update',{method:'POST',body:fd});
+        
+        if(r.ok){
+            let d=await r.json();
+            Object.assign(user,d);
+            updateUI();
+            document.getElementById('modal-profile').classList.add('hidden');
+            showToast("Perfil Atualizado!");
+        } else {
+            alert("Erro no servidor: " + r.status);
+        }
+    } catch(e) {
+        alert("Erro na conexão: " + e);
+    } finally {
+        btn.innerText = "SALVAR ALTERAÇÕES";
+        btn.disabled = false;
+    }
+}
 
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden');document.getElementById('file-upload').value="";document.getElementById('caption-upload').value="";document.getElementById('progress-bar').style.width='0%';}
 function openEmoji(id){currentEmojiTarget=id;document.getElementById('emoji-picker').style.display='flex'}
@@ -423,15 +470,20 @@ async def search_users(q: str, db: Session=Depends(get_db)):
 @app.post("/profile/update")
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
-    if file:
+    
+    # Validação extra: Só salva se o arquivo tiver nome (não for vazio)
+    if file and file.filename:
         fname = f"a_{user_id}_{random.randint(1000,9999)}_{file.filename}"
         with open(f"static/{fname}", "wb") as buffer: shutil.copyfileobj(file.file, buffer)
         u.avatar_url = f"/static/{fname}"
-    if cover:
+        
+    if cover and cover.filename:
         cname = f"cv_{user_id}_{random.randint(1000,9999)}_{cover.filename}"
         with open(f"static/{cname}", "wb") as buffer: shutil.copyfileobj(cover.file, buffer)
         u.cover_url = f"/static/{cname}"
+        
     if bio: u.bio = bio
+    
     db.commit()
     return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
@@ -502,3 +554,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
