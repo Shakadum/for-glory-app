@@ -269,13 +269,16 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);backdrop-filter:blur(5px);border:1px solid #444;color:white;border-radius:8px;padding:8px 15px;cursor:pointer">⬅ Voltar</button><div class="profile-header-container"><img id="pub-cover" src="" class="profile-cover" onerror="this.style.display='none'" onload="this.style.display='block'"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:20px"><h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin-bottom:5px">...</h2><span id="pub-rank" style="color:var(--primary);font-size:12px;font-weight:bold;margin-bottom:10px;text-transform:uppercase">...</span><p id="pub-bio" style="color:#888;margin-bottom:20px;width:80%">...</p><div id="pub-actions" style="margin-bottom:20px"></div><div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:100%;max-width:500px"></div></div></div></div></div>
 <script>
 var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
-// --- PREENCHA COM O NOME DA SUA NUVEM AQUI SE SOUBER, SENÃO VAI TENTAR AUTOMÁTICO DO BACKEND ---
-// Ex: const CLOUD_NAME = "dqa0q3qlx";
-var CLOUD_NAME = ""; 
-const UPLOAD_PRESET = "for_glory_preset"; // O nome que você criou no passo 1
+
+// --- ⚠️ ATENÇÃO: COLOQUE SEU CLOUD NAME AQUI ---
+// Você pega esse nome no Dashboard do Cloudinary (é o "dqa0q3qlx" da sua foto anterior)
+const CLOUD_NAME = "dqa0q3qlx"; 
+
+// O nome que você acabou de criar no Passo 1
+const UPLOAD_PRESET = "for_glory_preset"; 
 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
-
+// ... (o resto do código continua igual)
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=x.className.replace("show","")},3000)}
 
 function toggleAuth(m){document.getElementById('login-form').classList.toggle('hidden',m==='register');document.getElementById('register-form').classList.toggle('hidden',m!=='register')}
@@ -598,4 +601,5 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
