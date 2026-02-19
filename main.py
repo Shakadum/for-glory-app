@@ -47,7 +47,7 @@ cloudinary.config(
   secure = True
 )
 
-# --- BANCO DE DADOS (ANTI-TRAVAMENTO MÁXIMO) ---
+# --- BANCO DE DADOS (ANTI-TRAVAMENTO) ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v3.db")
 
 if "sqlite" in DATABASE_URL:
@@ -275,7 +275,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
 /* SIDEBAR E NOTIFICAÇÕES */
-#sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:20}
+#sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s;position:relative;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
 .my-avatar-mini{width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--border); background:#111;}
@@ -311,15 +311,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
-/* REFORÇO DE BLINDAGEM MOBILE PARA A BARRA DE MENSAGENS/COMENTÁRIOS */
-.chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; }
-.chat-msg, .comment-inp { flex: 1 1 0%; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; }
-.chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
+/* 🛡️ BLINDAGEM MOBILE MÁXIMA PARA A BARRA DE INPUT 🛡️ */
+.chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; overflow: hidden; }
+.chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; }
+.btn-send-msg { background: var(--primary); border: none; flex: 0 0 45px !important; width: 45px !important; height: 45px !important; border-radius: 12px; font-weight: bold; color: #0b0c10; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; }
+.icon-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #888; flex: 0 0 35px; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; }
 
-.btn-send-msg { background: var(--primary); border: none; width: 45px !important; height: 45px !important; min-width: 45px !important; border-radius: 12px; font-weight: bold; color: #0b0c10; cursor: pointer; flex-shrink: 0 !important; display: flex; align-items: center; justify-content: center; padding: 0; }
-.icon-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #888; flex-shrink: 0; padding: 0 5px; display: flex; align-items: center; justify-content: center; }
-
-/* CHAT GERAL E PRIVADO */
 #chat-list, #dm-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
@@ -329,7 +326,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
-/* PERFIL */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
@@ -353,7 +349,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .hidden{display:none !important}
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
-@media(max-width:768px){#app{flex-direction:column-reverse}#sidebar{width:100%;height:65px;flex-direction:row;justify-content:space-around;padding:0;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95)}.btn-float{bottom:80px}}
+
+/* PREVINE A BARRA DE CORTAR NO CELULAR */
+@media(max-width:768px){
+    #app{flex-direction:column-reverse}
+    #sidebar{width:100%;height:65px;flex-direction:row;justify-content:space-around;padding:0;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow:visible;}
+    .btn-float{bottom:80px}
+}
 </style>
 </head>
 <body>
@@ -444,11 +446,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('chat')">💬</button>
         <button class="nav-btn active" onclick="goView('feed')">🎬</button>
-        <button class="nav-btn" onclick="goView('inbox')" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
+        <button class="nav-btn" onclick="goView('inbox')">📩<div id="inbox-badge" class="nav-badge"></div></button>
     </div>
 
     <div id="content-area">
-        
         <div id="view-feed" class="view active">
             <div id="feed-container"></div>
             <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
@@ -581,7 +582,16 @@ checkToken();
 function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
 function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
-// RADAR E NOTIFICAÇÕES DESTRUINDO O CACHE (DICA: O ?nocache MATA O BUG DA MENSAGEM SUMIR)
+// SENSOR DE TELA PARA CELULAR (Atualiza tudo no milissegundo que você abre o app)
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && user) {
+        connectWS(); // Religa o chat se o celular tiver cortado
+        fetchUnread();
+        fetchOnlineUsers();
+        if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
+    }
+});
+
 async function fetchOnlineUsers() {
     if(!user) return;
     try { let r = await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers = await r.json(); updateStatusDots(); } catch(e){}
@@ -752,7 +762,6 @@ async function openChat(id, name, type) {
     if(type === '1v1') { await fetch(`/inbox/read/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}); fetchUnread(); }
     
     let list = document.getElementById('dm-list'); list.innerHTML = '';
-    // Destruidor de Cache: O ?nocache garante que sempre vai puxar o histórico verdadeiro
     let fetchUrl = type === 'group' ? `/group/${id}/messages?nocache=${new Date().getTime()}` : `/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;
     let r = await fetch(fetchUrl);
     if(r.ok) {
@@ -770,6 +779,10 @@ async function openChat(id, name, type) {
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
     let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);
+    
+    // RECONEXÃO AUTOMÁTICA SE O CELULAR DORMIR
+    dmWS.onclose = () => { setTimeout(() => { if(currentChatId && document.getElementById('view-dm').classList.contains('active')) openChat(currentChatId, name, type); }, 2000); };
+    
     dmWS.onmessage = e => {
         let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
@@ -784,10 +797,12 @@ async function openChat(id, name, type) {
 function sendDM() { 
     let i = document.getElementById('dm-msg'); 
     let msg = i.value.trim();
-    if(msg && dmWS) { 
+    if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { 
         dmWS.send(msg); 
         i.value = ''; toggleEmoji(true); 
-    } 
+    } else if (msg) {
+        showToast("Rádio desconectado. Reconectando...");
+    }
 }
 
 async function uploadDMImage(){
@@ -829,18 +844,21 @@ async function submitPost(){let f=document.getElementById('file-upload').files[0
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
 function connectWS(){
+    if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
     if(ws)ws.close(); let p=location.protocol==='https:'?'wss:':'ws:'; ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
+    
+    ws.onclose = () => { setTimeout(() => { if(user) connectWS(); }, 2000); }; // AUTO RECONNECT
+    
     ws.onmessage=e=>{
         let d=JSON.parse(e.data);
-        if(d.type === 'ping') { fetchUnread(); return; } // PING DO RADAR
-        
+        if(d.type === 'ping') { fetchUnread(); return; }
         let b=document.getElementById('chat-list'); let m=parseInt(d.user_id)===parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
         let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        b.insertAdjacentHTML('beforeend',h); b.scrollTop=b.scrollHeight
+        if(b){ b.insertAdjacentHTML('beforeend',h); b.scrollTop=b.scrollHeight; }
     }
 }
-function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value=''; toggleEmoji(true);}}
+function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim() && ws && ws.readyState === WebSocket.OPEN){ws.send(i.value.trim());i.value=''; toggleEmoji(true);}}
 async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){alert("Erro ao enviar: " + e)}}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden')}
 
@@ -854,7 +872,6 @@ async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST
 </html>
 """
 
-# --- ROTAS DA API ---
 @app.get("/", response_class=HTMLResponse)
 async def get(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
@@ -1030,8 +1047,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         while True:
             txt = await ws.receive_text()
             db = SessionLocal()
-            saved = False
-            user_data = None
             try:
                 u_fresh = db.query(User).filter(User.id == uid).first()
                 user_data = {"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}
@@ -1042,25 +1057,21 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     rec_id = id2 if uid == id1 else id1
                     db.add(PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0))
                     db.commit()
-                    saved = True
                 elif ch.startswith("group_"):
                     grp_id = int(ch.split("_")[1])
                     db.add(GroupMessage(group_id=grp_id, sender_id=uid, content=txt))
                     db.commit()
-                    saved = True
-                else:
-                    saved = True # Geral chat não salva no banco
-            except Exception as e:
-                db.rollback()
-            finally:
-                db.close() 
-
-            if saved and user_data:
+                
                 await manager.broadcast(user_data, ch)
-                # DISPARO DO PING DE NOTIFICAÇÃO
+                
+                # NOTIFICAÇÃO GLOBAL SE FOR DM OU GRUPO
                 if ch.startswith("dm_") or ch.startswith("group_"):
                     await manager.broadcast({"type": "ping"}, "Geral")
-
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Erro no WebSocket BD: {e}")
+            finally:
+                db.close()
     except Exception:
         manager.disconnect(ws, ch, uid)
 
