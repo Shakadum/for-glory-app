@@ -270,9 +270,9 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR REORGANIZADA E INTUITIVA */
+/* SIDEBAR REORGANIZADA DE 6 ABAS */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
-.nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
+.nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
 .my-avatar-mini{width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--border); background:#111;}
 .nav-badge { position:absolute; top:-2px; right:-2px; background:#ff5555; color:white; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:10px; display:none; z-index:10; box-shadow:0 0 5px #ff5555; border:2px solid var(--dark-bg); }
@@ -368,9 +368,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .hidden{display:none !important}
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* BLINDAGEM DO CARROSSEL DE BOTÕES NO MOBILE */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
-    #sidebar{width:100%;height:65px;flex-direction:row;justify-content:space-around;padding:0;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow:visible;}
+    #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden;}
+    .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
 }
 </style>
@@ -399,15 +402,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="app">
     <div id="sidebar">
-        <button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
-        <button class="nav-btn" onclick="goView('inbox')" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn active" onclick="goView('feed')">🎬</button>
-        <button class="nav-btn" onclick="goView('comms')">🛡️</button>
+        <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
+        <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
+        <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
+        <button class="nav-btn" onclick="goView('mycomms', this)">🛡️</button>
+        <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
+        <button class="nav-btn" onclick="goView('history', this)">🕒</button>
     </div>
 
     <div id="content-area">
         
-        <div id="view-feed" class="view active">
+        <div id="view-feed" class="view">
             <div id="feed-container"></div>
             <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
         </div>
@@ -423,7 +428,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <button onclick="goView('inbox')" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
+                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
                     <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;">Chat</div>
                 </div>
                 <div id="dm-list"></div>
@@ -437,67 +442,78 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
         </div>
 
-        <div id="view-comms" class="view">
-            <div id="comm-explorer" style="display:flex; flex-direction:column; flex:1;">
-                <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🛡️ MINHAS BASES</span>
-                    <button class="glass-btn" style="margin:0; flex:none; padding:8px 15px;" onclick="document.getElementById('modal-create-comm').classList.remove('hidden')">+ CRIAR BASE</button>
-                </div>
-                <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
-                    <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:15px; margin-bottom:40px;"></div>
-                    
-                    <h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; margin-bottom:15px; border-top:1px solid #333; padding-top:20px;">🌐 EXPLORAR BASES</h3>
-                    <div class="search-glass" style="max-width:400px; margin:0 auto 15px auto;">
-                        <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
-                        <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
-                    </div>
-                    <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
-
-                    <h3 style="color:white; font-family:'Rajdhani'; letter-spacing:1px; margin-bottom:15px; border-top:1px solid #333; padding-top:20px;">🎬 MEU HISTÓRICO DE MISSÕES</h3>
-                    <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:0 auto; max-width:800px;"></div>
-                </div>
+        <div id="view-mycomms" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🛡️ MINHAS BASES</span>
+                <button class="glass-btn" style="margin:0; flex:none; padding:8px 15px;" onclick="document.getElementById('modal-create-comm').classList.remove('hidden')">+ CRIAR BASE</button>
             </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
 
-            <div id="comm-dashboard" class="comm-layout" style="display:none;">
-                <div class="comm-topbar">
-                    <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
-                    <div id="active-comm-name">NOME DA BASE</div>
-                    <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
-                </div>
-                
-                <div class="comm-channels-bar" id="comm-channels-bar"></div>
-                
-                <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
-                    <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
-                    <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
-                        <input type="file" id="comm-file" class="hidden" onchange="uploadCommImage()" accept="image/*,video/*">
-                        <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()">📎</button>
-                        <input id="comm-msg" class="chat-msg" placeholder="Mensagem para a base..." autocomplete="off">
-                        <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')">😀</button>
-                        <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
-                    </form>
-                </div>
-                
-                <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding:30px; align-items:center; flex-direction:column;">
-                    <div style="background:var(--card-bg); border:1px solid #444; border-radius:20px; padding:30px; width:100%; max-width:500px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
-                        <img id="c-info-av" src="" style="width:120px;height:120px;border-radius:24px;object-fit:cover;border:3px solid var(--primary);margin-bottom:15px;">
-                        <h2 id="c-info-name" style="color:white;margin:0;font-family:'Rajdhani';font-size:32px;">...</h2>
-                        <p id="c-info-desc" style="color:#aaa;font-size:15px;margin:10px 0 25px 0;">...</p>
-                        <div id="c-info-admin-btn" style="margin-bottom:20px;"></div>
-                        <div style="background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
-                            <h3 style="color:var(--primary); margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Membros da Base</h3>
-                            <div id="c-info-members" style="display:flex; flex-direction:column; gap:12px; max-height:300px; overflow-y:auto; padding-right:5px;"></div>
-                        </div>
-                        <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
-                            <h3 style="color:orange; margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Solicitações de Entrada</h3>
-                            <div id="c-info-requests" style="display:flex; flex-direction:column; gap:12px;"></div>
-                        </div>
+        <div id="view-comm-dashboard" class="view comm-layout">
+            <div class="comm-topbar">
+                <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
+                <div id="active-comm-name">NOME DA BASE</div>
+                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
+            </div>
+            
+            <div class="comm-channels-bar" id="comm-channels-bar"></div>
+            
+            <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
+                <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
+                    <input type="file" id="comm-file" class="hidden" onchange="uploadCommImage()" accept="image/*,video/*">
+                    <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()">📎</button>
+                    <input id="comm-msg" class="chat-msg" placeholder="Mensagem para a base..." autocomplete="off">
+                    <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')">😀</button>
+                    <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
+                </form>
+            </div>
+            
+            <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding:30px; align-items:center; flex-direction:column;">
+                <div style="background:var(--card-bg); border:1px solid #444; border-radius:20px; padding:30px; width:100%; max-width:500px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                    <img id="c-info-av" src="" style="width:120px;height:120px;border-radius:24px;object-fit:cover;border:3px solid var(--primary);margin-bottom:15px;">
+                    <h2 id="c-info-name" style="color:white;margin:0;font-family:'Rajdhani';font-size:32px;">...</h2>
+                    <p id="c-info-desc" style="color:#aaa;font-size:15px;margin:10px 0 25px 0;">...</p>
+                    <div id="c-info-admin-btn" style="margin-bottom:20px;"></div>
+                    <div style="background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
+                        <h3 style="color:var(--primary); margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Membros da Base</h3>
+                        <div id="c-info-members" style="display:flex; flex-direction:column; gap:12px; max-height:300px; overflow-y:auto; padding-right:5px;"></div>
+                    </div>
+                    <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
+                        <h3 style="color:orange; margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Solicitações de Entrada</h3>
+                        <div id="c-info-requests" style="display:flex; flex-direction:column; gap:12px;"></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="view-profile" class="view">
+        <div id="view-explore" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
+                <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🌐 EXPLORAR BASES</span>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div class="search-glass" style="max-width:400px; margin:0 auto 20px auto;">
+                    <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
+                    <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                    <button type="button" onclick="clearCommSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
+                </div>
+                <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
+
+        <div id="view-history" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
+                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🕒 MEU HISTÓRICO</span>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:0 auto; max-width:800px;"></div>
+            </div>
+        </div>
+
+        <div id="view-profile" class="view active">
             <div class="profile-header-container">
                 <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
@@ -573,7 +589,7 @@ function initEmojis() {
 initEmojis();
 
 function checkToken() {
-    const urlParams = newSearchParams(window.location.search); const token = urlParams.get('token');
+    const urlParams = new URLSearchParams(window.location.search); const token = urlParams.get('token');
     if (token) { toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken = token; }
 }
 checkToken();
@@ -632,7 +648,9 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    updateUI(); loadFeed(); fetchOnlineUsers(); fetchUnread();
+    updateUI(); 
+    fetchOnlineUsers(); fetchUnread(); 
+    goView('profile', document.getElementById('nav-profile-btn')); // NASCE NO PERFIL
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
         fetchOnlineUsers(); fetchUnread(); 
@@ -649,12 +667,31 @@ function updateUI(){
     updateStealthUI();
 }
 function logout(){location.reload()}
-function goView(v){
+
+// GESTOR DE VIEWS (TELAS)
+function goView(v, btnElem){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
-    if(v !== 'public-profile' && v !== 'dm') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(event && event.target) event.target.closest('.nav-btn')?.classList.add('active'); }
+    
+    if(v !== 'public-profile' && v !== 'dm' && v !== 'comm-dashboard') { 
+        document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); 
+        if(btnElem) btnElem.classList.add('active');
+        else if(event && event.target && event.target.closest) event.target.closest('.nav-btn')?.classList.add('active'); 
+    }
+    
     if(v === 'inbox') loadInbox();
-    if(v === 'comms') loadCommsBrowser();
+    if(v === 'mycomms') loadMyComms();
+    if(v === 'explore') loadPublicComms();
+    if(v === 'history') loadMyHistory();
+    if(v === 'feed') loadFeed();
+}
+
+// CARREGA HISTÓRICO DE VÍDEOS
+async function loadMyHistory() {
+    let hist = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let hData = await hist.json();
+    let grid = document.getElementById('my-posts-grid'); grid.innerHTML = '';
+    if(hData.posts.length === 0) grid.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma missão registrada no Feed.</p>";
+    hData.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;" controls></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer; border-radius:10px;" onclick="window.open(this.src)">`; });
 }
 
 async function loadFeed(){
@@ -690,7 +727,6 @@ function confirmDeletePost(type, id) { deleteTarget = {type:type, id:id}; docume
 document.getElementById('btn-confirm-delete').onclick = async () => {
     if(!deleteTarget.id) return; 
     let t = deleteTarget.type; let id = deleteTarget.id; document.getElementById('modal-delete').classList.add('hidden');
-    
     if(t === 'post') {
         let r = await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:id,user_id:user.id})});
         if(r.ok) { showToast("Missão excluída."); lastFeedHash=""; loadFeed(); }
@@ -702,7 +738,7 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
 
 async function toggleLike(pid, btn) {
     let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})});
-    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; loadFeed(); }
+    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; }
 }
 
 async function toggleComments(pid) {
@@ -809,21 +845,14 @@ async function openChat(id, name, type) {
 }
 
 function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
-async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; showToast("Enviando..."); try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro ao enviar: " + e)} }
+async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; showToast("Enviando arquivo privado..."); try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro ao enviar: " + e)} }
 
-// --- SISTEMA DE BASES/COMUNIDADES MÁXIMO E HISTÓRICO ---
-async function loadCommsBrowser() {
+// --- MINHAS BASES E BUSCADOR ---
+async function loadMyComms() {
     let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
     let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
-    if(d.my_comms.length === 0) mList.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma base estabelecida.</p>";
+    if(d.my_comms.length === 0) mList.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Você ainda não tem bases.</p>";
     d.my_comms.forEach(c => { mList.innerHTML += `<div class="comm-card" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
-    
-    let hist = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let hData = await hist.json();
-    let grid = document.getElementById('my-posts-grid'); grid.innerHTML = '';
-    if(hData.posts.length === 0) grid.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma missão registrada no Feed.</p>";
-    hData.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;" controls></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer; border-radius:10px;" onclick="window.open(this.src)">`; });
-    
-    loadPublicComms();
 }
 
 async function loadPublicComms() {
@@ -835,7 +864,7 @@ async function loadPublicComms() {
         pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
     });
 }
-
+function clearCommSearch() { document.getElementById('search-comm-input').value = ''; loadPublicComms(); }
 async function searchComms() {
     let q = document.getElementById('search-comm-input').value.trim();
     let r = await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`); let d = await r.json();
@@ -856,13 +885,13 @@ async function submitCreateComm(e) {
         if(f) { let c = await uploadToCloudinary(f); av = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av);
         let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Estabelecida!"); loadCommsBrowser(); }
+        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Estabelecida!"); loadMyComms(); }
     } catch(e) { alert("Erro ao criar."); } finally { btn.innerText = "ESTABELECER"; btn.disabled = false; }
 }
 
 async function joinCommunity(cid) {
     let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
-    if(r.ok) { showToast("Você entrou na Base!"); goView('comms'); openCommunity(cid); loadPublicComms(); }
+    if(r.ok) { showToast("Você entrou na Base!"); loadPublicComms(); openCommunity(cid); }
 }
 
 async function requestCommJoin(cid) {
@@ -872,14 +901,12 @@ async function requestCommJoin(cid) {
 
 async function openCommunity(cid) {
     activeCommId = cid;
-    goView('comms'); 
-    document.getElementById('comm-dashboard').style.display = 'flex';
-    document.getElementById('comm-explorer').style.display = 'none';
+    goView('comm-dashboard'); 
     document.getElementById('comm-info-area').style.display = 'none';
     document.getElementById('comm-chat-area').style.display = 'flex';
     
     let r = await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    document.getElementById('active-comm-name').innerText = "🛡️ " + d.name;
+    document.getElementById('active-comm-name').innerText = d.name;
     document.getElementById('c-info-av').src = d.avatar_url; document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
     
     let mHtml = "";
@@ -911,7 +938,7 @@ async function handleCommReq(rid, act) {
 }
 
 function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
-function closeComm() { document.getElementById('comm-dashboard').style.display='none'; goView('comms'); if(commWS) commWS.close(); }
+function closeComm() { goView('mycomms'); if(commWS) commWS.close(); }
 
 async function submitCreateChannel() {
     let n = document.getElementById('new-ch-name').value.trim(); let t = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value;
@@ -928,10 +955,11 @@ async function fetchCommMessages(chid) {
         let msgs = await r.json();
         let isAtBottom = (list.scrollHeight - list.scrollTop <= list.clientHeight + 50);
         msgs.forEach(d => {
-            if(!document.getElementById(`comm-msg-${d.id}`)) {
+            let msgId = `comm-msg-${d.id}`;
+            if(!document.getElementById(msgId)) {
                 let m = (d.sender_id === user.id); let c = d.content;
                 if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-                let h = `<div id="comm-msg-${d.id}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend', h);
             }
         });
@@ -947,9 +975,10 @@ function connectCommWS(chid) {
     commWS.onmessage = e => {
         let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(d.type === 'ping') return;
-        if(!document.getElementById(`comm-msg-${d.id}`)) {
+        let msgId = `comm-msg-${d.id}`;
+        if(!document.getElementById(msgId)) {
             if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-            let h = `<div id="comm-msg-${d.id}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
     };
@@ -1004,7 +1033,7 @@ async function uploadToCloudinary(file){
         x.onerror=()=>rej("Conexão caiu."); x.send(fd)
     });
 }
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();loadCommsBrowser();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();loadMyHistory();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
 function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
