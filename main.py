@@ -4,7 +4,7 @@ import hashlib
 import random
 import os
 import logging
-from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_
@@ -206,9 +206,6 @@ html_content = r"""
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
 <title>For Glory</title>
 <style>
@@ -232,13 +229,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-av{width:42px;height:42px;border-radius:50%;margin-right:12px;object-fit:cover;border:1px solid var(--primary); background:#111;}
 .rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3)}
 
-/* CIRURGIA NO VÍDEO: O segredo está aqui */
-.post-media-wrapper { width: 100%; background: #000; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); }
-.post-media { width: 100%; max-height: 70vh; object-fit: contain; display: block; } /* 70vh garante que cabe na tela e 'contain' não corta */
+/* A CORREÇÃO DE VÍDEOS BLINDADA - O Segredo está no max-width em vez de width 100% */
+.post-media-wrapper { width: 100%; background: #030405; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02); padding: 5px 0;}
+.post-media { max-width: 100%; max-height: 65vh; object-fit: contain !important; display: block; }
 
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
-/* AÇÕES DO POST */
+/* AÇÕES DO POST (CURTIR E COMENTAR) */
 .post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); }
 .action-btn { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
 .action-btn.liked { color: #ff5555; }
@@ -486,7 +483,8 @@ function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.rem
 
 async function loadFeed(){
     try{
-        let r=await fetch('/posts?uid='+user.id+'&limit=50');
+        // O "nocache" no link garante que o navegador pare de te mostrar coisas velhas
+        let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
         if(!r.ok)return;
         let p=await r.json();
         let h=JSON.stringify(p.map(x=>x.id + x.likes + x.comments + (x.user_liked?"1":"0"))); 
@@ -495,8 +493,6 @@ async function loadFeed(){
         let ht='';
         p.forEach(x=>{
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
-            
-            // O BLINDADO DO VÍDEO
             m = `<div class="post-media-wrapper">${m}</div>`;
             
             let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
@@ -608,8 +604,14 @@ async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/
 </body>
 </html>
 """
+
+# A ROTA PRINCIPAL AGORA PROÍBE O CACHE DO NAVEGADOR
 @app.get("/", response_class=HTMLResponse)
-async def get(): return HTMLResponse(content=html_content)
+async def get(response: Response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return HTMLResponse(content=html_content)
 
 @app.post("/auth/forgot-password")
 async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
@@ -767,5 +769,3 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
