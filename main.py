@@ -8,7 +8,7 @@ from typing import List
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
@@ -75,6 +75,7 @@ class User(Base):
     avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
     cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
+    is_invisible = Column(Integer, default=0) # NOVO: Status do Modo Furtivo
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
 class FriendRequest(Base):
@@ -121,7 +122,6 @@ class PrivateMessage(Base):
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
 
-# NOVAS TABELAS PARA GRUPOS
 class ChatGroup(Base):
     __tablename__ = "chat_groups"
     id = Column(Integer, primary_key=True, index=True)
@@ -176,16 +176,25 @@ def verify_reset_token(token: str):
     except JWTError:
         return None
 
-# --- WEBSOCKET E APP ---
+# --- WEBSOCKET E RADAR DE STATUS ---
 class ConnectionManager:
     def __init__(self):
         self.active = {}
-    async def connect(self, ws: WebSocket, chan: str):
+        self.user_connections = {} # Rastreia quem está conectado
+
+    async def connect(self, ws: WebSocket, chan: str, uid: int):
         await ws.accept()
         if chan not in self.active: self.active[chan] = []
         self.active[chan].append(ws)
-    def disconnect(self, ws: WebSocket, chan: str):
+        self.user_connections[uid] = self.user_connections.get(uid, 0) + 1
+
+    def disconnect(self, ws: WebSocket, chan: str, uid: int):
         if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
+        if uid in self.user_connections:
+            self.user_connections[uid] -= 1
+            if self.user_connections[uid] <= 0:
+                del self.user_connections[uid]
+
     async def broadcast(self, msg: dict, chan: str):
         for conn in self.active.get(chan, []):
             try: await conn.send_text(json.dumps(msg))
@@ -226,6 +235,13 @@ def criptografar(s):
 @app.on_event("startup")
 def startup():
     db = SessionLocal()
+    # Blindagem: Atualiza a tabela antiga para suportar o Modo Furtivo sem deletar dados
+    try:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0"))
+        db.commit()
+    except:
+        pass # Ignora se a coluna já existir
+        
     try:
         if not db.query(Channel).first():
             db.add(Channel(name="Geral"))
@@ -251,7 +267,7 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR ATUALIZADA: Perfil -> Chat -> Feed -> Inbox */
+/* SIDEBAR */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:20}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -261,7 +277,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS FEED E ENGAJAMENTO */
+/* POSTS E FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -272,6 +288,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-media { max-width: 100%; max-height: 65vh; object-fit: contain !important; display: block; }
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
+/* CSS NOVO: INDICADORES ONLINE (BOLINHA) */
+.av-wrap { position: relative; display: inline-block; cursor: pointer; }
+.status-dot { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card-bg); background: #555; transition: 0.3s; z-index: 5; }
+.status-dot.online { background: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
+.status-dot-lg { width: 20px; height: 20px; border-width: 3px; bottom: 5px; right: 10px; border-color: var(--dark-bg); }
+
 /* AÇÕES E COMENTÁRIOS */
 .post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); border-top: 1px solid rgba(255,255,255,0.02); }
 .action-btn { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
@@ -280,27 +302,28 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
-.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
+.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
 .comment-input-area { display: flex; gap: 8px; margin-top: 15px; align-items: center; }
 .comment-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 10px 15px; color: white; outline: none; font-size: 13px; }
 .comment-inp:focus { border-color: var(--primary); }
 
-/* CHAT GERAL E PRIVADO (CAIXA CENTRALIZADA) */
+/* CHAT GERAL E PRIVADO */
 #chat-list, #dm-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
-.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
+.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111;}
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .chat-input-area {background:rgba(11,12,16,0.9);padding:15px;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border)}
 .chat-msg {flex:1;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:24px;padding:12px 20px;color:white;outline:none}
 
-/* CAIXA DE CHAT MENOR E CENTRALIZADA */
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
+/* PERFIL */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
-.profile-pic-lg{position:absolute;bottom:-50px;left:50%;transform:translateX(-50%);width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid var(--dark-bg);box-shadow:0 0 25px rgba(102,252,241,0.3);cursor:pointer; background:#1f2833;}
+.profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
+.profile-pic-lg { width:130px; height:130px; border-radius:50%; object-fit:cover; border:4px solid var(--dark-bg); box-shadow:0 0 25px rgba(102,252,241,0.3); cursor:pointer; background:#1f2833; display:block; }
 
 .glass-btn { background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary); padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif; transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1; }
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
@@ -378,7 +401,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="modal-create-group" class="modal hidden">
     <div class="modal-box">
         <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">NOVO ESQUADRÃO</h2>
-        <input id="new-group-name" class="inp" placeholder="Nome do Grupo (Ex: Guilda)">
+        <input id="new-group-name" class="inp" placeholder="Nome do Grupo">
         <p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;">Selecione os aliados:</p>
         <div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div>
         <div style="display:flex; gap:10px;">
@@ -459,7 +482,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <div id="view-profile" class="view">
             <div class="profile-header-container">
                 <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
-                <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                <div class="profile-pic-lg-wrap">
+                    <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                    <div id="my-status-dot" class="status-dot status-dot-lg online"></div>
+                </div>
             </div>
             <div style="text-align:center;margin-top:10px">
                 <h2 id="p-name" style="color:white;font-family:'Rajdhani';font-size:28px;margin:5px 0;">...</h2>
@@ -467,6 +493,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center">
+                <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;">MODO FURTIVO</button>
+
                 <div class="search-glass">
                     <input id="search-input" placeholder="Buscar Soldado..." onkeypress="if(event.key==='Enter')searchUsers()">
                     <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
@@ -488,7 +516,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;">⬅ Voltar</button>
             <div class="profile-header-container">
                 <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
-                <img id="pub-avatar" src="" class="profile-pic-lg" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                <div class="profile-pic-lg-wrap">
+                    <img id="pub-avatar" src="" class="profile-pic-lg" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                    <div id="pub-status-dot" class="status-dot status-dot-lg"></div>
+                </div>
             </div>
             <div style="text-align:center;margin-top:20px">
                 <h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin:5px 0;">...</h2>
@@ -503,6 +534,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <script>
 var user=null, ws=null, dmWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
+window.onlineUsers = []; // Array Global de quem está online
+
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
@@ -518,13 +551,7 @@ function initEmojis() {
         let s = document.createElement('div');
         s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
         s.innerText = e;
-        s.onclick = () => {
-            if(currentEmojiTarget){
-                let inp = document.getElementById(currentEmojiTarget);
-                inp.value += e;
-                inp.focus();
-            }
-        };
+        s.onclick = () => { if(currentEmojiTarget){ let inp = document.getElementById(currentEmojiTarget); inp.value += e; inp.focus(); } };
         s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
         s.onmouseout = () => s.style.background = "transparent";
         g.appendChild(s);
@@ -542,11 +569,54 @@ checkToken();
 function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
 function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
+// RADAR ONLINE
+async function fetchOnlineUsers() {
+    if(!user) return;
+    try {
+        let r = await fetch('/users/online');
+        window.onlineUsers = await r.json();
+        updateStatusDots();
+    } catch(e){}
+}
+function updateStatusDots() {
+    document.querySelectorAll('.status-dot').forEach(dot => {
+        let uid = parseInt(dot.getAttribute('data-uid'));
+        if(!uid) return;
+        if(window.onlineUsers.includes(uid)) dot.classList.add('online');
+        else dot.classList.remove('online');
+    });
+}
+
+// MODO FURTIVO
+async function toggleStealth() {
+    let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
+    if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
+}
+function updateStealthUI() {
+    let btn = document.getElementById('btn-stealth');
+    let myDot = document.getElementById('my-status-dot');
+    if(user.is_invisible) {
+        btn.innerText = "🕵️ MODO FURTIVO: ATIVADO"; btn.style.borderColor = "#ffaa00"; btn.style.color = "#ffaa00";
+        myDot.classList.remove('online');
+    } else {
+        btn.innerText = "🟢 MODO FURTIVO: DESATIVADO"; btn.style.borderColor = "rgba(102, 252, 241, 0.3)"; btn.style.color = "var(--primary)";
+        myDot.classList.add('online');
+    }
+}
+
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Digite seu e-mail!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("E-mail enviado! Verifique spam."); toggleAuth('login'); } catch(e) { showToast("Erro"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Digite a nova senha!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Registrado!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
-function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},4000)}
+function startApp(){
+    document.getElementById('modal-login').classList.add('hidden');
+    updateUI(); loadFeed(); connectWS(); 
+    fetchOnlineUsers();
+    syncInterval=setInterval(()=>{
+        if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
+        fetchOnlineUsers(); // Atualiza o radar a cada 4 segundos
+    },4000);
+}
 
 function updateUI(){
     if(!user) return;
@@ -556,19 +626,17 @@ function updateUI(){
     let pCover = document.getElementById('p-cover'); pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY"; pCover.style.display = 'block';
     document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; document.getElementById('p-rank').innerText = user.rank || "REC";
     document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar);
+    updateStealthUI();
 }
 function logout(){location.reload()}
 function goView(v){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
-    if(v !== 'public-profile' && v !== 'dm') {
-        document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-        if(event && event.target) event.target.closest('.nav-btn')?.classList.add('active');
-    }
+    if(v !== 'public-profile' && v !== 'dm') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(event && event.target) event.target.closest('.nav-btn')?.classList.add('active'); }
     if(v === 'inbox') loadInbox();
 }
 
-// FEED BLINDADO
+// FEED BLINDADO + RADAR
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
@@ -582,13 +650,15 @@ async function loadFeed(){
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
             m = `<div class="post-media-wrapper">${m}</div>`;
             let delBtn=x.author_id===user.id?`<span onclick="confirmDeletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
-            let heartIcon = x.user_liked ? "❤️" : "🤍";
-            let heartClass = x.user_liked ? "liked" : "";
+            let heartIcon = x.user_liked ? "❤️" : "🤍"; let heartClass = x.user_liked ? "liked" : "";
             
             ht+=`<div class="post-card">
                     <div class="post-header">
                         <div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})">
-                            <img src="${x.author_avatar}" class="post-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                            <div class="av-wrap" style="margin-right:12px;">
+                                <img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                                <div class="status-dot" data-uid="${x.author_id}"></div>
+                            </div>
                             <div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div>
                         </div>
                         ${delBtn}
@@ -614,6 +684,7 @@ async function loadFeed(){
                 </div>`
         });
         document.getElementById('feed-container').innerHTML=ht;
+        updateStatusDots();
     }catch(e){}
 }
 
@@ -643,17 +714,19 @@ async function loadComments(pid) {
         if(comments.length === 0){ list.innerHTML = "<p style='color:#888;font-size:12px;text-align:center;'>Nenhum comentário ainda.</p>"; return;}
         list.innerHTML = comments.map(c => `
             <div class="comment-row">
-                <img src="${c.author_avatar}" class="comment-av" onclick="openPublicProfile(${c.author_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                <div class="av-wrap" onclick="openPublicProfile(${c.author_id})">
+                    <img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                    <div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div>
+                </div>
                 <div><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="color:#e0e0e0">${c.text}</span></div>
             </div>
         `).join('');
+        updateStatusDots();
     }
 }
 
 async function sendComment(pid) {
-    let inp = document.getElementById(`comment-inp-${pid}`);
-    let text = inp.value.trim();
-    if(!text) return;
+    let inp = document.getElementById(`comment-inp-${pid}`); let text = inp.value.trim(); if(!text) return;
     let r = await fetch('/post/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id, text:text})});
     if(r.ok) { inp.value = ''; loadComments(pid); toggleEmoji(true); lastFeedHash=""; }
 }
@@ -664,11 +737,7 @@ async function loadInbox() {
     let d = await r.json();
     let b = document.getElementById('inbox-list');
     b.innerHTML = '';
-    
-    if(d.groups.length === 0 && d.friends.length === 0) {
-        b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>";
-        return;
-    }
+    if(d.groups.length === 0 && d.friends.length === 0) { b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; return; }
     
     d.groups.forEach(g => {
         b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')">
@@ -679,56 +748,43 @@ async function loadInbox() {
     
     d.friends.forEach(f => {
         b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
-            <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
+            <div class="av-wrap">
+                <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
+                <div class="status-dot" data-uid="${f.id}"></div>
+            </div>
             <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div>
         </div>`;
     });
+    updateStatusDots();
 }
 
 async function openCreateGroupModal() {
-    let r = await fetch(`/inbox/${user.id}`);
-    let d = await r.json();
-    let list = document.getElementById('group-friends-list');
+    let r = await fetch(`/inbox/${user.id}`); let d = await r.json(); let list = document.getElementById('group-friends-list');
     if(d.friends.length === 0) { list.innerHTML = "<p style='color:#ff5555;font-size:13px;'>Você precisa de aliados para criar um grupo.</p>"; } 
-    else {
-        list.innerHTML = d.friends.map(f => `
-            <label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;">
-                <input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;">
-                <img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}
-            </label>
-        `).join('');
-    }
-    document.getElementById('new-group-name').value = '';
-    document.getElementById('modal-create-group').classList.remove('hidden');
+    else { list.innerHTML = d.friends.map(f => `<label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join(''); }
+    document.getElementById('new-group-name').value = ''; document.getElementById('modal-create-group').classList.remove('hidden');
 }
 
 async function submitCreateGroup() {
-    let name = document.getElementById('new-group-name').value.trim();
-    if(!name) return showToast("Dê um nome ao grupo!");
-    let cbs = document.querySelectorAll('.grp-friend-cb:checked');
-    let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
+    let name = document.getElementById('new-group-name').value.trim(); if(!name) return showToast("Dê um nome ao grupo!");
+    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
     if(member_ids.length === 0) return showToast("Selecione pelo menos 1 aliado!");
-    
     let r = await fetch('/group/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids})});
     if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); showToast("Esquadrão criado!"); loadInbox(); }
 }
 
 async function openChat(id, name, type) {
-    currentChatId = id;
-    currentChatType = type;
+    currentChatId = id; currentChatType = type;
     document.getElementById('dm-header-name').innerText = type === 'group' ? "Grupo: " + name : "Chat: " + name;
     goView('dm');
     
-    let list = document.getElementById('dm-list');
-    list.innerHTML = '';
-    
+    let list = document.getElementById('dm-list'); list.innerHTML = '';
     let fetchUrl = type === 'group' ? `/group/${id}/messages` : `/dms/${id}?uid=${user.id}`;
     let r = await fetch(fetchUrl);
     if(r.ok) {
         let msgs = await r.json();
         msgs.forEach(d => {
-            let m = (d.sender_id === user.id);
-            let c = d.content;
+            let m = (d.sender_id === user.id); let c = d.content;
             if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
             let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
             list.insertAdjacentHTML('beforeend',h);
@@ -744,15 +800,11 @@ async function openChat(id, name, type) {
         let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
         let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        b.insertAdjacentHTML('beforeend',h);
-        b.scrollTop = b.scrollHeight;
+        b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
     };
 }
 
-function sendDM() {
-    let i = document.getElementById('dm-msg');
-    if(i.value.trim() && dmWS) { dmWS.send(i.value.trim()); i.value = ''; toggleEmoji(true); }
-}
+function sendDM() { let i = document.getElementById('dm-msg'); if(i.value.trim() && dmWS) { dmWS.send(i.value.trim()); i.value = ''; toggleEmoji(true); } }
 
 // PERFIL PÚBLICO
 async function openPublicProfile(uid){
@@ -760,6 +812,10 @@ async function openPublicProfile(uid){
     document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
     document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-rank').innerText=d.rank;
     let ab=document.getElementById('pub-actions'); ab.innerHTML='';
+    
+    // Injeta a marcação pro Radar saber quem é
+    document.getElementById('pub-status-dot').setAttribute('data-uid', uid);
+    updateStatusDots();
     
     if(d.friend_status==='friends') {
         ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:10px 15px; border-radius:12px; font-weight:bold;">✔ Aliado</span> <button class="glass-btn" style="padding:10px 20px; border-color:var(--primary); font-size:14px; max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;
@@ -772,14 +828,11 @@ async function openPublicProfile(uid){
     goView('public-profile')
 }
 
-// UPLOADS 
+// UPLOADS E UPDATES
 async function uploadToCloudinary(file){
-    let limiteMB = 100; 
-    if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject(`Arquivo excedeu ${limiteMB}MB!`);
-    let resType = file.type.startsWith('video') ? 'video' : 'image';
-    let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
+    let limiteMB = 100; if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject(`Arquivo excedeu ${limiteMB}MB!`);
+    let resType = file.type.startsWith('video') ? 'video' : 'image'; let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
     let fd=new FormData(); fd.append('file',file); fd.append('upload_preset',UPLOAD_PRESET);
-    
     return new Promise((res,rej)=>{
         let x=new XMLHttpRequest(); x.open('POST', url, true);
         x.upload.onprogress = (e) => { if (e.lengthComputable && document.getElementById('progress-bar')) { let p = Math.round((e.loaded / e.total) * 100); document.getElementById('progress-bar').style.width = p + '%'; document.getElementById('progress-text').innerText = p + '%'; } };
@@ -806,8 +859,8 @@ function closeUpload(){document.getElementById('modal-upload').classList.add('hi
 
 // BUSCA E ALIADOS
 function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;"><span>${u.username}</span></div>`})}
-async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;" onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>')}
+async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`}); updateStatusDots();}
+async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>'); updateStatusDots();}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
 </script>
@@ -822,6 +875,24 @@ async def get(response: Response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return HTMLResponse(content=html_content)
+
+# RADAR
+@app.get("/users/online")
+async def get_online_users(db: Session=Depends(get_db)):
+    active_uids = list(manager.user_connections.keys())
+    if not active_uids: return []
+    visible_users = db.query(User.id).filter(User.id.in_(active_uids), User.is_invisible == 0).all()
+    return [u[0] for u in visible_users]
+
+@app.post("/profile/stealth")
+async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
+    uid = d.get("uid")
+    u = db.query(User).filter(User.id == uid).first()
+    if u:
+        u.is_invisible = 1 if u.is_invisible == 0 else 0
+        db.commit()
+        return {"is_invisible": u.is_invisible}
+    return {"status": "error"}
 
 @app.post("/auth/forgot-password")
 async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
@@ -847,7 +918,7 @@ async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
-    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0))
+    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0, is_invisible=0))
     db.commit()
     return {"status":"ok"}
 
@@ -855,7 +926,7 @@ async def reg(d: RegisterData, db: Session=Depends(get_db)):
 async def log(d: LoginData, db: Session=Depends(get_db)):
     u = db.query(User).filter(User.username==d.username).first()
     if not u or u.password_hash != criptografar(d.password): raise HTTPException(400, "Erro")
-    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": calcular_patente(u.xp)}
+    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": calcular_patente(u.xp), "is_invisible": getattr(u, 'is_invisible', 0)}
 
 @app.post("/post/create_from_url")
 async def create_post_url(user_id: int = Form(...), caption: str = Form(""), content_url: str = Form(...), media_type: str = Form(...), db: Session=Depends(get_db)):
@@ -920,7 +991,6 @@ async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
 
-# --- NOVAS ROTAS DE INBOX E GRUPOS ---
 @app.get("/inbox/{uid}")
 async def get_inbox(uid: int, db: Session=Depends(get_db)):
     me = db.query(User).filter(User.id == uid).first()
@@ -938,13 +1008,10 @@ async def get_inbox(uid: int, db: Session=Depends(get_db)):
 @app.post("/group/create")
 async def create_group(d: CreateGroupData, db: Session=Depends(get_db)):
     grp = ChatGroup(name=d.name)
-    db.add(grp)
-    db.commit()
-    db.refresh(grp)
+    db.add(grp); db.commit(); db.refresh(grp)
     
     db.add(GroupMember(group_id=grp.id, user_id=d.creator_id))
-    for mid in d.member_ids:
-        db.add(GroupMember(group_id=grp.id, user_id=mid))
+    for mid in d.member_ids: db.add(GroupMember(group_id=grp.id, user_id=mid))
     db.commit()
     return {"status": "ok"}
 
@@ -965,13 +1032,11 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
-    await manager.connect(ws, ch)
+    await manager.connect(ws, ch, uid)
     try:
         while True:
             txt = await ws.receive_text()
             u_fresh = db.query(User).filter(User.id == uid).first()
-            
-            # SALVANDO HISTÓRICO DE MENSAGENS (1v1 ou Grupo)
             if ch.startswith("dm_"):
                 parts = ch.split("_")
                 id1, id2 = int(parts[1]), int(parts[2])
@@ -985,9 +1050,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 
             await manager.broadcast({"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}, ch)
     except:
-        manager.disconnect(ws, ch)
+        manager.disconnect(ws, ch, uid)
 
-# --- SISTEMA DE ALIADOS ---
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
     sender_id = d.get('sender_id'); target_id = d.get('target_id')
@@ -1004,7 +1068,7 @@ async def get_reqs(uid: int, db: Session=Depends(get_db)):
     reqs = db.query(FriendRequest).filter(FriendRequest.receiver_id == uid).all()
     requests_data = [{"id": r.id, "username": db.query(User).filter(User.id == r.sender_id).first().username} for r in reqs]
     me = db.query(User).filter(User.id == uid).first()
-    friends_data = [{"id": f.id, "username": f.username} for f in me.friends]
+    friends_data = [{"id": f.id, "username": f.username, "avatar": f.avatar_url} for f in me.friends]
     return {"requests": requests_data, "friends": friends_data}
 
 @app.post("/friend/handle")
