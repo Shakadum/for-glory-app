@@ -403,8 +403,31 @@ const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","�
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// CARREGAMENTO BLINDADO DE EMOJIS E URL
-document.addEventListener("DOMContentLoaded", function() {
+// 1. INJEÇÃO IMEDIATA E BLINDADA DE EMOJIS (Sem depender de window.onload)
+function initEmojis() {
+    let g = document.getElementById('emoji-grid');
+    if(!g) return;
+    g.innerHTML = '';
+    EMOJIS.forEach(e => {
+        let s = document.createElement('div');
+        s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
+        s.innerText = e;
+        s.onclick = () => {
+            if(currentEmojiTarget){
+                let inp = document.getElementById(currentEmojiTarget);
+                inp.value += e;
+                inp.focus();
+            }
+        };
+        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
+        s.onmouseout = () => s.style.background = "transparent";
+        g.appendChild(s);
+    });
+}
+initEmojis(); // Chama a função na mesma hora!
+
+// 2. VERIFICADOR DE TOKEN IMEDIATO
+function checkToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
@@ -412,26 +435,8 @@ document.addEventListener("DOMContentLoaded", function() {
         window.history.replaceState({}, document.title, "/");
         window.resetToken = token;
     }
-    
-    // Injeta os emojis com CSS imune a bugs
-    let g = document.getElementById('emoji-grid');
-    if(g) {
-        g.innerHTML = '';
-        EMOJIS.forEach(e => {
-            let s = document.createElement('div');
-            s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;";
-            s.innerText = e;
-            s.onclick = () => {
-                if(currentEmojiTarget){
-                    let inp = document.getElementById(currentEmojiTarget);
-                    inp.value += e;
-                    inp.focus();
-                }
-            };
-            g.appendChild(s);
-        });
-    }
-});
+}
+checkToken();
 
 function openEmoji(id){
     currentEmojiTarget = id;
@@ -501,13 +506,11 @@ async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50
 
 // UPLOADS INTELIGENTES COM PROTEÇÃO DE TAMANHO E TIPO
 async function uploadToCloudinary(file){
-    // Defesa 1: Trava vídeos muito grandes antes de tentar enviar
     let limiteMB = 50; 
     if(file.size > (limiteMB * 1024 * 1024)) {
         return Promise.reject(`Arquivo muito pesado! O limite grátis é de ${limiteMB}MB.`);
     }
 
-    // Defesa 2: Diz ao Cloudinary exatamente o que estamos enviando
     let resType = file.type.startsWith('video') ? 'video' : 'image';
     let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
 
@@ -593,7 +596,6 @@ function connectWS(){
         let c = d.content;
         
         if(c.startsWith('http') && c.includes('cloudinary')) {
-            // Reconhece vídeo pelo final ou pela pasta /video/
             if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
                 c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
             } else {
@@ -723,5 +725,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
