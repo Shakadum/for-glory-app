@@ -228,7 +228,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 /* POSTS FEED E ENGAJAMENTO */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 
-/* A SOLUÇÃO DO ESMAGAMENTO ESTÁ AQUI: flex-shrink: 0 impede o corte */
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -250,7 +249,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
-.comment-input-area { display: flex; gap: 8px; margin-top: 15px; }
+.comment-input-area { display: flex; gap: 8px; margin-top: 15px; align-items: center; }
 .comment-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 10px 15px; color: white; outline: none; font-size: 13px; }
 .comment-inp:focus { border-color: var(--primary); }
 
@@ -497,7 +496,7 @@ function updateUI(){
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.target.closest('.nav-btn').classList.add('active')}
 
-// FEED BLINDADO
+// FEED BLINDADO COM EMOJIS NOS COMENTÁRIOS E ENTER
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
@@ -508,11 +507,9 @@ async function loadFeed(){
         lastFeedHash=h;
         let ht='';
         p.forEach(x=>{
-            // Preload metadata garante que o vídeo sabe a altura dele antes de tocar
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
             m = `<div class="post-media-wrapper">${m}</div>`;
             
-            // Ícone de lixo agora chama a nova função do Modal Bonito
             let delBtn=x.author_id===user.id?`<span onclick="confirmDeletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
             
             let heartIcon = x.user_liked ? "❤️" : "🤍";
@@ -539,7 +536,8 @@ async function loadFeed(){
                     <div id="comments-${x.id}" class="comments-section">
                         <div id="comment-list-${x.id}"></div>
                         <div class="comment-input-area">
-                            <input id="comment-inp-${x.id}" class="comment-inp" placeholder="Escreva um comentário...">
+                            <input id="comment-inp-${x.id}" class="comment-inp" placeholder="Escreva um comentário..." onkeypress="if(event.key==='Enter')sendComment(${x.id})">
+                            <button onclick="openEmoji('comment-inp-${x.id}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0 5px;">😀</button>
                             <button onclick="sendComment(${x.id})" style="background:var(--primary);border:none;border-radius:12px;padding:0 15px;color:black;font-weight:bold;cursor:pointer;">➤</button>
                         </div>
                     </div>
@@ -549,7 +547,6 @@ async function loadFeed(){
     }catch(e){}
 }
 
-// NOVO SISTEMA DE EXCLUSÃO
 let postToDelete = null;
 function confirmDeletePost(pid) {
     postToDelete = pid;
@@ -560,13 +557,8 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
     if(!postToDelete) return;
     let pid = postToDelete;
     document.getElementById('modal-delete').classList.add('hidden');
-    
     let r = await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})});
-    if(r.ok) {
-        showToast("Missão excluída do registro.");
-        lastFeedHash="";
-        loadFeed();
-    }
+    if(r.ok) { showToast("Missão excluída do registro."); lastFeedHash=""; loadFeed(); }
 };
 
 async function toggleLike(pid, btn) {
@@ -608,7 +600,7 @@ async function sendComment(pid) {
     let text = inp.value.trim();
     if(!text) return;
     let r = await fetch('/post/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id, text:text})});
-    if(r.ok) { inp.value = ''; loadComments(pid); lastFeedHash=""; }
+    if(r.ok) { inp.value = ''; loadComments(pid); toggleEmoji(true); lastFeedHash=""; }
 }
 
 async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1; border:1px solid #66fcf1; padding:5px 10px; border-radius:8px;">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}
@@ -807,4 +799,5 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
