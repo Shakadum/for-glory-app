@@ -275,8 +275,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <input id="l-pass" class="inp" type="password" placeholder="SENHA">
             <button onclick="doLogin()" class="btn-main">ENTRAR</button>
             <div style="margin-top:20px;display:flex;justify-content:space-between">
-                <span onclick="toggleAuth('register')" class="btn-link" style="color:white">Criar Conta</span>
-                <span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary)">Esqueci Senha</span>
+                <span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;">Criar Conta</span>
+                <span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;">Esqueci Senha</span>
             </div>
         </div>
         <div id="register-form" class="hidden">
@@ -320,7 +320,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp"><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">FECHAR</button></div></div>
+<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">FECHAR</button></div></div>
 
 <div id="app">
     <div id="sidebar">
@@ -334,7 +334,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <div style="padding:15px;text-align:center;color:var(--primary);font-family:'Rajdhani';font-weight:bold;background:rgba(0,0,0,0.2);letter-spacing:2px;">CANAL GERAL</div>
             <div id="chat-list"></div>
             <div id="chat-input-area">
-                <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()">
+                <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()" accept="image/*,video/*">
                 <button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
                 <input id="chat-msg" placeholder="Mensagem..." onkeypress="if(event.key==='Enter')sendMsg()">
                 <button onclick="openEmoji('chat-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
@@ -397,14 +397,14 @@ var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
 
-// ARRAY DE EMOJIS RESTAURADO
+// ARRAY DE EMOJIS
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-window.onload = function() {
-    // Carrega a URL do token de senha
+// CARREGAMENTO BLINDADO DE EMOJIS E URL
+document.addEventListener("DOMContentLoaded", function() {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
@@ -413,22 +413,25 @@ window.onload = function() {
         window.resetToken = token;
     }
     
-    // CARREGA A CAIXA DE EMOJIS
+    // Injeta os emojis com CSS imune a bugs
     let g = document.getElementById('emoji-grid');
-    EMOJIS.forEach(e => {
-        let s = document.createElement('div');
-        s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;";
-        s.innerText = e;
-        s.onclick = () => {
-            if(currentEmojiTarget){
-                let inp = document.getElementById(currentEmojiTarget);
-                inp.value += e;
-                inp.focus();
-            }
-        };
-        g.appendChild(s);
-    });
-};
+    if(g) {
+        g.innerHTML = '';
+        EMOJIS.forEach(e => {
+            let s = document.createElement('div');
+            s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;";
+            s.innerText = e;
+            s.onclick = () => {
+                if(currentEmojiTarget){
+                    let inp = document.getElementById(currentEmojiTarget);
+                    inp.value += e;
+                    inp.focus();
+                }
+            };
+            g.appendChild(s);
+        });
+    }
+});
 
 function openEmoji(id){
     currentEmojiTarget = id;
@@ -441,7 +444,7 @@ function toggleEmoji(forceClose){
     else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';
 }
 
-// RESTO DO SISTEMA DE LOGIN
+// RESTO DO SISTEMA DE LOGIN E RECUPERAÇÃO
 async function requestReset() {
     let email = document.getElementById('f-email').value;
     if(!email) return showToast("Digite seu e-mail!");
@@ -496,15 +499,25 @@ async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id
 
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
-// UPLOADS PARA A NUVEM (COM PROGRESSO VISUAL E TRATAMENTO DE ERRO)
+// UPLOADS INTELIGENTES COM PROTEÇÃO DE TAMANHO E TIPO
 async function uploadToCloudinary(file){
+    // Defesa 1: Trava vídeos muito grandes antes de tentar enviar
+    let limiteMB = 50; 
+    if(file.size > (limiteMB * 1024 * 1024)) {
+        return Promise.reject(`Arquivo muito pesado! O limite grátis é de ${limiteMB}MB.`);
+    }
+
+    // Defesa 2: Diz ao Cloudinary exatamente o que estamos enviando
+    let resType = file.type.startsWith('video') ? 'video' : 'image';
+    let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
+
     let fd=new FormData();
     fd.append('file',file);
     fd.append('upload_preset',UPLOAD_PRESET);
     
     return new Promise((res,rej)=>{
         let x=new XMLHttpRequest();
-        x.open('POST',`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,true);
+        x.open('POST', url, true);
         x.upload.onprogress = (e) => {
             if (e.lengthComputable) {
                 let percent = Math.round((e.loaded / e.total) * 100);
@@ -518,10 +531,10 @@ async function uploadToCloudinary(file){
             if(x.status===200) res(JSON.parse(x.responseText));
             else {
                 try { rej(JSON.parse(x.responseText).error.message); } 
-                catch(err) { rej("Erro na Nuvem (Verifique se é vídeo e o tamanho)"); }
+                catch(err) { rej("A nuvem recusou o arquivo (formato inválido)."); }
             }
         };
-        x.onerror=()=>rej("Erro de rede");
+        x.onerror=()=>rej("Conexão caiu ou limite estourado na nuvem.");
         x.send(fd)
     });
 }
@@ -555,7 +568,7 @@ async function submitPost(){
             closeUpload();
         }
     }catch(e){
-        alert("Ops! Erro ao subir: " + e); // Alerta visual exato
+        alert("Ops! Falha na Missão: " + e); 
     }finally{
         btn.innerText="PUBLICAR (+50 XP)";
         btn.disabled=false;
@@ -567,7 +580,7 @@ async function submitPost(){
 
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Erro: " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
-// CHAT INTELIGENTE (RECONHECE VÍDEOS DE VERDADE AGORA)
+// CHAT INTELIGENTE 
 function connectWS(){
     if(ws)ws.close();
     let p=location.protocol==='https:'?'wss:':'ws:';
@@ -579,8 +592,8 @@ function connectWS(){
         
         let c = d.content;
         
-        // Se for um link do Cloudinary, verifica se é imagem ou vídeo
         if(c.startsWith('http') && c.includes('cloudinary')) {
+            // Reconhece vídeo pelo final ou pela pasta /video/
             if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
                 c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
             } else {
@@ -710,4 +723,5 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
