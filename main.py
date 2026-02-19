@@ -4,6 +4,7 @@ import hashlib
 import random
 import os
 import logging
+from typing import List
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,7 +47,7 @@ cloudinary.config(
 )
 
 # --- BANCO DE DADOS ---
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v2.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v3.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -110,7 +111,6 @@ class Comment(Base):
     timestamp = Column(DateTime, default=datetime.now)
     author = relationship("User")
 
-# NOVO BANCO: RÁDIO PRIVADO (DMs)
 class PrivateMessage(Base):
     __tablename__ = "private_messages"
     id = Column(Integer, primary_key=True, index=True)
@@ -120,6 +120,28 @@ class PrivateMessage(Base):
     timestamp = Column(DateTime, default=datetime.now)
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
+
+# NOVAS TABELAS PARA GRUPOS
+class ChatGroup(Base):
+    __tablename__ = "chat_groups"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("chat_groups.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+
+class GroupMessage(Base):
+    __tablename__ = "group_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("chat_groups.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    timestamp = Column(DateTime, default=datetime.now)
+    sender = relationship("User", foreign_keys=[sender_id])
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -191,6 +213,7 @@ class DeletePostData(BaseModel): post_id: int; user_id: int
 class ForgotPasswordData(BaseModel): email: EmailStr
 class ResetPasswordData(BaseModel): token: str; new_password: str
 class CommentData(BaseModel): user_id: int; post_id: int; text: str
+class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
 
 def get_db():
     db = SessionLocal()
@@ -227,6 +250,8 @@ html_content = r"""
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;scrollbar-width:thin;scrollbar-color:var(--primary) #111}
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
+
+/* SIDEBAR ATUALIZADA: Perfil -> Chat -> Feed -> Inbox */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:20}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -255,20 +280,23 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
-.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
+.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 .comment-input-area { display: flex; gap: 8px; margin-top: 15px; align-items: center; }
 .comment-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 10px 15px; color: white; outline: none; font-size: 13px; }
 .comment-inp:focus { border-color: var(--primary); }
 
-/* CHAT E PERFIL */
+/* CHAT GERAL E PRIVADO (CAIXA CENTRALIZADA) */
 #chat-list, #dm-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
-.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111;}
+.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .chat-input-area {background:rgba(11,12,16,0.9);padding:15px;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border)}
 .chat-msg {flex:1;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:24px;padding:12px 20px;color:white;outline:none}
+
+/* CAIXA DE CHAT MENOR E CENTRALIZADA */
+.chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
@@ -278,7 +306,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .danger-btn { color: #ff5555; border-color: rgba(255, 85, 85, 0.3); background: rgba(255, 85, 85, 0.08); width: 100%; margin-top: 20px; }
 .danger-btn:hover { background: rgba(255, 85, 85, 0.2); box-shadow: 0 0 10px rgba(255,85,85,0.2); }
-.search-glass { display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333; border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%; align-items:center; }
+.search-glass { display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333; border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%; align-items:center;}
 .search-glass input { background: transparent; border: none; color: white; outline: none; flex: 1; padding: 10px 0; font-size: 15px; }
 
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10}
@@ -308,7 +336,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0">FOR GLORY</h1>
         <div id="login-form">
             <input id="l-user" class="inp" placeholder="CODINOME">
-            <input id="l-pass" class="inp" type="password" placeholder="SENHA">
+            <input id="l-pass" class="inp" type="password" placeholder="SENHA" onkeypress="if(event.key==='Enter')doLogin()">
             <button onclick="doLogin()" class="btn-main">ENTRAR</button>
             <div style="margin-top:20px;display:flex;justify-content:space-between">
                 <span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;">Criar Conta</span>
@@ -324,7 +352,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
         <div id="forgot-form" class="hidden">
             <h3 style="color:white">RECUPERAR ACESSO</h3>
-            <p style="color:#888;font-size:12px">Enviaremos um link de resgate para seu e-mail.</p>
             <input id="f-email" class="inp" placeholder="SEU EMAIL CADASTRADO">
             <button onclick="requestReset()" class="btn-main">ENVIAR LINK</button>
             <p onclick="toggleAuth('login')" class="btn-link">Voltar</p>
@@ -344,6 +371,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <div style="display:flex; gap:10px; margin-top:20px;">
             <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">EXCLUIR</button>
             <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-create-group" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">NOVO ESQUADRÃO</h2>
+        <input id="new-group-name" class="inp" placeholder="Nome do Grupo (Ex: Guilda)">
+        <p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;">Selecione os aliados:</p>
+        <div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div>
+        <div style="display:flex; gap:10px;">
+            <button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;">CRIAR</button>
+            <button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button>
         </div>
     </div>
 </div>
@@ -368,16 +408,23 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="app">
     <div id="sidebar">
-        <button class="nav-btn active" onclick="goView('chat')">💬</button>
-        <button class="nav-btn" onclick="goView('feed')">🎬</button>
         <button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
+        <button class="nav-btn" onclick="goView('chat')">💬</button>
+        <button class="nav-btn active" onclick="goView('feed')">🎬</button>
+        <button class="nav-btn" onclick="goView('inbox')">📩</button>
     </div>
 
     <div id="content-area">
-        <div id="view-chat" class="view active">
+        
+        <div id="view-feed" class="view active">
+            <div id="feed-container"></div>
+            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
+        </div>
+
+        <div id="view-chat" class="view">
             <div style="padding:15px;text-align:center;color:var(--primary);font-family:'Rajdhani';font-weight:bold;background:rgba(0,0,0,0.2);letter-spacing:2px;">CANAL GERAL</div>
             <div id="chat-list"></div>
-            <form id="chat-input-area" class="chat-input-area" onsubmit="sendMsg(); return false;">
+            <form class="chat-input-area" onsubmit="sendMsg(); return false;">
                 <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()" accept="image/*,video/*">
                 <button type="button" onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
                 <input id="chat-msg" class="chat-msg" placeholder="Mensagem..." autocomplete="off">
@@ -386,22 +433,27 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </form>
         </div>
 
-        <div id="view-dm" class="view">
-            <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
-                <button onclick="goView('public-profile')" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
-                <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;">Chat Privado</div>
+        <div id="view-inbox" class="view">
+            <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;">MENSAGENS</div>
+                <button onclick="openCreateGroupModal()" class="glass-btn" style="padding:8px 12px; margin:0; flex:none;">+ GRUPO</button>
             </div>
-            <div id="dm-list"></div>
-            <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
-                <input id="dm-msg" class="chat-msg" placeholder="Mensagem secreta..." autocomplete="off">
-                <button type="button" onclick="openEmoji('dm-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
-                <button type="submit" style="background:var(--primary);border:none;width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;cursor:pointer;">➤</button>
-            </form>
+            <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
         </div>
 
-        <div id="view-feed" class="view">
-            <div id="feed-container"></div>
-            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
+        <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
+            <div class="chat-box-centered">
+                <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <button onclick="goView('inbox')" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
+                    <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;">Chat</div>
+                </div>
+                <div id="dm-list"></div>
+                <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
+                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem secreta..." autocomplete="off">
+                    <button type="button" onclick="openEmoji('dm-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
+                    <button type="submit" style="background:var(--primary);border:none;width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;cursor:pointer;">➤</button>
+                </form>
+            </div>
         </div>
 
         <div id="view-profile" class="view">
@@ -415,11 +467,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center">
-                
                 <div class="search-glass">
                     <input id="search-input" placeholder="Buscar Soldado..." onkeypress="if(event.key==='Enter')searchUsers()">
-                    <button onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
-                    <button onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
+                    <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                    <button type="button" onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
                 </div>
                 <div id="search-results"></div>
                 
@@ -451,7 +502,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
-var user=null, ws=null, dmWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentDMUserId=null;
+var user=null, ws=null, dmWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
@@ -484,11 +535,7 @@ initEmojis();
 function checkToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
-    if (token) {
-        toggleAuth('reset');
-        window.history.replaceState({}, document.title, "/");
-        window.resetToken = token;
-    }
+    if (token) { toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken = token; }
 }
 checkToken();
 
@@ -511,9 +558,17 @@ function updateUI(){
     document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar);
 }
 function logout(){location.reload()}
-function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile' && v!=='dm')event.target.closest('.nav-btn')?.classList.add('active')}
+function goView(v){
+    document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
+    document.getElementById('view-'+v).classList.add('active');
+    if(v !== 'public-profile' && v !== 'dm') {
+        document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+        if(event && event.target) event.target.closest('.nav-btn')?.classList.add('active');
+    }
+    if(v === 'inbox') loadInbox();
+}
 
-// FEED
+// FEED BLINDADO
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
@@ -586,7 +641,6 @@ async function loadComments(pid) {
     if(r.ok) {
         let comments = await r.json();
         if(comments.length === 0){ list.innerHTML = "<p style='color:#888;font-size:12px;text-align:center;'>Nenhum comentário ainda.</p>"; return;}
-        // PERFIS CLICÁVEIS NOS COMENTÁRIOS
         list.innerHTML = comments.map(c => `
             <div class="comment-row">
                 <img src="${c.author_avatar}" class="comment-av" onclick="openPublicProfile(${c.author_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
@@ -604,35 +658,72 @@ async function sendComment(pid) {
     if(r.ok) { inp.value = ''; loadComments(pid); toggleEmoji(true); lastFeedHash=""; }
 }
 
-// PERFIL PÚBLICO E DM BOTÃO
-async function openPublicProfile(uid){
-    let r=await fetch('/user/'+uid+'?viewer_id='+user.id); let d=await r.json();
-    document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
-    document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-rank').innerText=d.rank;
-    let ab=document.getElementById('pub-actions'); ab.innerHTML='';
+// INBOX E GRUPOS
+async function loadInbox() {
+    let r = await fetch(`/inbox/${user.id}`);
+    let d = await r.json();
+    let b = document.getElementById('inbox-list');
+    b.innerHTML = '';
     
-    // BOTÃO DE MENSAGEM SECRETA SE FOR ALIADO
-    if(d.friend_status==='friends') {
-        ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:5px 10px; border-radius:8px;">✔ Aliado</span> <button class="glass-btn" style="padding:6px 15px; border-color:var(--primary);" onclick="openDM(${uid}, '${d.username}')">💬 Mensagem</button>`;
-    } else if(d.friend_status==='pending_sent') { ab.innerHTML='<span style="color:orange">Enviado</span>'; } 
-    else if(d.friend_status==='pending_received') { ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`; } 
-    else { ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">Recrutar Aliado</button>`; }
+    if(d.groups.length === 0 && d.friends.length === 0) {
+        b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>";
+        return;
+    }
     
-    let g=document.getElementById('pub-grid'); g.innerHTML='';
-    d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});
-    goView('public-profile')
+    d.groups.forEach(g => {
+        b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')">
+            <img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;">
+            <div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">👥 Esquadrão</span></div>
+        </div>`;
+    });
+    
+    d.friends.forEach(f => {
+        b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
+            <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
+            <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div>
+        </div>`;
+    });
 }
 
-// SISTEMA DE DM (CHAT PRIVADO)
-async function openDM(uid, uname) {
-    currentDMUserId = uid;
-    document.getElementById('dm-header-name').innerText = "Chat Privado: " + uname;
+async function openCreateGroupModal() {
+    let r = await fetch(`/inbox/${user.id}`);
+    let d = await r.json();
+    let list = document.getElementById('group-friends-list');
+    if(d.friends.length === 0) { list.innerHTML = "<p style='color:#ff5555;font-size:13px;'>Você precisa de aliados para criar um grupo.</p>"; } 
+    else {
+        list.innerHTML = d.friends.map(f => `
+            <label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;">
+                <input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;">
+                <img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}
+            </label>
+        `).join('');
+    }
+    document.getElementById('new-group-name').value = '';
+    document.getElementById('modal-create-group').classList.remove('hidden');
+}
+
+async function submitCreateGroup() {
+    let name = document.getElementById('new-group-name').value.trim();
+    if(!name) return showToast("Dê um nome ao grupo!");
+    let cbs = document.querySelectorAll('.grp-friend-cb:checked');
+    let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
+    if(member_ids.length === 0) return showToast("Selecione pelo menos 1 aliado!");
+    
+    let r = await fetch('/group/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids})});
+    if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); showToast("Esquadrão criado!"); loadInbox(); }
+}
+
+async function openChat(id, name, type) {
+    currentChatId = id;
+    currentChatType = type;
+    document.getElementById('dm-header-name').innerText = type === 'group' ? "Grupo: " + name : "Chat: " + name;
     goView('dm');
     
-    // Puxa o histórico do Banco
-    let r = await fetch(`/dms/${uid}?uid=${user.id}`);
     let list = document.getElementById('dm-list');
     list.innerHTML = '';
+    
+    let fetchUrl = type === 'group' ? `/group/${id}/messages` : `/dms/${id}?uid=${user.id}`;
+    let r = await fetch(fetchUrl);
     if(r.ok) {
         let msgs = await r.json();
         msgs.forEach(d => {
@@ -645,19 +736,12 @@ async function openDM(uid, uname) {
         list.scrollTop = list.scrollHeight;
     }
     
-    // Conecta no WebSocket Privado
     if(dmWS) dmWS.close();
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let minId = Math.min(user.id, uid);
-    let maxId = Math.max(user.id, uid);
-    let ch = `dm_${minId}_${maxId}`;
-    
+    let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);
     dmWS.onmessage = e => {
-        let d = JSON.parse(e.data);
-        let b = document.getElementById('dm-list');
-        let m = parseInt(d.user_id) === parseInt(user.id);
-        let c = d.content;
+        let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
         let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
         b.insertAdjacentHTML('beforeend',h);
@@ -668,6 +752,24 @@ async function openDM(uid, uname) {
 function sendDM() {
     let i = document.getElementById('dm-msg');
     if(i.value.trim() && dmWS) { dmWS.send(i.value.trim()); i.value = ''; toggleEmoji(true); }
+}
+
+// PERFIL PÚBLICO
+async function openPublicProfile(uid){
+    let r=await fetch('/user/'+uid+'?viewer_id='+user.id); let d=await r.json();
+    document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
+    document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-rank').innerText=d.rank;
+    let ab=document.getElementById('pub-actions'); ab.innerHTML='';
+    
+    if(d.friend_status==='friends') {
+        ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:10px 15px; border-radius:12px; font-weight:bold;">✔ Aliado</span> <button class="glass-btn" style="padding:10px 20px; border-color:var(--primary); font-size:14px; max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;
+    } else if(d.friend_status==='pending_sent') { ab.innerHTML='<span style="color:orange; border:1px solid orange; padding:10px 15px; border-radius:12px;">Enviado</span>'; } 
+    else if(d.friend_status==='pending_received') { ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`; } 
+    else { ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">Recrutar Aliado</button>`; }
+    
+    let g=document.getElementById('pub-grid'); g.innerHTML='';
+    d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});
+    goView('public-profile')
 }
 
 // UPLOADS 
@@ -688,7 +790,7 @@ async function uploadToCloudinary(file){
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
-// CHAT GERAL (Com perfis clicáveis)
+// CHAT GERAL
 function connectWS(){
     if(ws)ws.close(); let p=location.protocol==='https:'?'wss:':'ws:'; ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
     ws.onmessage=e=>{
@@ -702,10 +804,9 @@ function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){
 async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){alert("Erro ao enviar: " + e)}}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden')}
 
-// BUSCA COM BOTÃO DE LIMPAR
+// BUSCA E ALIADOS
 function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;"><span>${u.username}</span></div>`})}
-
 async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;" onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>')}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
@@ -783,7 +884,6 @@ async def add_comment(d: CommentData, db: Session=Depends(get_db)):
 @app.get("/post/{post_id}/comments")
 async def get_comments(post_id: int, db: Session=Depends(get_db)):
     comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.timestamp.asc()).all()
-    # Adicionado o author_id para o clique no perfil funcionar!
     return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id} for c in comments]
 
 @app.get("/posts")
@@ -820,7 +920,39 @@ async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
 
-# ROTA DE MENSAGENS PRIVADAS DO BANCO
+# --- NOVAS ROTAS DE INBOX E GRUPOS ---
+@app.get("/inbox/{uid}")
+async def get_inbox(uid: int, db: Session=Depends(get_db)):
+    me = db.query(User).filter(User.id == uid).first()
+    friends_data = [{"id": f.id, "name": f.username, "avatar": f.avatar_url} for f in me.friends]
+    
+    my_groups = db.query(GroupMember).filter(GroupMember.user_id == uid).all()
+    groups_data = []
+    for gm in my_groups:
+        grp = db.query(ChatGroup).filter(ChatGroup.id == gm.group_id).first()
+        if grp:
+            groups_data.append({"id": grp.id, "name": grp.name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"})
+            
+    return {"friends": friends_data, "groups": groups_data}
+
+@app.post("/group/create")
+async def create_group(d: CreateGroupData, db: Session=Depends(get_db)):
+    grp = ChatGroup(name=d.name)
+    db.add(grp)
+    db.commit()
+    db.refresh(grp)
+    
+    db.add(GroupMember(group_id=grp.id, user_id=d.creator_id))
+    for mid in d.member_ids:
+        db.add(GroupMember(group_id=grp.id, user_id=mid))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/group/{group_id}/messages")
+async def get_group_msgs(group_id: int, db: Session=Depends(get_db)):
+    msgs = db.query(GroupMessage).filter(GroupMessage.group_id == group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
+    return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
+
 @app.get("/dms/{target_id}")
 async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     msgs = db.query(PrivateMessage).filter(
@@ -839,18 +971,23 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
             txt = await ws.receive_text()
             u_fresh = db.query(User).filter(User.id == uid).first()
             
-            # SE FOR CHAT PRIVADO, SALVA NO BANCO
+            # SALVANDO HISTÓRICO DE MENSAGENS (1v1 ou Grupo)
             if ch.startswith("dm_"):
                 parts = ch.split("_")
                 id1, id2 = int(parts[1]), int(parts[2])
                 rec_id = id2 if uid == id1 else id1
                 db.add(PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt))
                 db.commit()
+            elif ch.startswith("group_"):
+                grp_id = int(ch.split("_")[1])
+                db.add(GroupMessage(group_id=grp_id, sender_id=uid, content=txt))
+                db.commit()
 
             await manager.broadcast({"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}, ch)
     except:
         manager.disconnect(ws, ch)
 
+# --- SISTEMA DE ALIADOS ---
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
     sender_id = d.get('sender_id'); target_id = d.get('target_id')
