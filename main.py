@@ -47,7 +47,7 @@ cloudinary.config(
   secure = True
 )
 
-# --- BANCO DE DADOS (ANTI-TRAVAMENTO) ---
+# --- BANCO DE DADOS (BLINDADO) ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v3.db")
 
 if "sqlite" in DATABASE_URL:
@@ -240,11 +240,17 @@ def startup():
             try: conn.execute(text("PRAGMA journal_mode=WAL;")); conn.commit()
             except: pass
             
-    with engine.connect() as conn:
-        try: conn.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0")); conn.commit()
-        except: pass 
-        try: conn.execute(text("ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0")); conn.commit()
-        except: pass
+    # Executando updates separadamente para não envenenar transações no PostgreSQL
+    for query in [
+        "ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0",
+        "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0"
+    ]:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(query))
+                conn.commit()
+        except Exception:
+            pass # A coluna já existe
         
     db = SessionLocal()
     try:
@@ -314,11 +320,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
-
-/* BLINDAGEM MOBILE NA BARRA DE INPUT */
 .chat-input-area {background:rgba(11,12,16,0.9);padding:15px;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border)}
 .chat-msg {flex:1;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:24px;padding:12px 20px;color:white;outline:none}
-.btn-send-msg { background:var(--primary); border:none; min-width:45px; height:45px; border-radius:12px; font-weight:bold; color:#0b0c10; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
@@ -454,7 +457,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <button type="button" onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
                 <input id="chat-msg" class="chat-msg" placeholder="Mensagem..." autocomplete="off">
                 <button type="button" onclick="openEmoji('chat-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
-                <button type="submit" class="btn-send-msg">➤</button>
+                <button type="submit" style="background:var(--primary);border:none;min-width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">➤</button>
             </form>
         </div>
 
@@ -478,7 +481,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <button type="button" onclick="document.getElementById('dm-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
                     <input id="dm-msg" class="chat-msg" placeholder="Mensagem secreta..." autocomplete="off">
                     <button type="button" onclick="openEmoji('dm-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
-                    <button type="submit" class="btn-send-msg">➤</button>
+                    <button type="submit" style="background:var(--primary);border:none;min-width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">➤</button>
                 </form>
             </div>
         </div>
@@ -663,7 +666,7 @@ async function loadFeed(){
             let delBtn=x.author_id===user.id?`<span onclick="confirmDeletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
             let heartIcon = x.user_liked ? "❤️" : "🤍"; let heartClass = x.user_liked ? "liked" : "";
             
-            ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><input id="comment-inp-${x.id}" class="comment-inp" placeholder="Comentar..." autocomplete="off"><button type="button" onclick="openEmoji('comment-inp-${x.id}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0 5px;">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`
+            ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><input id="comment-inp-${x.id}" class="comment-inp" placeholder="Comentar..." autocomplete="off"><button type="button" onclick="openEmoji('comment-inp-${x.id}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0 5px;">😀</button><button type="submit" style="background:var(--primary);border:none;border-radius:12px;padding:8px 15px;color:black;font-weight:bold;cursor:pointer;">➤</button></form></div></div>`
         });
         document.getElementById('feed-container').innerHTML=ht;
         
@@ -771,7 +774,6 @@ async function openChat(id, name, type) {
     };
 }
 
-// ENVIO DE MENSAGEM CORRIGIDO (O Servidor que devolve a mensagem agora)
 function sendDM() { 
     let i = document.getElementById('dm-msg'); 
     let msg = i.value.trim();
@@ -783,7 +785,7 @@ function sendDM() {
 
 async function uploadDMImage(){
     let f=document.getElementById('dm-file').files[0];
-    if(!f)return; showToast("Enviando arquivo privado...");
+    if(!f)return; showToast("Enviando arquivo...");
     try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro ao enviar: " + e)}
 }
 
@@ -819,10 +821,15 @@ async function uploadToCloudinary(file){
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
+// CHAT GERAL E RECEBEDOR DE PING DE NOTIFICAÇÃO
 function connectWS(){
     if(ws)ws.close(); let p=location.protocol==='https:'?'wss:':'ws:'; ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
     ws.onmessage=e=>{
-        let d=JSON.parse(e.data); let b=document.getElementById('chat-list'); let m=parseInt(d.user_id)===parseInt(user.id); let c = d.content;
+        let d=JSON.parse(e.data);
+        // Sistema Ultrassônico de Notificação (Se receber um ping de DM, recarrega a bolinha vermelha na hora)
+        if(d.type === 'ping') { fetchUnread(); return; }
+        
+        let b=document.getElementById('chat-list'); let m=parseInt(d.user_id)===parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
         let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
         b.insertAdjacentHTML('beforeend',h); b.scrollTop=b.scrollHeight
@@ -1011,18 +1018,20 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     ).order_by(PrivateMessage.timestamp.asc()).limit(100).all()
     return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
 
-# WEBSOCKET TOTALMENTE BLINDADO CONTRA DATABASE LOCKED
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
     await manager.connect(ws, ch, uid)
     try:
         while True:
             txt = await ws.receive_text()
+            user_data = None
             
-            # ABRE A CONEXÃO APENAS NA HORA DE SALVAR
+            # ABRE BANCO SÓ PARA SALVAR, FECHA NA HORA
             db = SessionLocal()
             try:
                 u_fresh = db.query(User).filter(User.id == uid).first()
+                user_data = {"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt, "type": "msg"}
+                
                 if ch.startswith("dm_"):
                     parts = ch.split("_")
                     id1, id2 = int(parts[1]), int(parts[2])
@@ -1033,14 +1042,18 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     grp_id = int(ch.split("_")[1])
                     db.add(GroupMessage(group_id=grp_id, sender_id=uid, content=txt))
                     db.commit()
-
-                # Só envia para a tela SE SALVOU NO BANCO
-                await manager.broadcast({"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}, ch)
             except Exception as e:
                 logger.error(f"Erro BD WS Protegido: {e}")
-                db.rollback() 
+                db.rollback()
+                user_data = None # Impede o broadcast se falhou no banco
             finally:
-                db.close() # DESTRAVA O BANCO IMEDIATAMENTE
+                db.close() 
+
+            if user_data:
+                await manager.broadcast(user_data, ch)
+                # SISTEMA DE NOTIFICAÇÃO (PING GLOBAL)
+                if ch.startswith("dm_"):
+                    await manager.broadcast({"type": "ping"}, "Geral")
 
     except Exception:
         manager.disconnect(ws, ch, uid)
