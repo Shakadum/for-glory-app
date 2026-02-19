@@ -71,7 +71,6 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     xp = Column(Integer, default=0)
-    # NOVO AVATAR PADRÃO (Nunca falha)
     avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
     cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
@@ -96,6 +95,22 @@ class Post(Base):
     timestamp = Column(DateTime, default=datetime.now)
     author = relationship("User")
 
+# --- NOVAS TABELAS DE ENGAJAMENTO ---
+class Like(Base):
+    __tablename__ = "likes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("posts.id"))
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("posts.id"))
+    text = Column(String)
+    timestamp = Column(DateTime, default=datetime.now)
+    author = relationship("User")
+
 class Channel(Base):
     __tablename__ = "channels"
     id = Column(Integer, primary_key=True, index=True)
@@ -105,85 +120,6 @@ try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
     logger.error(f"Erro BD: {e}")
-    # --- LÓGICA DE PATENTES ---
-def calcular_patente(xp):
-    if xp < 100: return "Recruta 🔰"
-    if xp < 500: return "Soldado ⚔️"
-    if xp < 1000: return "Cabo 🎖️"
-    if xp < 2000: return "3º Sargento 🎗️"
-    if xp < 5000: return "Capitão 👑"
-    return "Lenda 🐲"
-
-# --- UTILITÁRIOS DE SENHA ---
-def create_reset_token(email: str):
-    expire = datetime.utcnow() + timedelta(minutes=30) 
-    to_encode = {"sub": email, "exp": expire, "type": "reset"}
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def verify_reset_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "reset": return None
-        return payload.get("sub") 
-    except JWTError:
-        return None
-
-# --- WEBSOCKET ---
-class ConnectionManager:
-    def __init__(self):
-        self.active = {}
-    async def connect(self, ws: WebSocket, chan: str):
-        await ws.accept()
-        if chan not in self.active: self.active[chan] = []
-        self.active[chan].append(ws)
-    def disconnect(self, ws: WebSocket, chan: str):
-        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
-    async def broadcast(self, msg: dict, chan: str):
-        for conn in self.active.get(chan, []):
-            try: await conn.send_text(json.dumps(msg))
-            except: pass
-
-manager = ConnectionManager()
-app = FastAPI(title="For Glory Cloud")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-if not os.path.exists("static"): os.makedirs("static")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --- MODELOS ---
-class LoginData(BaseModel): username: str; password: str
-class RegisterData(BaseModel): username: str; email: str; password: str
-class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
-class RequestActionData(BaseModel): request_id: int; action: str
-class DeletePostData(BaseModel): post_id: int; user_id: int
-class ForgotPasswordData(BaseModel): email: EmailStr
-class ResetPasswordData(BaseModel): token: str; new_password: str
-
-# --- DEPENDÊNCIAS ---
-def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
-
-def criptografar(s):
-    return hashlib.sha256(s.encode()).hexdigest()
-
-@app.on_event("startup")
-def startup():
-    db = SessionLocal()
-    try:
-        if not db.query(Channel).first():
-            db.add(Channel(name="Geral"))
-            db.commit()
-    except: pass
-    db.close()
 # --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
@@ -207,16 +143,30 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS FEED */
+/* POSTS FEED E ENGAJAMENTO */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center}
-.post-card{background:var(--card-bg);width:100%;max-width:480px;margin-bottom:20px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05)}
+.post-card{background:var(--card-bg);width:100%;max-width:480px;margin-bottom:20px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
 .post-av{width:42px;height:42px;border-radius:50%;margin-right:12px;object-fit:cover;border:1px solid var(--primary); background:#111;}
 .rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3)}
 .post-media{width:100%;max-height:600px;object-fit:contain;background:#000;display:block}
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
-/* CHAT */
+/* CSS NOVO: AÇÕES DO POST */
+.post-actions { padding: 10px 15px; display: flex; gap: 20px; border-top: 1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.1); }
+.action-btn { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
+.action-btn.liked { color: #ff5555; }
+.action-btn:hover { color: var(--primary); transform: scale(1.05); }
+
+/* CSS NOVO: COMENTÁRIOS */
+.comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); }
+.comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
+.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
+.comment-input-area { display: flex; gap: 8px; margin-top: 15px; }
+.comment-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 10px 15px; color: white; outline: none; font-size: 13px; }
+.comment-inp:focus { border-color: var(--primary); }
+
+/* CHAT E PERFIL */
 #chat-list{flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
@@ -226,23 +176,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #chat-input-area{background:rgba(11,12,16,0.9);padding:15px;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border)}
 #chat-msg{flex:1;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:24px;padding:12px 20px;color:white;outline:none}
 
-/* PERFIL E BOTÕES NOVOS */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg{position:absolute;bottom:-50px;left:50%;transform:translateX(-50%);width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid var(--dark-bg);box-shadow:0 0 25px rgba(102,252,241,0.3);cursor:pointer; background:#1f2833;}
 
-.glass-btn {
-    background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary);
-    padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif;
-    transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1;
-}
+.glass-btn { background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary); padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif; transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1; }
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .danger-btn { color: #ff5555; border-color: rgba(255, 85, 85, 0.3); background: rgba(255, 85, 85, 0.08); width: 100%; margin-top: 20px; }
 .danger-btn:hover { background: rgba(255, 85, 85, 0.2); box-shadow: 0 0 10px rgba(255,85,85,0.2); }
-.search-glass {
-    display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333;
-    border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%;
-}
+.search-glass { display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333; border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%; }
 .search-glass input { background: transparent; border: none; color: white; outline: none; flex: 1; padding: 10px 0; font-size: 15px; }
 
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10}
@@ -305,9 +247,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div class="modal-box">
         <h2 style="color:white">NOVO POST</h2>
         <input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;">
-        
         <span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Limite por arquivo: 100MB</span>
-        
         <div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px">
             <input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0">
             <button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:24px;cursor:pointer">😀</button>
@@ -399,15 +339,35 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
-
-// ARRAY DE EMOJIS
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// CARREGAMENTO BLINDADO DE EMOJIS E URL
-document.addEventListener("DOMContentLoaded", function() {
+// EMOJIS BLINDADOS
+function initEmojis() {
+    let g = document.getElementById('emoji-grid');
+    if(!g) return;
+    g.innerHTML = '';
+    EMOJIS.forEach(e => {
+        let s = document.createElement('div');
+        s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
+        s.innerText = e;
+        s.onclick = () => {
+            if(currentEmojiTarget){
+                let inp = document.getElementById(currentEmojiTarget);
+                inp.value += e;
+                inp.focus();
+            }
+        };
+        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
+        s.onmouseout = () => s.style.background = "transparent";
+        g.appendChild(s);
+    });
+}
+initEmojis();
+
+function checkToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
@@ -415,201 +375,144 @@ document.addEventListener("DOMContentLoaded", function() {
         window.history.replaceState({}, document.title, "/");
         window.resetToken = token;
     }
-    
-    // Injeta os emojis com CSS imune a bugs
-    let g = document.getElementById('emoji-grid');
-    if(g) {
-        g.innerHTML = '';
-        EMOJIS.forEach(e => {
-            let s = document.createElement('div');
-            s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
-            s.innerText = e;
-            s.onclick = () => {
-                if(currentEmojiTarget){
-                    let inp = document.getElementById(currentEmojiTarget);
-                    inp.value += e;
-                    inp.focus();
-                }
-            };
-            s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
-            s.onmouseout = () => s.style.background = "transparent";
-            g.appendChild(s);
-        });
-    }
-});
-
-function openEmoji(id){
-    currentEmojiTarget = id;
-    document.getElementById('emoji-picker').style.display='flex';
 }
+checkToken();
 
-function toggleEmoji(forceClose){
-    let e = document.getElementById('emoji-picker');
-    if(forceClose === true) e.style.display='none';
-    else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';
-}
+function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
+function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
-// RESTO DO SISTEMA DE LOGIN E RECUPERAÇÃO
-async function requestReset() {
-    let email = document.getElementById('f-email').value;
-    if(!email) return showToast("Digite seu e-mail!");
-    try {
-        let r = await fetch('/auth/forgot-password', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({email: email})
-        });
-        showToast("E-mail enviado! Verifique sua caixa (e spam).");
-        toggleAuth('login');
-    } catch(e) { showToast("Erro de conexão"); }
-}
-async function doResetPassword() {
-    let newPass = document.getElementById('new-pass').value;
-    if(!newPass) return showToast("Digite a nova senha!");
-    try {
-        let r = await fetch('/auth/reset-password', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({token: window.resetToken, new_password: newPass})
-        });
-        if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } 
-        else { showToast("Link expirado ou inválido."); }
-    } catch(e) { showToast("Erro"); }
-}
-
+// LOGIN
+async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Digite seu e-mail!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("E-mail enviado! Verifique sua caixa (e spam)."); toggleAuth('login'); } catch(e) { showToast("Erro de conexão"); } }
+async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Digite a nova senha!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } else { showToast("Link expirado ou inválido."); } } catch(e) { showToast("Erro"); } }
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Registrado!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
-
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},4000)}
 
 function updateUI(){
     if(!user) return;
     let safeAvatar = user.avatar_url;
-    if(!safeAvatar || safeAvatar.includes("undefined")) {
-        safeAvatar = `https://ui-avatars.com/api/?name=${user.username}&background=1f2833&color=66fcf1&bold=true`;
-    }
-    document.getElementById('nav-avatar').src = safeAvatar;
-    document.getElementById('p-avatar').src = safeAvatar;
-    let pCover = document.getElementById('p-cover');
-    pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
-    pCover.style.display = 'block';
-    document.getElementById('p-name').innerText = user.username || "Soldado";
-    document.getElementById('p-bio').innerText = user.bio || "Na base de operações.";
-    document.getElementById('p-rank').innerText = user.rank || "REC";
+    if(!safeAvatar || safeAvatar.includes("undefined")) safeAvatar = `https://ui-avatars.com/api/?name=${user.username}&background=1f2833&color=66fcf1&bold=true`;
+    document.getElementById('nav-avatar').src = safeAvatar; document.getElementById('p-avatar').src = safeAvatar;
+    let pCover = document.getElementById('p-cover'); pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY"; pCover.style.display = 'block';
+    document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; document.getElementById('p-rank').innerText = user.rank || "REC";
     document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar);
 }
-
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.target.closest('.nav-btn').classList.add('active')}
 
+// FEED E ENGAJAMENTO (COMENTÁRIOS E LIKES)
+async function loadFeed(){
+    try{
+        let r=await fetch('/posts?uid='+user.id+'&limit=50');
+        if(!r.ok)return;
+        let p=await r.json();
+        let h=JSON.stringify(p.map(x=>x.id + x.likes + x.comments + (x.user_liked?"1":"0"))); // Recarrega se like ou comment mudar
+        if(h===lastFeedHash)return;
+        lastFeedHash=h;
+        let ht='';
+        p.forEach(x=>{
+            let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
+            let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
+            
+            let heartIcon = x.user_liked ? "❤️" : "🤍";
+            let heartClass = x.user_liked ? "liked" : "";
+            
+            ht+=`<div class="post-card">
+                    <div class="post-header">
+                        <div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})">
+                            <img src="${x.author_avatar}" class="post-av">
+                            <div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div>
+                        </div>
+                        ${delBtn}
+                    </div>
+                    ${m}
+                    <div class="post-actions">
+                        <button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)">
+                            <span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span>
+                        </button>
+                        <button class="action-btn" onclick="toggleComments(${x.id})">
+                            💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span>
+                        </button>
+                    </div>
+                    <div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div>
+                    
+                    <div id="comments-${x.id}" class="comments-section">
+                        <div id="comment-list-${x.id}"></div>
+                        <div class="comment-input-area">
+                            <input id="comment-inp-${x.id}" class="comment-inp" placeholder="Escreva um comentário...">
+                            <button onclick="sendComment(${x.id})" style="background:var(--primary);border:none;border-radius:12px;padding:0 15px;color:black;font-weight:bold;cursor:pointer;">➤</button>
+                        </div>
+                    </div>
+                </div>`
+        });
+        document.getElementById('feed-container').innerHTML=ht;
+    }catch(e){}
+}
+
+async function toggleLike(pid, btn) {
+    let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})});
+    if(r.ok) {
+        let d = await r.json();
+        let icon = btn.querySelector('.icon');
+        let count = btn.querySelector('.count');
+        if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } 
+        else { btn.classList.remove('liked'); icon.innerText = "🤍"; }
+        count.innerText = d.count;
+        lastFeedHash=""; // Força recarga no próximo ciclo
+    }
+}
+
+async function toggleComments(pid) {
+    let sec = document.getElementById(`comments-${pid}`);
+    if(sec.style.display === 'block') { sec.style.display = 'none'; } 
+    else { sec.style.display = 'block'; loadComments(pid); }
+}
+
+async function loadComments(pid) {
+    let r = await fetch(`/post/${pid}/comments`);
+    let list = document.getElementById(`comment-list-${pid}`);
+    if(r.ok) {
+        let comments = await r.json();
+        if(comments.length === 0){ list.innerHTML = "<p style='color:#888;font-size:12px;text-align:center;'>Nenhum comentário ainda. Seja o primeiro!</p>"; return;}
+        list.innerHTML = comments.map(c => `
+            <div class="comment-row">
+                <img src="${c.author_avatar}" class="comment-av">
+                <div><b style="color:var(--primary);">${c.author_name}</b> <span style="color:#e0e0e0">${c.text}</span></div>
+            </div>
+        `).join('');
+    }
+}
+
+async function sendComment(pid) {
+    let inp = document.getElementById(`comment-inp-${pid}`);
+    let text = inp.value.trim();
+    if(!text) return;
+    let r = await fetch('/post/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id, text:text})});
+    if(r.ok) { inp.value = ''; loadComments(pid); lastFeedHash=""; }
+}
+
 async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1; border:1px solid #66fcf1; padding:5px 10px; border-radius:8px;">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}
 
-async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
-
-// UPLOADS INTELIGENTES COM LIMITE DE 100MB
+// UPLOADS 
 async function uploadToCloudinary(file){
-    let limiteMB = 100; // Limite travado em 100MB
-    if(file.size > (limiteMB * 1024 * 1024)) {
-        return Promise.reject(`O arquivo excede o limite máximo de ${limiteMB}MB!`);
-    }
-
+    let limiteMB = 100; 
+    if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject(`Arquivo excedeu ${limiteMB}MB!`);
     let resType = file.type.startsWith('video') ? 'video' : 'image';
     let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
-
-    let fd=new FormData();
-    fd.append('file',file);
-    fd.append('upload_preset',UPLOAD_PRESET);
+    let fd=new FormData(); fd.append('file',file); fd.append('upload_preset',UPLOAD_PRESET);
     
     return new Promise((res,rej)=>{
-        let x=new XMLHttpRequest();
-        x.open('POST', url, true);
-        x.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                let percent = Math.round((e.loaded / e.total) * 100);
-                if(document.getElementById('progress-bar')) {
-                    document.getElementById('progress-bar').style.width = percent + '%';
-                    document.getElementById('progress-text').innerText = percent + '%';
-                }
-            }
-        };
-        x.onload=()=>{
-            if(x.status===200) res(JSON.parse(x.responseText));
-            else {
-                try { rej(JSON.parse(x.responseText).error.message); } 
-                catch(err) { rej("A nuvem recusou o arquivo (formato inválido)."); }
-            }
-        };
-        x.onerror=()=>rej("Conexão caiu. Verifique sua internet.");
-        x.send(fd)
+        let x=new XMLHttpRequest(); x.open('POST', url, true);
+        x.upload.onprogress = (e) => { if (e.lengthComputable && document.getElementById('progress-bar')) { let p = Math.round((e.loaded / e.total) * 100); document.getElementById('progress-bar').style.width = p + '%'; document.getElementById('progress-text').innerText = p + '%'; } };
+        x.onload=()=>{ if(x.status===200) res(JSON.parse(x.responseText)); else { try { rej(JSON.parse(x.responseText).error.message); } catch(err) { rej("Formato inválido."); } } };
+        x.onerror=()=>rej("Conexão caiu."); x.send(fd)
     });
 }
-
-async function submitPost(){
-    let f=document.getElementById('file-upload').files[0];
-    let cap=document.getElementById('caption-upload').value;
-    if(!f)return showToast("Selecione um arquivo primeiro!");
-    
-    let btn=document.getElementById('btn-pub');
-    btn.innerText="ENVIANDO..."; 
-    btn.disabled=true;
-    
-    document.getElementById('upload-progress').style.display='block';
-    document.getElementById('progress-text').style.display='block';
-
-    try{
-        let c = await uploadToCloudinary(f);
-        let fd=new FormData();
-        fd.append('user_id',user.id);
-        fd.append('caption',cap);
-        fd.append('content_url',c.secure_url);
-        fd.append('media_type',c.resource_type);
-        
-        let r=await fetch('/post/create_from_url',{method:'POST',body:fd});
-        if(r.ok){
-            showToast("Sucesso!");
-            user.xp+=50;
-            lastFeedHash="";
-            loadFeed();
-            closeUpload();
-        }
-    }catch(e){
-        alert("Ops! " + e); // Alerta mais amigável
-    }finally{
-        btn.innerText="PUBLICAR (+50 XP)";
-        btn.disabled=false;
-        document.getElementById('upload-progress').style.display='none';
-        document.getElementById('progress-text').style.display='none';
-        document.getElementById('progress-bar').style.width='0%';
-    }
-}
-
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
-// CHAT INTELIGENTE 
-function connectWS(){
-    if(ws)ws.close();
-    let p=location.protocol==='https:'?'wss:':'ws:';
-    ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
-    ws.onmessage=e=>{
-        let d=JSON.parse(e.data);
-        let b=document.getElementById('chat-list');
-        let m=parseInt(d.user_id)===parseInt(user.id);
-        
-        let c = d.content;
-        
-        if(c.startsWith('http') && c.includes('cloudinary')) {
-            // Reconhece vídeo pelo final ou pela pasta /video/
-            if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
-                c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
-            } else {
-                c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`;
-            }
-        }
-        
-        let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        b.insertAdjacentHTML('beforeend',h);
-        b.scrollTop=b.scrollHeight
-    }
-}
-
+// CHAT 
+function connectWS(){if(ws)ws.close();let p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c = d.content;if(c.startsWith('http') && c.includes('cloudinary')) {if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;} else {c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`;}}let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight}}
 function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value=''; toggleEmoji(true);}}
 async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){alert("Erro ao enviar: " + e)}}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden')}
@@ -624,7 +527,13 @@ async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/
 """
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-    # --- API ENDPOINTS ---
+# --- NOVOS MODELOS PARA A API ---
+class CommentData(BaseModel):
+    user_id: int
+    post_id: int
+    text: str
+
+# --- API ENDPOINTS ---
 @app.post("/auth/forgot-password")
 async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
     user = db.query(User).filter(User.email == d.email).first()
@@ -654,12 +563,9 @@ async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTas
 @app.post("/auth/reset-password")
 async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
     email = verify_reset_token(d.token)
-    if not email:
-        raise HTTPException(400, "Token inválido ou expirado")
-    
+    if not email: raise HTTPException(400, "Token inválido")
     user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(404, "Usuário não encontrado")
+    if not user: raise HTTPException(404, "Usuário não encontrado")
     
     user.password_hash = criptografar(d.new_password)
     db.commit()
@@ -667,8 +573,7 @@ async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
 
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
-    if db.query(User).filter(User.username==d.username).first():
-        raise HTTPException(400, "User existe")
+    if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
     db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0))
     db.commit()
     return {"status":"ok"}
@@ -676,10 +581,8 @@ async def reg(d: RegisterData, db: Session=Depends(get_db)):
 @app.post("/login")
 async def log(d: LoginData, db: Session=Depends(get_db)):
     u = db.query(User).filter(User.username==d.username).first()
-    if not u or u.password_hash != criptografar(d.password):
-        raise HTTPException(400, "Erro")
-    patente = calcular_patente(u.xp)
-    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": patente}
+    if not u or u.password_hash != criptografar(d.password): raise HTTPException(400, "Erro")
+    return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": calcular_patente(u.xp)}
 
 @app.post("/post/create_from_url")
 async def create_post_url(user_id: int = Form(...), caption: str = Form(""), content_url: str = Form(...), media_type: str = Form(...), db: Session=Depends(get_db)):
@@ -688,6 +591,72 @@ async def create_post_url(user_id: int = Form(...), caption: str = Form(""), con
     if user: user.xp += 50 
     db.commit()
     return {"status":"ok"}
+
+# --- NOVAS ROTAS DE ENGAJAMENTO ---
+@app.post("/post/like")
+async def toggle_like(d: dict, db: Session=Depends(get_db)):
+    post_id = d.get('post_id')
+    user_id = d.get('user_id')
+    existing = db.query(Like).filter(Like.post_id==post_id, Like.user_id==user_id).first()
+    
+    if existing:
+        db.delete(existing)
+        liked = False
+    else:
+        db.add(Like(post_id=post_id, user_id=user_id))
+        liked = True
+        
+    db.commit()
+    count = db.query(Like).filter(Like.post_id==post_id).count()
+    return {"liked": liked, "count": count}
+
+@app.post("/post/comment")
+async def add_comment(d: CommentData, db: Session=Depends(get_db)):
+    c = Comment(user_id=d.user_id, post_id=d.post_id, text=d.text)
+    db.add(c)
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/post/{post_id}/comments")
+async def get_comments(post_id: int, db: Session=Depends(get_db)):
+    comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.timestamp.asc()).all()
+    return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url} for c in comments]
+
+# --- ROTA DE POSTS ATUALIZADA (Agora conta likes e comentarios) ---
+@app.get("/posts")
+async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
+    posts = db.query(Post).order_by(Post.timestamp.desc()).limit(limit).all()
+    result = []
+    for p in posts:
+        like_count = db.query(Like).filter(Like.post_id == p.id).count()
+        user_liked = db.query(Like).filter(Like.post_id == p.id, Like.user_id == uid).first() is not None
+        comment_count = db.query(Comment).filter(Comment.post_id == p.id).count()
+        
+        result.append({
+            "id": p.id, 
+            "content_url": p.content_url, 
+            "media_type": p.media_type, 
+            "caption": p.caption, 
+            "author_name": p.author.username, 
+            "author_avatar": p.author.avatar_url, 
+            "author_rank": calcular_patente(p.author.xp), 
+            "author_id": p.author.id,
+            "likes": like_count,
+            "user_liked": user_liked,
+            "comments": comment_count
+        })
+    return result
+
+@app.post("/post/delete")
+async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
+    post = db.query(Post).filter(Post.id == d.post_id).first()
+    if not post or post.user_id != d.user_id: return {"status": "error"}
+    # Remove as interações antes de apagar o post para não quebrar o banco
+    db.query(Like).filter(Like.post_id == post.id).delete()
+    db.query(Comment).filter(Comment.post_id == post.id).delete()
+    db.delete(post)
+    db.commit()
+    return {"status": "ok"}
 
 @app.post("/profile/update_meta")
 async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avatar_url: str = Form(None), cover_url: str = Form(None), db: Session=Depends(get_db)):
@@ -698,19 +667,10 @@ async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avat
     db.commit()
     return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
-@app.get("/posts")
-async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
-    posts = db.query(Post).order_by(Post.timestamp.desc()).limit(limit).all()
-    return [{"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_rank": calcular_patente(p.author.xp), "author_id": p.author.id} for p in posts]
-
 @app.get("/users/search")
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
-
-@app.post("/upload/chat")
-async def upload_chat(file: UploadFile = File(...)):
-    return {"url": ""}
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
@@ -723,9 +683,57 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     except:
         manager.disconnect(ws, ch)
 
+# --- SISTEMA DE ALIADOS MANTIDO ---
+@app.post("/friend/request")
+async def send_req(d: dict, db: Session=Depends(get_db)):
+    sender_id = d.get('sender_id'); target_id = d.get('target_id')
+    me = db.query(User).filter(User.id == sender_id).first()
+    target = db.query(User).filter(User.id == target_id).first()
+    if target in me.friends: return {"status": "already_friends"}
+    existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id))).first()
+    if existing: return {"status": "pending"}
+    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id))
+    db.commit()
+    return {"status": "sent"}
+
+@app.get("/friend/requests")
+async def get_reqs(uid: int, db: Session=Depends(get_db)):
+    reqs = db.query(FriendRequest).filter(FriendRequest.receiver_id == uid).all()
+    requests_data = [{"id": r.id, "username": db.query(User).filter(User.id == r.sender_id).first().username} for r in reqs]
+    me = db.query(User).filter(User.id == uid).first()
+    friends_data = [{"id": f.id, "username": f.username} for f in me.friends]
+    return {"requests": requests_data, "friends": friends_data}
+
+@app.post("/friend/handle")
+async def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
+    req = db.query(FriendRequest).filter(FriendRequest.id == d.request_id).first()
+    if not req: return {"status": "error"}
+    if d.action == 'accept':
+        u1 = db.query(User).filter(User.id == req.sender_id).first()
+        u2 = db.query(User).filter(User.id == req.receiver_id).first()
+        u1.friends.append(u2); u2.friends.append(u1)
+    db.delete(req); db.commit()
+    return {"status": "ok"}
+
+@app.get("/user/{target_id}")
+async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
+    target = db.query(User).filter(User.id == target_id).first()
+    viewer = db.query(User).filter(User.id == viewer_id).first()
+    posts = db.query(Post).filter(Post.user_id == target_id).order_by(Post.timestamp.desc()).all()
+    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
+    status = "friends" if target in viewer.friends else "none"
+    req_id = None
+    if status == "none":
+        sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
+        received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
+        if sent: status = "pending_sent"
+        if received: status = "pending_received"; req_id = received.id
+    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": calcular_patente(target.xp), "posts": posts_data, "friend_status": status, "request_id": req_id}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
