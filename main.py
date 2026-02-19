@@ -304,7 +304,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="modal-upload" class="modal hidden">
     <div class="modal-box">
         <h2 style="color:white">NOVO POST</h2>
-        <input type="file" id="file-upload" class="inp" accept="image/*,video/*">
+        <input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;">
+        
+        <span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Limite por arquivo: 100MB</span>
+        
         <div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px">
             <input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0">
             <button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:24px;cursor:pointer">😀</button>
@@ -320,7 +323,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">FECHAR</button></div></div>
+<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; margin-top:-5px; margin-bottom:5px;">⚠️ Limite: 100MB</span><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp" accept="image/*"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; margin-top:-5px; margin-bottom:5px;">⚠️ Limite: 100MB</span><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">FECHAR</button></div></div>
 
 <div id="app">
     <div id="sidebar">
@@ -403,31 +406,8 @@ const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","�
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// 1. INJEÇÃO IMEDIATA E BLINDADA DE EMOJIS (Sem depender de window.onload)
-function initEmojis() {
-    let g = document.getElementById('emoji-grid');
-    if(!g) return;
-    g.innerHTML = '';
-    EMOJIS.forEach(e => {
-        let s = document.createElement('div');
-        s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
-        s.innerText = e;
-        s.onclick = () => {
-            if(currentEmojiTarget){
-                let inp = document.getElementById(currentEmojiTarget);
-                inp.value += e;
-                inp.focus();
-            }
-        };
-        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
-        s.onmouseout = () => s.style.background = "transparent";
-        g.appendChild(s);
-    });
-}
-initEmojis(); // Chama a função na mesma hora!
-
-// 2. VERIFICADOR DE TOKEN IMEDIATO
-function checkToken() {
+// CARREGAMENTO BLINDADO DE EMOJIS E URL
+document.addEventListener("DOMContentLoaded", function() {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
@@ -435,8 +415,28 @@ function checkToken() {
         window.history.replaceState({}, document.title, "/");
         window.resetToken = token;
     }
-}
-checkToken();
+    
+    // Injeta os emojis com CSS imune a bugs
+    let g = document.getElementById('emoji-grid');
+    if(g) {
+        g.innerHTML = '';
+        EMOJIS.forEach(e => {
+            let s = document.createElement('div');
+            s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
+            s.innerText = e;
+            s.onclick = () => {
+                if(currentEmojiTarget){
+                    let inp = document.getElementById(currentEmojiTarget);
+                    inp.value += e;
+                    inp.focus();
+                }
+            };
+            s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)";
+            s.onmouseout = () => s.style.background = "transparent";
+            g.appendChild(s);
+        });
+    }
+});
 
 function openEmoji(id){
     currentEmojiTarget = id;
@@ -504,11 +504,11 @@ async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id
 
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
-// UPLOADS INTELIGENTES COM PROTEÇÃO DE TAMANHO E TIPO
+// UPLOADS INTELIGENTES COM LIMITE DE 100MB
 async function uploadToCloudinary(file){
-    let limiteMB = 50; 
+    let limiteMB = 100; // Limite travado em 100MB
     if(file.size > (limiteMB * 1024 * 1024)) {
-        return Promise.reject(`Arquivo muito pesado! O limite grátis é de ${limiteMB}MB.`);
+        return Promise.reject(`O arquivo excede o limite máximo de ${limiteMB}MB!`);
     }
 
     let resType = file.type.startsWith('video') ? 'video' : 'image';
@@ -537,7 +537,7 @@ async function uploadToCloudinary(file){
                 catch(err) { rej("A nuvem recusou o arquivo (formato inválido)."); }
             }
         };
-        x.onerror=()=>rej("Conexão caiu ou limite estourado na nuvem.");
+        x.onerror=()=>rej("Conexão caiu. Verifique sua internet.");
         x.send(fd)
     });
 }
@@ -545,7 +545,7 @@ async function uploadToCloudinary(file){
 async function submitPost(){
     let f=document.getElementById('file-upload').files[0];
     let cap=document.getElementById('caption-upload').value;
-    if(!f)return showToast("Arquivo?");
+    if(!f)return showToast("Selecione um arquivo primeiro!");
     
     let btn=document.getElementById('btn-pub');
     btn.innerText="ENVIANDO..."; 
@@ -571,7 +571,7 @@ async function submitPost(){
             closeUpload();
         }
     }catch(e){
-        alert("Ops! Falha na Missão: " + e); 
+        alert("Ops! " + e); // Alerta mais amigável
     }finally{
         btn.innerText="PUBLICAR (+50 XP)";
         btn.disabled=false;
@@ -581,7 +581,7 @@ async function submitPost(){
     }
 }
 
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Erro: " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
+async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
 // CHAT INTELIGENTE 
 function connectWS(){
@@ -596,6 +596,7 @@ function connectWS(){
         let c = d.content;
         
         if(c.startsWith('http') && c.includes('cloudinary')) {
+            // Reconhece vídeo pelo final ou pela pasta /video/
             if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
                 c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
             } else {
@@ -725,6 +726,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
