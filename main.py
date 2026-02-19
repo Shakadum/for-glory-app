@@ -184,7 +184,7 @@ def startup():
             db.commit()
     except: pass
     db.close()
-    # --- FRONTEND COMPLETO ---
+# --- FRONTEND COMPLETO ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -231,21 +231,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg{position:absolute;bottom:-50px;left:50%;transform:translateX(-50%);width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid var(--dark-bg);box-shadow:0 0 25px rgba(102,252,241,0.3);cursor:pointer; background:#1f2833;}
 
-/* NOVOS BOTÕES GLASSMORPHISM */
 .glass-btn {
-    background: rgba(102, 252, 241, 0.08);
-    border: 1px solid rgba(102, 252, 241, 0.3);
-    color: var(--primary);
-    padding: 12px 20px;
-    border-radius: 12px;
-    cursor: pointer;
-    font-weight: bold;
-    font-family: 'Inter', sans-serif;
-    transition: 0.3s;
-    text-transform: uppercase;
-    font-size: 13px;
-    letter-spacing: 1px;
-    flex: 1;
+    background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary);
+    padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif;
+    transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1;
 }
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .danger-btn { color: #ff5555; border-color: rgba(255, 85, 85, 0.3); background: rgba(255, 85, 85, 0.08); width: 100%; margin-top: 20px; }
@@ -272,6 +261,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </head>
 <body>
 <div id="toast">Notificação</div>
+
+<div id="emoji-picker" style="position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:rgba(20,25,35,0.95);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8);backdrop-filter:blur(10px)">
+    <div style="padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333"><span style="color:var(--primary);font-weight:bold;font-family:'Rajdhani'">EMOJIS</span><span onclick="toggleEmoji(true)" style="color:#ff5555;cursor:pointer;font-weight:bold">✕</span></div>
+    <div id="emoji-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:10px;max-height:220px;overflow-y:auto"></div>
+</div>
 
 <div id="modal-login" class="modal">
     <div class="modal-box">
@@ -307,8 +301,26 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white">NOVO POST</h2><input type="file" id="file-upload" class="inp"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..."><div id="upload-progress" style="display:none;background:#333;height:5px;margin-top:10px"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary)"></div></div><button id="btn-pub" onclick="submitPost()" class="btn-main">PUBLICAR</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;">CANCELAR</button></div></div>
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp"><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;">FECHAR</button></div></div>
+<div id="modal-upload" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:white">NOVO POST</h2>
+        <input type="file" id="file-upload" class="inp" accept="image/*,video/*">
+        <div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px">
+            <input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0">
+            <button onclick="openEmoji('caption-upload')" style="background:none;border:none;font-size:24px;cursor:pointer">😀</button>
+        </div>
+        
+        <div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden">
+            <div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div>
+        </div>
+        <div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div>
+        
+        <button id="btn-pub" onclick="submitPost()" class="btn-main">PUBLICAR (+50 XP)</button>
+        <button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button>
+    </div>
+</div>
+
+<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Foto de Perfil</label><input type="file" id="avatar-upload" class="inp"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Capa de Fundo</label><input type="file" id="cover-upload" class="inp"><input id="bio-update" class="inp" placeholder="Escreva sua Bio..."><button id="btn-save-profile" onclick="updateProfile()" class="btn-main">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">FECHAR</button></div></div>
 
 <div id="app">
     <div id="sidebar">
@@ -325,6 +337,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <input type="file" id="chat-file" class="hidden" onchange="uploadChatImage()">
                 <button onclick="document.getElementById('chat-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
                 <input id="chat-msg" placeholder="Mensagem..." onkeypress="if(event.key==='Enter')sendMsg()">
+                <button onclick="openEmoji('chat-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
                 <button onclick="sendMsg()" style="background:var(--primary);border:none;width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;">➤</button>
             </div>
         </div>
@@ -380,16 +393,18 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
-var user=null,ws=null,syncInterval=null,lastFeedHash="";
-// --- SEU CLOUD NAME AQUI ---
+var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
+
+// ARRAY DE EMOJIS RESTAURADO
+const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// LOGIN E SENHA
 window.onload = function() {
+    // Carrega a URL do token de senha
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
@@ -397,8 +412,36 @@ window.onload = function() {
         window.history.replaceState({}, document.title, "/");
         window.resetToken = token;
     }
+    
+    // CARREGA A CAIXA DE EMOJIS
+    let g = document.getElementById('emoji-grid');
+    EMOJIS.forEach(e => {
+        let s = document.createElement('div');
+        s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;";
+        s.innerText = e;
+        s.onclick = () => {
+            if(currentEmojiTarget){
+                let inp = document.getElementById(currentEmojiTarget);
+                inp.value += e;
+                inp.focus();
+            }
+        };
+        g.appendChild(s);
+    });
 };
 
+function openEmoji(id){
+    currentEmojiTarget = id;
+    document.getElementById('emoji-picker').style.display='flex';
+}
+
+function toggleEmoji(forceClose){
+    let e = document.getElementById('emoji-picker');
+    if(forceClose === true) e.style.display='none';
+    else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';
+}
+
+// RESTO DO SISTEMA DE LOGIN
 async function requestReset() {
     let email = document.getElementById('f-email').value;
     if(!email) return showToast("Digite seu e-mail!");
@@ -411,7 +454,6 @@ async function requestReset() {
         toggleAuth('login');
     } catch(e) { showToast("Erro de conexão"); }
 }
-
 async function doResetPassword() {
     let newPass = document.getElementById('new-pass').value;
     if(!newPass) return showToast("Digite a nova senha!");
@@ -430,27 +472,20 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},4000)}
 
-// --- CORREÇÃO DA UI (FOTO PADRÃO INFALÍVEL) ---
 function updateUI(){
     if(!user) return;
-    
-    // Fallback inteligente: Se não tiver foto, cria uma com o nome dele
     let safeAvatar = user.avatar_url;
     if(!safeAvatar || safeAvatar.includes("undefined")) {
         safeAvatar = `https://ui-avatars.com/api/?name=${user.username}&background=1f2833&color=66fcf1&bold=true`;
     }
-
     document.getElementById('nav-avatar').src = safeAvatar;
     document.getElementById('p-avatar').src = safeAvatar;
-    
     let pCover = document.getElementById('p-cover');
     pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
     pCover.style.display = 'block';
-    
     document.getElementById('p-name').innerText = user.username || "Soldado";
     document.getElementById('p-bio').innerText = user.bio || "Na base de operações.";
     document.getElementById('p-rank').innerText = user.rank || "REC";
-    
     document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar);
 }
 
@@ -461,40 +496,109 @@ async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id
 
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
-// UPLOADS PARA A NUVEM
-async function uploadToCloudinary(file){let fd=new FormData();fd.append('file',file);fd.append('upload_preset',UPLOAD_PRESET);return new Promise((res,rej)=>{let x=new XMLHttpRequest();x.open('POST',`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,true);x.onload=()=>{if(x.status===200)res(JSON.parse(x.responseText));else rej()};x.send(fd)})}
-
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Arquivo?");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;try{let c=await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;loadFeed();closeUpload();}}catch(e){showToast("Erro")}finally{btn.innerText="PUBLICAR";btn.disabled=false}}
-
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){showToast("Erro")}finally{btn.innerText="SALVAR";btn.disabled=false;}}
-
-// --- CORREÇÃO DO CHAT (AGORA RECONHECE QUALQUER LINK) ---
-function connectWS(){if(ws)ws.close();let p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('chat-list');let m=parseInt(d.user_id)===parseInt(user.id);
+// UPLOADS PARA A NUVEM (COM PROGRESSO VISUAL E TRATAMENTO DE ERRO)
+async function uploadToCloudinary(file){
+    let fd=new FormData();
+    fd.append('file',file);
+    fd.append('upload_preset',UPLOAD_PRESET);
     
-    // Nova Lógica Imbatível para detectar Imagens/Vídeos
-    let msgText = d.content;
-    let finalContent = msgText;
+    return new Promise((res,rej)=>{
+        let x=new XMLHttpRequest();
+        x.open('POST',`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,true);
+        x.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                let percent = Math.round((e.loaded / e.total) * 100);
+                if(document.getElementById('progress-bar')) {
+                    document.getElementById('progress-bar').style.width = percent + '%';
+                    document.getElementById('progress-text').innerText = percent + '%';
+                }
+            }
+        };
+        x.onload=()=>{
+            if(x.status===200) res(JSON.parse(x.responseText));
+            else {
+                try { rej(JSON.parse(x.responseText).error.message); } 
+                catch(err) { rej("Erro na Nuvem (Verifique se é vídeo e o tamanho)"); }
+            }
+        };
+        x.onerror=()=>rej("Erro de rede");
+        x.send(fd)
+    });
+}
+
+async function submitPost(){
+    let f=document.getElementById('file-upload').files[0];
+    let cap=document.getElementById('caption-upload').value;
+    if(!f)return showToast("Arquivo?");
     
-    if(msgText.startsWith('http') && msgText.includes('cloudinary')) {
-        // Se for vídeo (.mp4, .webm)
-        if(msgText.match(/\.(mp4|webm|mov|ogg)$/i)) {
-            finalContent = `<video src="${msgText}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
-        } else {
-            // Assume que é imagem se for link do cloudinary e não for vídeo
-            finalContent = `<img src="${msgText}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`;
+    let btn=document.getElementById('btn-pub');
+    btn.innerText="ENVIANDO..."; 
+    btn.disabled=true;
+    
+    document.getElementById('upload-progress').style.display='block';
+    document.getElementById('progress-text').style.display='block';
+
+    try{
+        let c = await uploadToCloudinary(f);
+        let fd=new FormData();
+        fd.append('user_id',user.id);
+        fd.append('caption',cap);
+        fd.append('content_url',c.secure_url);
+        fd.append('media_type',c.resource_type);
+        
+        let r=await fetch('/post/create_from_url',{method:'POST',body:fd});
+        if(r.ok){
+            showToast("Sucesso!");
+            user.xp+=50;
+            lastFeedHash="";
+            loadFeed();
+            closeUpload();
         }
+    }catch(e){
+        alert("Ops! Erro ao subir: " + e); // Alerta visual exato
+    }finally{
+        btn.innerText="PUBLICAR (+50 XP)";
+        btn.disabled=false;
+        document.getElementById('upload-progress').style.display='none';
+        document.getElementById('progress-text').style.display='none';
+        document.getElementById('progress-bar').style.width='0%';
     }
+}
 
-    let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=fff'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${d.username}</div><div class="msg-bubble">${finalContent}</div></div></div>`;
-    b.insertAdjacentHTML('beforeend',h);
-    b.scrollTop=b.scrollHeight
-}}
+async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Erro: " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
-function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value=''}}
-async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){showToast("Erro ao enviar")}}
+// CHAT INTELIGENTE (RECONHECE VÍDEOS DE VERDADE AGORA)
+function connectWS(){
+    if(ws)ws.close();
+    let p=location.protocol==='https:'?'wss:':'ws:';
+    ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
+    ws.onmessage=e=>{
+        let d=JSON.parse(e.data);
+        let b=document.getElementById('chat-list');
+        let m=parseInt(d.user_id)===parseInt(user.id);
+        
+        let c = d.content;
+        
+        // Se for um link do Cloudinary, verifica se é imagem ou vídeo
+        if(c.startsWith('http') && c.includes('cloudinary')) {
+            if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
+                c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;
+            } else {
+                c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`;
+            }
+        }
+        
+        let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+        b.insertAdjacentHTML('beforeend',h);
+        b.scrollTop=b.scrollHeight
+    }
+}
+
+function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value=''; toggleEmoji(true);}}
+async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){alert("Erro ao enviar: " + e)}}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden')}
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;"><span>${u.username}</span></div>`})}
-async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;">${r.username} <button class="glass-btn" style="padding:5px 10px;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;" onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>')}
+async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;" onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>')}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
 async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
@@ -606,3 +710,4 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
