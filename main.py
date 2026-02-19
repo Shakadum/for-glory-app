@@ -50,14 +50,26 @@ cloudinary.config(
   secure = True
 )
 
-# --- BANCO DE DADOS (ANTI-TRAVAMENTO MÁXIMO) ---
+# --- BANCO DE DADOS (ANTI-TRAVAMENTO MÁXIMO NEON/POSTGRES) ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v5.db")
 
 if "sqlite" in DATABASE_URL:
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 20}, pool_size=15, max_overflow=30)
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={"check_same_thread": False, "timeout": 20}, 
+        pool_size=15, 
+        max_overflow=30
+    )
 else:
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=30,           # Aumenta os portões principais de 5 para 30
+        max_overflow=50,        # Se lotar, cria mais 50 portões de emergência
+        pool_timeout=30,        # Tempo de paciência na fila
+        pool_pre_ping=True,     # Sensor que impede o Neon de derrubar a conexão (VITAL)
+        pool_recycle=1800       # Renova as conexões a cada 30 minutos
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -1410,6 +1422,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
