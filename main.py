@@ -477,7 +477,7 @@ window.onload=()=>{
 
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-    # --- API ENDPOINTS (Cloudinary) ---
+# --- API ENDPOINTS OTIMIZADOS ---
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first():
@@ -500,26 +500,35 @@ async def log(d: LoginData, db: Session=Depends(get_db)):
 @app.post("/upload/post")
 async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
     try:
-        # Envia para o Cloudinary (detecta se é imagem ou vídeo automaticamente)
-        res = cloudinary.uploader.upload(file.file, resource_type = "auto", folder="for_glory/posts")
+        # TÁTICA DE GUERRA: Envio em Pedaços (Chunks) para não estourar a RAM do Render
+        # O 'file.file' é um objeto que o Cloudinary sabe ler aos poucos
+        res = cloudinary.uploader.upload_large(
+            file.file, 
+            resource_type = "auto", 
+            chunk_size = 6000000, # Envia de 6 em 6 MB (Seguro para plano free)
+            folder="for_glory/posts"
+        )
+        
         url = res["secure_url"]
         m_type = "video" if res["resource_type"] == "video" else "image"
         
         db.add(Post(user_id=user_id, content_url=url, media_type=m_type, caption=caption))
+        
+        # Recompensa
         user = db.query(User).filter(User.id == user_id).first()
         if user: user.xp += 50 
+        
         db.commit()
         return {"status":"ok", "url": url}
     except Exception as e:
         logger.error(f"Erro Cloudinary: {e}")
-        raise HTTPException(500, f"Erro no upload: {str(e)}")
+        raise HTTPException(500, f"Falha no envio: {str(e)}")
 
 @app.post("/post/delete")
 async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
     post = db.query(Post).filter(Post.id == d.post_id).first()
     if not post or post.user_id != d.user_id:
         return {"status": "error"}
-    # Opcional: deletar do Cloudinary também (requer guardar o public_id)
     db.delete(post)
     db.commit()
     return {"status": "ok"}
@@ -527,6 +536,7 @@ async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
     try:
+        # Upload simples para chat (geralmente são imagens leves)
         res = cloudinary.uploader.upload(file.file, resource_type = "auto", folder="for_glory/chat")
         return {"url": res["secure_url"]}
     except Exception as e:
@@ -552,17 +562,32 @@ async def search_users(q: str, db: Session=Depends(get_db)):
 async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
     
+    # ATUALIZAÇÃO COM INVALIDAÇÃO DE CACHE
     if file and file.filename:
-        res = cloudinary.uploader.upload(file.file, folder="for_glory/avatars")
+        # invalidate=True força o Cloudinary a limpar o cache antigo dessa imagem
+        res = cloudinary.uploader.upload(file.file, folder="for_glory/avatars", invalidate=True)
         u.avatar_url = res["secure_url"]
         
     if cover and cover.filename:
-        res = cloudinary.uploader.upload(cover.file, folder="for_glory/covers")
+        res = cloudinary.uploader.upload(cover.file, folder="for_glory/covers", invalidate=True)
         u.cover_url = res["secure_url"]
         
     if bio: u.bio = bio
     
     db.commit()
+    
+    # TÁTICA DE PROPAGAÇÃO: Envia um sinal para o chat avisando que mudou o perfil
+    # Isso ajuda a atualizar quem estiver com o chat aberto
+    try:
+        await manager.broadcast({
+            "user_id": u.id,
+            "username": u.username,
+            "avatar": u.avatar_url,
+            "content": "🔄 [Atualizou o Perfil]" # Mensagem silenciosa de sistema
+        }, "Geral")
+    except:
+        pass
+
     return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
 @app.post("/friend/request")
@@ -631,4 +656,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Aumentei o Timeout para 300 segundos (5 minutos) para aguentar vídeos grandes
+    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
+
