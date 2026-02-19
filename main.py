@@ -270,7 +270,7 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR REORGANIZADA DE 6 ABAS */
+/* SIDEBAR COM 6 ABAS (ORDEM CORRIGIDA E CARROSSEL NO MOBILE) */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -332,7 +332,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
-.comm-layout { display:flex; flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
+
+/* FIX: A classe comm-layout não tem mais display:flex para evitar sobreposição de telas */
+.comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
+
 .comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; }
 #active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; background: linear-gradient(90deg, transparent, rgba(102,252,241,0.1), transparent); padding: 5px 20px; border-radius: 20px; text-shadow: 0 0 10px rgba(102,252,241,0.3); }
 
@@ -369,10 +372,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 
-/* BLINDAGEM DO CARROSSEL DE BOTÕES NO MOBILE */
+/* BLINDAGEM DO CARROSSEL DE BOTÕES NO MOBILE (SCROLL HORIZONTAL) */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
-    #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden;}
+    #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden; white-space:nowrap; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
+    #sidebar::-webkit-scrollbar { display:none; }
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
 }
@@ -404,7 +408,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div id="sidebar">
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
+        <button class="nav-btn active" onclick="goView('feed', this)">🎬</button>
         <button class="nav-btn" onclick="goView('mycomms', this)">🛡️</button>
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
@@ -412,9 +416,37 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
     <div id="content-area">
         
-        <div id="view-feed" class="view">
-            <div id="feed-container"></div>
-            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
+        <div id="view-profile" class="view">
+            <div class="profile-header-container">
+                <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
+                <div class="profile-pic-lg-wrap">
+                    <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                    <div id="my-status-dot" class="status-dot status-dot-lg online"></div>
+                </div>
+            </div>
+            <div style="text-align:center;margin-top:10px">
+                <h2 id="p-name" style="color:white;font-family:'Rajdhani';font-size:28px;margin:5px 0;">...</h2>
+                <span id="p-rank" class="rank-badge">...</span>
+                <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
+            </div>
+            <div style="width:90%; max-width:400px; margin:0 auto; text-align:center">
+                <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;">MODO FURTIVO</button>
+
+                <div class="search-glass">
+                    <input id="search-input" placeholder="Buscar Soldado..." onkeypress="if(event.key==='Enter')searchUsers()">
+                    <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                    <button type="button" onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
+                </div>
+                <div id="search-results"></div>
+                
+                <div style="display:flex; gap:10px; margin-top:10px">
+                    <button onclick="toggleRequests('requests')" class="glass-btn">📩 Solicitações</button>
+                    <button onclick="toggleRequests('friends')" class="glass-btn">👥 Amigos</button>
+                </div>
+                <div id="requests-list" style="margin-top:15px; background:rgba(0,0,0,0.3); border-radius:10px;"></div>
+                
+                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;">DESCONECTAR DO SISTEMA</button>
+            </div>
         </div>
 
         <div id="view-inbox" class="view">
@@ -425,10 +457,48 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
         </div>
 
+        <div id="view-feed" class="view active">
+            <div id="feed-container"></div>
+            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
+        </div>
+
+        <div id="view-mycomms" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🛡️ MINHAS BASES</span>
+                <button class="glass-btn" style="margin:0; flex:none; padding:8px 15px;" onclick="document.getElementById('modal-create-comm').classList.remove('hidden')">+ CRIAR BASE</button>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
+
+        <div id="view-explore" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
+                <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🌐 EXPLORAR BASES</span>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div class="search-glass" style="max-width:400px; margin:0 auto 20px auto;">
+                    <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
+                    <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                    <button type="button" onclick="clearCommSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
+                </div>
+                <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
+
+        <div id="view-history" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
+                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🕒 MEU HISTÓRICO</span>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin:0 auto; max-width:800px;"></div>
+            </div>
+        </div>
+
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
+                    <button onclick="goView('inbox')" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅ Voltar</button>
                     <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;">Chat</div>
                 </div>
                 <div id="dm-list"></div>
@@ -442,17 +512,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
         </div>
 
-        <div id="view-mycomms" class="view">
-            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
-                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🛡️ MINHAS BASES</span>
-                <button class="glass-btn" style="margin:0; flex:none; padding:8px 15px;" onclick="document.getElementById('modal-create-comm').classList.remove('hidden')">+ CRIAR BASE</button>
-            </div>
-            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
-                <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:15px; margin-bottom:40px;"></div>
-            </div>
-        </div>
-
-        <div id="view-comm-dashboard" class="view comm-layout">
+        <div id="view-comm-dashboard" class="view">
             <div class="comm-topbar">
                 <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
                 <div id="active-comm-name">NOME DA BASE</div>
@@ -487,62 +547,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                         <div id="c-info-requests" style="display:flex; flex-direction:column; gap:12px;"></div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <div id="view-explore" class="view">
-            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
-                <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🌐 EXPLORAR BASES</span>
-            </div>
-            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
-                <div class="search-glass" style="max-width:400px; margin:0 auto 20px auto;">
-                    <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
-                    <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
-                    <button type="button" onclick="clearCommSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
-                </div>
-                <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
-            </div>
-        </div>
-
-        <div id="view-history" class="view">
-            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
-                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;">🕒 MEU HISTÓRICO</span>
-            </div>
-            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
-                <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:0 auto; max-width:800px;"></div>
-            </div>
-        </div>
-
-        <div id="view-profile" class="view active">
-            <div class="profile-header-container">
-                <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
-                <div class="profile-pic-lg-wrap">
-                    <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
-                    <div id="my-status-dot" class="status-dot status-dot-lg online"></div>
-                </div>
-            </div>
-            <div style="text-align:center;margin-top:10px">
-                <h2 id="p-name" style="color:white;font-family:'Rajdhani';font-size:28px;margin:5px 0;">...</h2>
-                <span id="p-rank" class="rank-badge">...</span>
-                <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
-            </div>
-            <div style="width:90%; max-width:400px; margin:0 auto; text-align:center">
-                <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;">MODO FURTIVO</button>
-
-                <div class="search-glass">
-                    <input id="search-input" placeholder="Buscar Soldado..." onkeypress="if(event.key==='Enter')searchUsers()">
-                    <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
-                    <button type="button" onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
-                </div>
-                <div id="search-results"></div>
-                
-                <div style="display:flex; gap:10px; margin-top:10px">
-                    <button onclick="toggleRequests('requests')" class="glass-btn">📩 Solicitações</button>
-                    <button onclick="toggleRequests('friends')" class="glass-btn">👥 Amigos</button>
-                </div>
-                <div id="requests-list" style="margin-top:15px; background:rgba(0,0,0,0.3); border-radius:10px;"></div>
-                
-                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;">DESCONECTAR DO SISTEMA</button>
             </div>
         </div>
 
@@ -668,17 +672,18 @@ function updateUI(){
 }
 function logout(){location.reload()}
 
-// GESTOR DE VIEWS (TELAS)
 function goView(v, btnElem){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
     
+    // Ajusta a navegação no carrossel de abas
     if(v !== 'public-profile' && v !== 'dm' && v !== 'comm-dashboard') { 
         document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); 
         if(btnElem) btnElem.classList.add('active');
         else if(event && event.target && event.target.closest) event.target.closest('.nav-btn')?.classList.add('active'); 
     }
     
+    // Gatilhos de carregamento
     if(v === 'inbox') loadInbox();
     if(v === 'mycomms') loadMyComms();
     if(v === 'explore') loadPublicComms();
@@ -686,12 +691,11 @@ function goView(v, btnElem){
     if(v === 'feed') loadFeed();
 }
 
-// CARREGA HISTÓRICO DE VÍDEOS
 async function loadMyHistory() {
     let hist = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let hData = await hist.json();
     let grid = document.getElementById('my-posts-grid'); grid.innerHTML = '';
-    if(hData.posts.length === 0) grid.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma missão registrada no Feed.</p>";
-    hData.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;" controls></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer; border-radius:10px;" onclick="window.open(this.src)">`; });
+    if(hData.posts.length === 0) grid.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma missão registrada.</p>";
+    hData.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;" controls preload="metadata"></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer; border-radius:10px;" onclick="window.open(this.src)">`; });
 }
 
 async function loadFeed(){
@@ -746,6 +750,7 @@ async function toggleComments(pid) {
     if(sec.style.display === 'block') { sec.style.display = 'none'; } else { sec.style.display = 'block'; loadComments(pid); }
 }
 
+// COMENTÁRIOS E LIXEIRAS
 async function loadComments(pid) {
     let r = await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);
     let list = document.getElementById(`comment-list-${pid}`);
@@ -864,6 +869,7 @@ async function loadPublicComms() {
         pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
     });
 }
+
 function clearCommSearch() { document.getElementById('search-comm-input').value = ''; loadPublicComms(); }
 async function searchComms() {
     let q = document.getElementById('search-comm-input').value.trim();
@@ -906,7 +912,7 @@ async function openCommunity(cid) {
     document.getElementById('comm-chat-area').style.display = 'flex';
     
     let r = await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    document.getElementById('active-comm-name').innerText = d.name;
+    document.getElementById('active-comm-name').innerText = "🛡️ " + d.name;
     document.getElementById('c-info-av').src = d.avatar_url; document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
     
     let mHtml = "";
@@ -938,7 +944,7 @@ async function handleCommReq(rid, act) {
 }
 
 function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
-function closeComm() { goView('mycomms'); if(commWS) commWS.close(); }
+function closeComm() { document.getElementById('comm-dashboard').style.display='none'; goView('mycomms'); if(commWS) commWS.close(); }
 
 async function submitCreateChannel() {
     let n = document.getElementById('new-ch-name').value.trim(); let t = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value;
