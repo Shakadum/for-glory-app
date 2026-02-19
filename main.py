@@ -1103,15 +1103,33 @@ async def mark_read(sender_id: int, d: ReadData, db: Session=Depends(get_db)):
     return {"status": "ok"}
 
 @app.post("/auth/forgot-password")
-async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
+async def forgot_password(d: ForgotPasswordData, db: Session=Depends(get_db)):
     user = db.query(User).filter(User.email == d.email).first()
     if not user: return {"status": "ok"}
+    
     token = create_reset_token(user.email)
     reset_link = f"https://for-glory.onrender.com/?token={token}"
-    message = MessageSchema(subject="Recuperação de Senha - For Glory", recipients=[d.email], body=f"""<p>Soldado {user.username},</p><p>Recebemos um pedido de resgate para sua conta.</p><p>Clique no link abaixo para redefinir sua senha:</p><a href="{reset_link}" style="background:#66fcf1; color:black; padding:10px 20px; text-decoration:none; border-radius:5px;">REDEFINIR SENHA</a><p>Este link expira em 30 minutos.</p>""", subtype=MessageType.html)
+    
+    # 🔴 SONDA DE DIAGNÓSTICO: Verifica se o Render carregou seu e-mail ou não
+    mail_user = os.environ.get("MAIL_USERNAME", "FALHOU_AO_CARREGAR_EMAIL")
+    logger.info(f"====== TENTANDO ACESSO COM O EMAIL: {mail_user} ======")
+    
+    message = MessageSchema(
+        subject="Recuperação de Senha - For Glory", 
+        recipients=[d.email], 
+        body=f"""<p>Soldado {user.username},</p><p>Recebemos um pedido de resgate para sua conta.</p><p>Clique no link abaixo para redefinir sua senha:</p><a href="{reset_link}" style="background:#66fcf1; color:black; padding:10px 20px; text-decoration:none; border-radius:5px;">REDEFINIR SENHA</a><p>Este link expira em 30 minutos.</p>""", 
+        subtype=MessageType.html
+    )
+    
     fm = FastMail(mail_conf)
-    background_tasks.add_task(fm.send_message, message)
-    return {"status": "ok"}
+    try:
+        # Envio forçado na hora para mostrar o erro nos Logs
+        await fm.send_message(message)
+        logger.info("====== EMAIL ENVIADO COM SUCESSO! ======")
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"====== ERRO REAL DO GMAIL: {str(e)} ======")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/auth/reset-password")
 async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
@@ -1392,5 +1410,6 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
