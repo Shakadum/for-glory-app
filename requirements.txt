@@ -8,3 +8,5 @@ jinja2
 psycopg2-binary
 cloudinary
 aiofiles
+fastapi-mail
+python-jose
