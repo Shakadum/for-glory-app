@@ -95,7 +95,6 @@ class Post(Base):
     timestamp = Column(DateTime, default=datetime.now)
     author = relationship("User")
 
-# --- NOVAS TABELAS DE ENGAJAMENTO ---
 class Like(Base):
     __tablename__ = "likes"
     id = Column(Integer, primary_key=True, index=True)
@@ -120,8 +119,88 @@ try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
     logger.error(f"Erro BD: {e}")
+
+# --- LÓGICA DE PATENTES E TOKENS ---
+def calcular_patente(xp):
+    if xp < 100: return "Recruta 🔰"
+    if xp < 500: return "Soldado ⚔️"
+    if xp < 1000: return "Cabo 🎖️"
+    if xp < 2000: return "3º Sargento 🎗️"
+    if xp < 5000: return "Capitão 👑"
+    return "Lenda 🐲"
+
+def create_reset_token(email: str):
+    expire = datetime.utcnow() + timedelta(minutes=30) 
+    to_encode = {"sub": email, "exp": expire, "type": "reset"}
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_reset_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "reset": return None
+        return payload.get("sub") 
+    except JWTError:
+        return None
+
+# --- WEBSOCKET E APP ---
+class ConnectionManager:
+    def __init__(self):
+        self.active = {}
+    async def connect(self, ws: WebSocket, chan: str):
+        await ws.accept()
+        if chan not in self.active: self.active[chan] = []
+        self.active[chan].append(ws)
+    def disconnect(self, ws: WebSocket, chan: str):
+        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
+    async def broadcast(self, msg: dict, chan: str):
+        for conn in self.active.get(chan, []):
+            try: await conn.send_text(json.dumps(msg))
+            except: pass
+
+manager = ConnectionManager()
+app = FastAPI(title="For Glory Cloud")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+if not os.path.exists("static"): os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- MODELOS DA API ---
+class LoginData(BaseModel): username: str; password: str
+class RegisterData(BaseModel): username: str; email: str; password: str
+class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
+class RequestActionData(BaseModel): request_id: int; action: str
+class DeletePostData(BaseModel): post_id: int; user_id: int
+class ForgotPasswordData(BaseModel): email: EmailStr
+class ResetPasswordData(BaseModel): token: str; new_password: str
+class CommentData(BaseModel): user_id: int; post_id: int; text: str
+
+def get_db():
+    db = SessionLocal()
+    try: yield db
+    finally: db.close()
+
+def criptografar(s):
+    return hashlib.sha256(s.encode()).hexdigest()
+
+@app.on_event("startup")
+def startup():
+    db = SessionLocal()
+    try:
+        if not db.query(Channel).first():
+            db.add(Channel(name="Geral"))
+            db.commit()
+    except: pass
+    db.close()
+
 # --- FRONTEND COMPLETO ---
-# O "r" antes das aspas impede o Python de tentar "traduzir" o código JavaScript dentro dele
+# O "r" antes das aspas blinda as expressões regulares do JS contra o Python
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -153,13 +232,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-media{width:100%;max-height:600px;object-fit:contain;background:#000;display:block}
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
-/* CSS NOVO: AÇÕES DO POST */
+/* AÇÕES DO POST */
 .post-actions { padding: 10px 15px; display: flex; gap: 20px; border-top: 1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.1); }
 .action-btn { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
 .action-btn.liked { color: #ff5555; }
 .action-btn:hover { color: var(--primary); transform: scale(1.05); }
 
-/* CSS NOVO: COMENTÁRIOS */
+/* COMENTÁRIOS */
 .comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
@@ -345,7 +424,6 @@ const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","�
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// EMOJIS BLINDADOS
 function initEmojis() {
     let g = document.getElementById('emoji-grid');
     if(!g) return;
@@ -382,7 +460,6 @@ checkToken();
 function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
 function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
-// LOGIN E RECUPERAÇÃO
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Digite seu e-mail!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("E-mail enviado! Verifique sua caixa (e spam)."); toggleAuth('login'); } catch(e) { showToast("Erro de conexão"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Digite a nova senha!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } else { showToast("Link expirado ou inválido."); } } catch(e) { showToast("Erro"); } }
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
@@ -401,7 +478,6 @@ function updateUI(){
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.target.closest('.nav-btn').classList.add('active')}
 
-// FEED E ENGAJAMENTO (COMENTÁRIOS E LIKES)
 async function loadFeed(){
     try{
         let r=await fetch('/posts?uid='+user.id+'&limit=50');
@@ -420,7 +496,7 @@ async function loadFeed(){
             ht+=`<div class="post-card">
                     <div class="post-header">
                         <div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})">
-                            <img src="${x.author_avatar}" class="post-av">
+                            <img src="${x.author_avatar}" class="post-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                             <div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div>
                         </div>
                         ${delBtn}
@@ -475,7 +551,7 @@ async function loadComments(pid) {
         if(comments.length === 0){ list.innerHTML = "<p style='color:#888;font-size:12px;text-align:center;'>Nenhum comentário ainda. Seja o primeiro!</p>"; return;}
         list.innerHTML = comments.map(c => `
             <div class="comment-row">
-                <img src="${c.author_avatar}" class="comment-av">
+                <img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                 <div><b style="color:var(--primary);">${c.author_name}</b> <span style="color:#e0e0e0">${c.text}</span></div>
             </div>
         `).join('');
@@ -492,7 +568,6 @@ async function sendComment(pid) {
 
 async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1; border:1px solid #66fcf1; padding:5px 10px; border-radius:8px;">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}
 
-// UPLOADS 
 async function uploadToCloudinary(file){
     let limiteMB = 100; 
     if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject(`Arquivo excedeu ${limiteMB}MB!`);
@@ -510,7 +585,6 @@ async function uploadToCloudinary(file){
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
-// CHAT 
 function connectWS(){if(ws)ws.close();let p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c = d.content;if(c.startsWith('http') && c.includes('cloudinary')) {if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`;} else {c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`;}}let h=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight}}
 function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value=''; toggleEmoji(true);}}
 async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];if(!f)return;showToast("Enviando arquivo...");try{let c=await uploadToCloudinary(f);ws.send(c.secure_url);}catch(e){alert("Erro ao enviar: " + e)}}
@@ -524,37 +598,17 @@ async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/
 </body>
 </html>
 """
+
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-# --- NOVOS MODELOS PARA A API ---
-class CommentData(BaseModel):
-    user_id: int
-    post_id: int
-    text: str
 
-# --- API ENDPOINTS ---
 @app.post("/auth/forgot-password")
 async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
     user = db.query(User).filter(User.email == d.email).first()
-    if not user:
-        return {"status": "ok"}
-    
+    if not user: return {"status": "ok"}
     token = create_reset_token(user.email)
     reset_link = f"https://for-glory.onrender.com/?token={token}"
-    
-    message = MessageSchema(
-        subject="Recuperação de Senha - For Glory",
-        recipients=[d.email],
-        body=f"""
-        <p>Soldado {user.username},</p>
-        <p>Recebemos um pedido de resgate para sua conta.</p>
-        <p>Clique no link abaixo para redefinir sua senha:</p>
-        <a href="{reset_link}" style="background:#66fcf1; color:black; padding:10px 20px; text-decoration:none; border-radius:5px;">REDEFINIR SENHA</a>
-        <p>Este link expira em 30 minutos.</p>
-        """,
-        subtype=MessageType.html
-    )
-    
+    message = MessageSchema(subject="Recuperação de Senha - For Glory", recipients=[d.email], body=f"""<p>Soldado {user.username},</p><p>Recebemos um pedido de resgate para sua conta.</p><p>Clique no link abaixo para redefinir sua senha:</p><a href="{reset_link}" style="background:#66fcf1; color:black; padding:10px 20px; text-decoration:none; border-radius:5px;">REDEFINIR SENHA</a><p>Este link expira em 30 minutos.</p>""", subtype=MessageType.html)
     fm = FastMail(mail_conf)
     background_tasks.add_task(fm.send_message, message)
     return {"status": "ok"}
@@ -565,7 +619,6 @@ async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
     if not email: raise HTTPException(400, "Token inválido")
     user = db.query(User).filter(User.email == email).first()
     if not user: raise HTTPException(404, "Usuário não encontrado")
-    
     user.password_hash = criptografar(d.new_password)
     db.commit()
     return {"status": "ok"}
@@ -591,20 +644,12 @@ async def create_post_url(user_id: int = Form(...), caption: str = Form(""), con
     db.commit()
     return {"status":"ok"}
 
-# --- NOVAS ROTAS DE ENGAJAMENTO ---
 @app.post("/post/like")
 async def toggle_like(d: dict, db: Session=Depends(get_db)):
-    post_id = d.get('post_id')
-    user_id = d.get('user_id')
+    post_id = d.get('post_id'); user_id = d.get('user_id')
     existing = db.query(Like).filter(Like.post_id==post_id, Like.user_id==user_id).first()
-    
-    if existing:
-        db.delete(existing)
-        liked = False
-    else:
-        db.add(Like(post_id=post_id, user_id=user_id))
-        liked = True
-        
+    if existing: db.delete(existing); liked = False
+    else: db.add(Like(post_id=post_id, user_id=user_id)); liked = True
     db.commit()
     count = db.query(Like).filter(Like.post_id==post_id).count()
     return {"liked": liked, "count": count}
@@ -612,8 +657,7 @@ async def toggle_like(d: dict, db: Session=Depends(get_db)):
 @app.post("/post/comment")
 async def add_comment(d: CommentData, db: Session=Depends(get_db)):
     c = Comment(user_id=d.user_id, post_id=d.post_id, text=d.text)
-    db.add(c)
-    db.commit()
+    db.add(c); db.commit()
     return {"status": "ok"}
 
 @app.get("/post/{post_id}/comments")
@@ -621,7 +665,6 @@ async def get_comments(post_id: int, db: Session=Depends(get_db)):
     comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.timestamp.asc()).all()
     return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url} for c in comments]
 
-# --- ROTA DE POSTS ATUALIZADA (Agora conta likes e comentarios) ---
 @app.get("/posts")
 async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
     posts = db.query(Post).order_by(Post.timestamp.desc()).limit(limit).all()
@@ -630,31 +673,16 @@ async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
         like_count = db.query(Like).filter(Like.post_id == p.id).count()
         user_liked = db.query(Like).filter(Like.post_id == p.id, Like.user_id == uid).first() is not None
         comment_count = db.query(Comment).filter(Comment.post_id == p.id).count()
-        
-        result.append({
-            "id": p.id, 
-            "content_url": p.content_url, 
-            "media_type": p.media_type, 
-            "caption": p.caption, 
-            "author_name": p.author.username, 
-            "author_avatar": p.author.avatar_url, 
-            "author_rank": calcular_patente(p.author.xp), 
-            "author_id": p.author.id,
-            "likes": like_count,
-            "user_liked": user_liked,
-            "comments": comment_count
-        })
+        result.append({"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_rank": calcular_patente(p.author.xp), "author_id": p.author.id, "likes": like_count, "user_liked": user_liked, "comments": comment_count})
     return result
 
 @app.post("/post/delete")
 async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
     post = db.query(Post).filter(Post.id == d.post_id).first()
     if not post or post.user_id != d.user_id: return {"status": "error"}
-    # Remove as interações antes de apagar o post para não quebrar o banco
     db.query(Like).filter(Like.post_id == post.id).delete()
     db.query(Comment).filter(Comment.post_id == post.id).delete()
-    db.delete(post)
-    db.commit()
+    db.delete(post); db.commit()
     return {"status": "ok"}
 
 @app.post("/profile/update_meta")
@@ -682,7 +710,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     except:
         manager.disconnect(ws, ch)
 
-# --- SISTEMA DE ALIADOS MANTIDO ---
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
     sender_id = d.get('sender_id'); target_id = d.get('target_id')
@@ -691,8 +718,7 @@ async def send_req(d: dict, db: Session=Depends(get_db)):
     if target in me.friends: return {"status": "already_friends"}
     existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id))).first()
     if existing: return {"status": "pending"}
-    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id))
-    db.commit()
+    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id)); db.commit()
     return {"status": "sent"}
 
 @app.get("/friend/requests")
@@ -732,9 +758,3 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
-
