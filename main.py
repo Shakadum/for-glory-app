@@ -206,6 +206,9 @@ html_content = r"""
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
 <title>For Glory</title>
 <style>
@@ -223,20 +226,22 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
 /* POSTS FEED E ENGAJAMENTO */
-#feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center}
-.post-card{background:var(--card-bg);width:100%;max-width:480px;margin-bottom:20px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column;}
+#feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
+
+/* A SOLUÇÃO DO ESMAGAMENTO ESTÁ AQUI: flex-shrink: 0 impede o corte */
+.post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
+
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
 .post-av{width:42px;height:42px;border-radius:50%;margin-right:12px;object-fit:cover;border:1px solid var(--primary); background:#111;}
 .rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3)}
 
-/* A CORREÇÃO DE VÍDEOS BLINDADA - O Segredo está no max-width em vez de width 100% */
 .post-media-wrapper { width: 100%; background: #030405; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02); padding: 5px 0;}
 .post-media { max-width: 100%; max-height: 65vh; object-fit: contain !important; display: block; }
 
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
-/* AÇÕES DO POST (CURTIR E COMENTAR) */
-.post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); }
+/* AÇÕES DO POST */
+.post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); border-top: 1px solid rgba(255,255,255,0.02); }
 .action-btn { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
 .action-btn.liked { color: #ff5555; }
 .action-btn:hover { color: var(--primary); transform: scale(1.05); }
@@ -322,6 +327,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <h3 style="color:var(--primary)">NOVA SENHA</h3>
             <input id="new-pass" class="inp" type="password" placeholder="NOVA SENHA">
             <button onclick="doResetPassword()" class="btn-main">SALVAR SENHA</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-delete" class="modal hidden">
+    <div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);">
+        <h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;">CONFIRMAR BAIXA</h2>
+        <p style="color:#ccc; margin: 15px 0; font-size:15px;">Tem certeza que deseja excluir esta missão do registro oficial?</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">EXCLUIR</button>
+            <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button>
         </div>
     </div>
 </div>
@@ -481,9 +497,9 @@ function updateUI(){
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile')event.target.closest('.nav-btn').classList.add('active')}
 
+// FEED BLINDADO
 async function loadFeed(){
     try{
-        // O "nocache" no link garante que o navegador pare de te mostrar coisas velhas
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
         if(!r.ok)return;
         let p=await r.json();
@@ -492,10 +508,13 @@ async function loadFeed(){
         lastFeedHash=h;
         let ht='';
         p.forEach(x=>{
-            let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
+            // Preload metadata garante que o vídeo sabe a altura dele antes de tocar
+            let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
             m = `<div class="post-media-wrapper">${m}</div>`;
             
-            let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
+            // Ícone de lixo agora chama a nova função do Modal Bonito
+            let delBtn=x.author_id===user.id?`<span onclick="confirmDeletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
+            
             let heartIcon = x.user_liked ? "❤️" : "🤍";
             let heartClass = x.user_liked ? "liked" : "";
             
@@ -529,6 +548,26 @@ async function loadFeed(){
         document.getElementById('feed-container').innerHTML=ht;
     }catch(e){}
 }
+
+// NOVO SISTEMA DE EXCLUSÃO
+let postToDelete = null;
+function confirmDeletePost(pid) {
+    postToDelete = pid;
+    document.getElementById('modal-delete').classList.remove('hidden');
+}
+
+document.getElementById('btn-confirm-delete').onclick = async () => {
+    if(!postToDelete) return;
+    let pid = postToDelete;
+    document.getElementById('modal-delete').classList.add('hidden');
+    
+    let r = await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})});
+    if(r.ok) {
+        showToast("Missão excluída do registro.");
+        lastFeedHash="";
+        loadFeed();
+    }
+};
 
 async function toggleLike(pid, btn) {
     let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})});
@@ -599,7 +638,6 @@ async function searchUsers(){let q=document.getElementById('search-input').value
 async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">Aceitar</button></div>`).join(''):'<p style="padding:10px;color:#888;">Sem solicitações.</p>'):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;" onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'<p style="padding:10px;color:#888;">Sem aliados.</p>')}
 async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
 async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
-async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
 </script>
 </body>
 </html>
@@ -769,3 +807,4 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
