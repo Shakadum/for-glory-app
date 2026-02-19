@@ -121,7 +121,8 @@ try:
 except Exception as e:
     logger.error(f"Erro BD: {e}")
 # --- FRONTEND COMPLETO ---
-html_content = """
+# O "r" antes das aspas impede o Python de tentar "traduzir" o código JavaScript dentro dele
+html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -381,7 +382,7 @@ checkToken();
 function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
 function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
-// LOGIN
+// LOGIN E RECUPERAÇÃO
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Digite seu e-mail!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("E-mail enviado! Verifique sua caixa (e spam)."); toggleAuth('login'); } catch(e) { showToast("Erro de conexão"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Digite a nova senha!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } else { showToast("Link expirado ou inválido."); } } catch(e) { showToast("Erro"); } }
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
@@ -406,14 +407,13 @@ async function loadFeed(){
         let r=await fetch('/posts?uid='+user.id+'&limit=50');
         if(!r.ok)return;
         let p=await r.json();
-        let h=JSON.stringify(p.map(x=>x.id + x.likes + x.comments + (x.user_liked?"1":"0"))); // Recarrega se like ou comment mudar
+        let h=JSON.stringify(p.map(x=>x.id + x.likes + x.comments + (x.user_liked?"1":"0"))); 
         if(h===lastFeedHash)return;
         lastFeedHash=h;
         let ht='';
         p.forEach(x=>{
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
             let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
-            
             let heartIcon = x.user_liked ? "❤️" : "🤍";
             let heartClass = x.user_liked ? "liked" : "";
             
@@ -435,7 +435,6 @@ async function loadFeed(){
                         </button>
                     </div>
                     <div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div>
-                    
                     <div id="comments-${x.id}" class="comments-section">
                         <div id="comment-list-${x.id}"></div>
                         <div class="comment-input-area">
@@ -458,7 +457,7 @@ async function toggleLike(pid, btn) {
         if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } 
         else { btn.classList.remove('liked'); icon.innerText = "🤍"; }
         count.innerText = d.count;
-        lastFeedHash=""; // Força recarga no próximo ciclo
+        lastFeedHash=""; 
     }
 }
 
@@ -733,6 +732,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
