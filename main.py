@@ -47,14 +47,22 @@ cloudinary.config(
   secure = True
 )
 
-# --- BANCO DE DADOS ---
+# --- BANCO DE DADOS (BLINDADO CONTRA TRAVAMENTO) ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v3.db")
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# A mágica anti-travamento do SQLite
 if "sqlite" in DATABASE_URL:
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 15 # Espera até 15s antes de dar erro de "locked"
+        },
+        pool_size=10, # Permite mais conexões simultâneas
+        max_overflow=20
+    )
 else:
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -155,6 +163,27 @@ try:
 except Exception as e:
     logger.error(f"Erro BD: {e}")
 
+# --- LÓGICA DE PATENTES E TOKENS ---
+def calcular_patente(xp):
+    if xp < 100: return "Recruta 🔰"
+    if xp < 500: return "Soldado ⚔️"
+    if xp < 1000: return "Cabo 🎖️"
+    if xp < 2000: return "3º Sargento 🎗️"
+    if xp < 5000: return "Capitão 👑"
+    return "Lenda 🐲"
+
+def create_reset_token(email: str):
+    expire = datetime.utcnow() + timedelta(minutes=30) 
+    to_encode = {"sub": email, "exp": expire, "type": "reset"}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_reset_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "reset": return None
+        return payload.get("sub") 
+    except JWTError: return None
+
 # --- WEBSOCKET E RADAR DE STATUS ---
 class ConnectionManager:
     def __init__(self):
@@ -175,6 +204,7 @@ class ConnectionManager:
                 del self.user_connections[uid]
 
     async def broadcast(self, msg: dict, chan: str):
+        # Transmite para todos (ou para a DM)
         for conn in self.active.get(chan, []):
             try: await conn.send_text(json.dumps(msg))
             except: pass
@@ -210,34 +240,20 @@ def get_db():
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-def calcular_patente(xp):
-    if xp < 100: return "Recruta 🔰"
-    if xp < 500: return "Soldado ⚔️"
-    if xp < 1000: return "Cabo 🎖️"
-    if xp < 2000: return "3º Sargento 🎗️"
-    if xp < 5000: return "Capitão 👑"
-    return "Lenda 🐲"
-
-def create_reset_token(email: str):
-    expire = datetime.utcnow() + timedelta(minutes=30) 
-    to_encode = {"sub": email, "exp": expire, "type": "reset"}
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def verify_reset_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "reset": return None
-        return payload.get("sub") 
-    except JWTError: return None
-
 @app.on_event("startup")
 def startup():
-    # Atualiza o banco garantindo que ele não quebre o servidor
+    # Ativando WAL mode (Mágica para leitura e escrita simultânea) no SQLite
+    if "sqlite" in str(engine.url):
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA journal_mode=WAL;"))
+            conn.commit()
+            
     with engine.connect() as conn:
         try: conn.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0")); conn.commit()
         except: pass 
         try: conn.execute(text("ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0")); conn.commit()
         except: pass
+        
     db = SessionLocal()
     try:
         if not db.query(Channel).first():
@@ -465,7 +481,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
                     <input type="file" id="dm-file" class="hidden" onchange="uploadDMImage()" accept="image/*,video/*">
                     <button type="button" onclick="document.getElementById('dm-file').click()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">📎</button>
-                    
                     <input id="dm-msg" class="chat-msg" placeholder="Mensagem secreta..." autocomplete="off">
                     <button type="button" onclick="openEmoji('dm-msg')" style="background:none;border:none;font-size:24px;cursor:pointer;margin-right:5px">😀</button>
                     <button type="submit" style="background:var(--primary);border:none;width:45px;height:45px;border-radius:12px;font-weight:bold;color:#0b0c10;cursor:pointer;">➤</button>
@@ -604,6 +619,7 @@ async function requestReset() { let email = document.getElementById('f-email').v
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Digite a nova senha!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Senha alterada! Faça login."); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
 async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Registrado!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
+
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
     updateUI(); loadFeed(); connectWS(); fetchOnlineUsers(); fetchUnread();
@@ -631,7 +647,6 @@ function goView(v){
     if(v === 'inbox') loadInbox();
 }
 
-// ⚠️ CORREÇÃO: MEMÓRIA DE FEED (IMPEDE COMENTÁRIO DE FECHAR E APAGAR O QUE ESTÁ DIGITANDO)
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
@@ -641,12 +656,10 @@ async function loadFeed(){
         if(h===lastFeedHash)return;
         lastFeedHash=h;
         
-        // --- MEMÓRIA DO SISTEMA ---
         let openComments = []; let activeInputs = {}; let focusedInputId = null;
         if (document.activeElement && document.activeElement.classList.contains('comment-inp')) { focusedInputId = document.activeElement.id; }
         document.querySelectorAll('.comments-section').forEach(sec => { if(sec.style.display === 'block') openComments.push(sec.id.split('-')[1]); });
         document.querySelectorAll('.comment-inp').forEach(inp => { if(inp.value) activeInputs[inp.id] = inp.value; });
-        // --------------------------
 
         let ht='';
         p.forEach(x=>{
@@ -654,11 +667,11 @@ async function loadFeed(){
             m = `<div class="post-media-wrapper">${m}</div>`;
             let delBtn=x.author_id===user.id?`<span onclick="confirmDeletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
             let heartIcon = x.user_liked ? "❤️" : "🤍"; let heartClass = x.user_liked ? "liked" : "";
+            
             ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><input id="comment-inp-${x.id}" class="comment-inp" placeholder="Comentar..." autocomplete="off"><button type="button" onclick="openEmoji('comment-inp-${x.id}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0 5px;">😀</button><button type="submit" style="background:var(--primary);border:none;border-radius:12px;padding:8px 15px;color:black;font-weight:bold;cursor:pointer;">➤</button></form></div></div>`
         });
         document.getElementById('feed-container').innerHTML=ht;
         
-        // --- RESTAURAR MEMÓRIA ---
         openComments.forEach(pid => { let sec = document.getElementById(`comments-${pid}`); if(sec) { sec.style.display = 'block'; loadComments(pid); } });
         for (let id in activeInputs) { let inp = document.getElementById(id); if (inp) inp.value = activeInputs[id]; }
         if (focusedInputId) { let inp = document.getElementById(focusedInputId); if (inp) { inp.focus({preventScroll: true}); let val = inp.value; inp.value = ''; inp.value = val; } }
@@ -676,7 +689,7 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
 
 async function toggleLike(pid, btn) {
     let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})});
-    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; }
+    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; loadFeed(); }
 }
 
 async function toggleComments(pid) {
@@ -763,7 +776,19 @@ async function openChat(id, name, type) {
     };
 }
 
-function sendDM() { let i = document.getElementById('dm-msg'); if(i.value.trim() && dmWS) { dmWS.send(i.value.trim()); i.value = ''; toggleEmoji(true); } }
+function sendDM() { 
+    let i = document.getElementById('dm-msg'); 
+    let msg = i.value.trim();
+    if(msg && dmWS) { 
+        // Envia imediatamente para o front end (semelhante ao Whatsapp)
+        let b = document.getElementById('dm-list');
+        let h = `<div class="msg-row mine"><img src="${user.avatar_url}" class="msg-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;">${user.username}</div><div class="msg-bubble" style="opacity:0.8;">${msg}</div></div></div>`;
+        b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
+        
+        dmWS.send(msg); // Envia pro servidor real
+        i.value = ''; toggleEmoji(true); 
+    } 
+}
 
 async function uploadDMImage(){
     let f=document.getElementById('dm-file').files[0];
@@ -834,7 +859,6 @@ async def get(response: Response):
     response.headers["Expires"] = "0"
     return HTMLResponse(content=html_content)
 
-# RADAR E STATUS
 @app.get("/users/online")
 async def get_online_users(db: Session=Depends(get_db)):
     active_uids = list(manager.user_connections.keys())
@@ -996,7 +1020,6 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     ).order_by(PrivateMessage.timestamp.asc()).limit(100).all()
     return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
 
-# ESCUDO ANTI-QUEDA DE CONEXÃO NO WEBSOCKET
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
     await manager.connect(ws, ch, uid)
@@ -1005,6 +1028,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
             txt = await ws.receive_text()
             u_fresh = db.query(User).filter(User.id == uid).first()
             
+            # --- BLINDAGEM DE BANCO DE DADOS ---
+            # O try-except interno impede que o erro do banco derrube o WebSockets
             try:
                 if ch.startswith("dm_"):
                     parts = ch.split("_")
@@ -1016,12 +1041,12 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
                     grp_id = int(ch.split("_")[1])
                     db.add(GroupMessage(group_id=grp_id, sender_id=uid, content=txt))
                     db.commit()
-            except Exception as db_err:
-                logger.error(f"Erro BD WS Protegido: {db_err}")
-                db.rollback() 
+            except Exception as e:
+                logger.error(f"Aviso de colisão no Banco, ignorando... {e}")
+                db.rollback()
 
             await manager.broadcast({"user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}, ch)
-    except Exception as e:
+    except Exception:
         manager.disconnect(ws, ch, uid)
 
 @app.post("/friend/request")
