@@ -35,10 +35,10 @@ mail_conf = ConnectionConfig(
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "seu_email@gmail.com"),
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_app"),
     MAIL_FROM = os.environ.get("MAIL_FROM", "seu_email@gmail.com"),
-    MAIL_PORT = 587,               # Mudança de 465 para 587
+    MAIL_PORT = 465,               # Voltando para a porta 465 (SSL)
     MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = True,          # Mudança de False para True
-    MAIL_SSL_TLS = False,          # Mudança de True para False
+    MAIL_STARTTLS = False,         # STARTTLS desligado
+    MAIL_SSL_TLS = True,           # SSL blindado ativado
     USE_CREDENTIALS = True,
     VALIDATE_CERTS = True
 )
@@ -1115,9 +1115,31 @@ async def mark_read(sender_id: int, d: ReadData, db: Session=Depends(get_db)):
     return {"status": "ok"}
 
 @app.post("/auth/forgot-password")
-async def forgot_password(d: ForgotPasswordData, db: Session=Depends(get_db)):
+async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
     user = db.query(User).filter(User.email == d.email).first()
-    if not user: return {"status": "ok"}
+    if not user: return {"status": "ok"} # Por segurança, não avisa se o email não existe
+    
+    token = create_reset_token(user.email)
+    reset_link = f"https://for-glory.onrender.com/?token={token}"
+    
+    # 🚨 TÁTICA DE GUERRILHA: Imprime o link secreto no seu Log do Render!
+    logger.info("="*60)
+    logger.info(f"🚨 CHAVE DE RESGATE GERADA! COPIE O LINK ABAIXO: 🚨")
+    logger.info(f"{reset_link}")
+    logger.info("="*60)
+    
+    message = MessageSchema(
+        subject="Recuperação de Senha - For Glory", 
+        recipients=[d.email], 
+        body=f"""<p>Soldado {user.username},</p><p>Recebemos um pedido de resgate para sua conta.</p><p>Clique no link abaixo para redefinir sua senha:</p><a href="{reset_link}" style="background:#66fcf1; color:black; padding:10px 20px; text-decoration:none; border-radius:5px;">REDEFINIR SENHA</a><p>Este link expira em 30 minutos.</p>""", 
+        subtype=MessageType.html
+    )
+    
+    fm = FastMail(mail_conf)
+    # Enviando em background: Se o e-mail falhar, o site não trava e nem dá erro pro usuário!
+    background_tasks.add_task(fm.send_message, message)
+    
+    return {"status": "ok"}
     
     token = create_reset_token(user.email)
     reset_link = f"https://for-glory.onrender.com/?token={token}"
@@ -1422,6 +1444,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
