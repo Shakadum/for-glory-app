@@ -162,7 +162,7 @@ def startup():
     except:
         pass # Pode falhar na primeira conexão se tabela não existir
     db.close()
-    # --- FRONTEND COMPLETO ---
+# --- FRONTEND OTIMIZADO (UPLOAD DIRETO) ---
 html_content = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -206,8 +206,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .profile-pic-lg{position:absolute;bottom:-50px;left:50%;transform:translateX(-50%);width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid var(--dark-bg);box-shadow:0 0 25px rgba(102,252,241,0.3);cursor:pointer;z-index:2}
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10;transition:transform 0.2s}
 .btn-float:active{transform:scale(0.9)}
-
-/* MODAL ESCURO E PROGRESSO */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
 .modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
@@ -220,7 +218,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .hidden{display:none !important}
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#000;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;box-shadow:0 5px 15px rgba(102,252,241,0.4);transition:opacity 0.3s, visibility 0.3s}
 #toast.show{visibility:visible;opacity:1}
-
 @keyframes fadeInView{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
@@ -272,42 +269,42 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="view-public-profile" class="view"><button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);backdrop-filter:blur(5px);border:1px solid #444;color:white;border-radius:8px;padding:8px 15px;cursor:pointer">⬅ Voltar</button><div class="profile-header-container"><img id="pub-cover" src="" class="profile-cover" onerror="this.style.display='none'" onload="this.style.display='block'"><img id="pub-avatar" src="" class="profile-pic-lg" style="cursor:default;border-color:#888"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:20px"><h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin-bottom:5px">...</h2><span id="pub-rank" style="color:var(--primary);font-size:12px;font-weight:bold;margin-bottom:10px;text-transform:uppercase">...</span><p id="pub-bio" style="color:#888;margin-bottom:20px;width:80%">...</p><div id="pub-actions" style="margin-bottom:20px"></div><div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:100%;max-width:500px"></div></div></div></div></div>
 <script>
 var user=null,ws=null,syncInterval=null,lastFeedHash="",currentEmojiTarget=null;
+// --- PREENCHA COM O NOME DA SUA NUVEM AQUI SE SOUBER, SENÃO VAI TENTAR AUTOMÁTICO DO BACKEND ---
+// Ex: const CLOUD_NAME = "dqa0q3qlx";
+var CLOUD_NAME = ""; 
+const UPLOAD_PRESET = "for_glory_preset"; // O nome que você criou no passo 1
+
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=x.className.replace("show","")},3000)}
 
 function toggleAuth(m){document.getElementById('login-form').classList.toggle('hidden',m==='register');document.getElementById('register-form').classList.toggle('hidden',m!=='register')}
-async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Credenciais Inválidas")}}
+async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();
+    // Tenta pegar o cloudname do usuário (gambiarra tática)
+    if(user.avatar_url && user.avatar_url.includes('cloudinary.com')){
+        let parts = user.avatar_url.split('/');
+        CLOUD_NAME = parts[3]; // Pega o nome da URL
+    }
+    startApp()}catch(e){showToast("Credenciais Inválidas")}}
+    
 async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Recruta Registrado!");toggleAuth('login')}catch(e){showToast("Erro ao Registrar")}}
 function startApp(){document.getElementById('modal-login').classList.add('hidden');updateUI();loadFeed();connectWS();syncInterval=setInterval(()=>{if(document.getElementById('view-feed').classList.contains('active'))loadFeed()},4000)}
 
 function updateUI(){
     if(!user) return;
     let t=new Date().getTime();
-    
-    // Atualização visual das imagens
     let elements = document.getElementsByTagName('img');
     let baseAvatar = user.avatar_url.split("?")[0];
-    
     for(let i=0; i<elements.length; i++){
         let img = elements[i];
         if(img.src.includes(baseAvatar) || img.classList.contains('my-avatar-mini') || img.id === 'p-avatar'){
-            // Adiciona timestamp para forçar reload, mas usa a URL Cloudinary direto
-            if(user.avatar_url.includes('cloudinary')){
-                 img.src = user.avatar_url; // Cloudinary já é rápido, cache é bom
-            } else {
-                 img.src = baseAvatar + "?t=" + t;
-            }
+             img.src = baseAvatar;
         }
     }
-    
     document.getElementById('nav-avatar').src = user.avatar_url;
-
-    let cv = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
     let pCover = document.getElementById('p-cover');
-    pCover.src = cv;
+    pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY";
     pCover.style.display = 'block';
-
     document.getElementById('p-name').innerText=user.username;
     document.getElementById('p-bio').innerText=user.bio;
     document.getElementById('p-rank').innerText=user.rank;
@@ -315,169 +312,153 @@ function updateUI(){
 
 function logout(){location.reload()}
 function goView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));if(v!=='public-profile'){document.querySelector(`.nav-btn[onclick="goView('${v}')"]`).classList.add('active')}}
-async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();let t=new Date().getTime();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
+async function openPublicProfile(uid){let r=await fetch('/user/'+uid+'?viewer_id='+user.id);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-rank').innerText=d.rank;let ab=document.getElementById('pub-actions');ab.innerHTML='';if(d.friend_status==='friends')ab.innerHTML='<span style="color:#66fcf1;font-weight:bold;border:1px solid #66fcf1;padding:5px 10px;border-radius:8px">✔ Aliado</span>';else if(d.friend_status==='pending_sent')ab.innerHTML='<span style="color:orange">Convite Enviado</span>';else if(d.friend_status==='pending_received')ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px" onclick="handleReq(${d.request_id},'accept')">Aceitar Aliado</button>`;else ab.innerHTML=`<button class="btn-main" style="margin:0;padding:8px 20px;background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="sendRequest(${uid})">Recrutar Aliado</button>`;let g=document.getElementById('pub-grid');g.innerHTML='';d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#111" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer">`});goView('public-profile')}
 async function loadFeed(){try{let r=await fetch('/posts?uid='+user.id+'&limit=50');if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id));if(h===lastFeedHash)return;lastFeedHash=h;let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5">🗑️</span>`:'';ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><img src="${x.author_avatar}" class="post-av"><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div class="rank-badge">${x.author_rank}</div></div></div>${delBtn}</div>${m}<div class="post-caption"><b style="color:white">${x.author_name}</b> ${x.caption}</div></div>`});document.getElementById('feed-container').innerHTML=ht;}catch(e){}}
 
-function submitPost(){
-    let f=document.getElementById('file-upload').files[0];
-    let cap=document.getElementById('caption-upload').value;
-    if(!f)return showToast("Selecione um arquivo!");
+// --- UPLOAD DIRETO PARA CLOUDINARY (Front-end) ---
+async function uploadToCloudinary(file) {
+    if(!CLOUD_NAME) CLOUD_NAME = "dqa0q3qlx"; // Seu cloud name detectado nas imagens
+    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`;
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', UPLOAD_PRESET);
+
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                let percent = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progress-bar').style.width = percent + '%';
+                document.getElementById('progress-text').innerText = percent + '%';
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                resolve(JSON.parse(xhr.responseText));
+            } else {
+                reject(xhr.responseText);
+            }
+        };
+        xhr.onerror = () => reject("Erro de rede");
+        xhr.send(fd);
+    });
+}
+
+async function submitPost(){
+    let f = document.getElementById('file-upload').files[0];
+    let cap = document.getElementById('caption-upload').value;
+    if(!f) return showToast("Selecione um arquivo!");
     
-    // UI Progresso
-    document.getElementById('upload-progress').style.display='block';
-    let pBar = document.getElementById('progress-bar');
-    let pText = document.getElementById('progress-text');
     let btn = document.getElementById('btn-upload-post');
-    pText.style.display='block';
+    document.getElementById('upload-progress').style.display='block';
+    document.getElementById('progress-text').style.display='block';
     btn.disabled = true;
-    btn.innerText = "ENVIANDO PARA A NUVEM...";
+    btn.innerText = "ENVIANDO P/ NUVEM...";
 
-    let fd=new FormData();fd.append('file',f);fd.append('user_id',user.id);fd.append('caption',cap);
-    let xhr = new XMLHttpRequest();
-    xhr.open('POST', '/upload/post', true);
-    
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            let percent = Math.round((e.loaded / e.total) * 100);
-            pBar.style.width = percent + '%';
-            pText.innerText = percent + '%';
-        }
-    };
+    try {
+        // 1. Envia direto pro Cloudinary
+        let cloudRes = await uploadToCloudinary(f);
+        let fileUrl = cloudRes.secure_url;
+        let mediaType = cloudRes.resource_type; // 'image' ou 'video'
 
-    xhr.onload = function() {
-        btn.disabled = false;
-        btn.innerText = "PUBLICAR (+50 XP)";
-        if (xhr.status === 200) {
-            showToast("Publicado com Sucesso!");
-            user.xp+=50; lastFeedHash=""; loadFeed(); closeUpload();
+        // 2. Envia só o link pro seu servidor
+        btn.innerText = "SALVANDO...";
+        let fd = new FormData();
+        fd.append('user_id', user.id);
+        fd.append('caption', cap);
+        fd.append('content_url', fileUrl); // Manda URL pronta
+        fd.append('media_type', mediaType);
+
+        let r = await fetch('/post/create_from_url', { method:'POST', body:fd });
+        
+        if(r.ok){
+            showToast("Sucesso! +50 XP");
+            user.xp += 50; lastFeedHash=""; loadFeed(); closeUpload();
+            // Atualiza status local
             fetch('/login',{method:'POST',body:JSON.stringify({username:user.username,password:''})}).then(r=>r.json()).then(u=>{user=u;updateUI()});
         } else {
-            showToast("Falha: " + xhr.statusText);
+            showToast("Erro ao salvar post");
         }
+
+    } catch(e) {
+        alert("Erro no Upload: " + e);
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "PUBLICAR";
         document.getElementById('upload-progress').style.display='none';
-        pText.style.display='none';
-        pBar.style.width='0%';
-    };
-    xhr.send(fd);
-}
-
-function connectWS(){
-    if(ws)ws.close();
-    let p=location.protocol==='https:'?'wss:':'ws:';
-    ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
-    ws.onmessage=e=>{
-        let d=JSON.parse(e.data);
-        let b=document.getElementById('chat-list');
-        
-        let currentUserId = parseInt(user.id);
-        let msgUserId = parseInt(d.user_id);
-        let m = (msgUserId === currentUserId);
-        
-        let c=d.content.includes('http') && (d.content.includes('.jpg') || d.content.includes('.png')) ? `<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;
-        let html=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:#888;margin-bottom:2px">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        b.insertAdjacentHTML('beforeend',html);
-        b.scrollTop=b.scrollHeight;
-    };
-}
-
-function sendMsg(){
-    let i=document.getElementById('chat-msg');
-    if(i.value.trim()){
-        ws.send(i.value.trim());
-        i.value='';
-        toggleEmoji(true);
     }
 }
-
-async function uploadChatImage(){
-    let f=document.getElementById('chat-file').files[0];
-    let fd=new FormData();fd.append('file',f);
-    showToast("Enviando imagem...");
-    let r=await fetch('/upload/chat',{method:'POST',body:fd});
-    if(r.ok){
-        let d=await r.json();
-        ws.send(d.url)
-    } else {
-        showToast("Erro ao enviar imagem");
-    }
-}
-
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%"><span>${u.username}</span></div>`})}
-async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div>${r.username} <button onclick="handleReq(${r.id},'accept')">✅</button></div>`).join(''):'Sem convites'):(d.friends.length?d.friends.map(f=>`<div onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'Sem aliados')}
-async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
-async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
-async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
 
 async function updateProfile(){
     let btn = document.getElementById('btn-save-profile');
-    btn.innerText = "ENVIANDO DADOS...";
+    btn.innerText = "ENVIANDO...";
     btn.disabled = true;
 
     try {
-        let fd=new FormData();
-        fd.append('user_id', user.id);
+        let f = document.getElementById('avatar-upload').files[0];
+        let c = document.getElementById('cover-upload').files[0];
+        let b = document.getElementById('bio-update').value;
         
-        let f=document.getElementById('avatar-upload').files[0];
-        let c=document.getElementById('cover-upload').files[0];
-        let b=document.getElementById('bio-update').value;
-        
-        if(f) fd.append('file',f);
-        if(c) fd.append('cover',c);
-        if(b) fd.append('bio',b);
+        let avatarUrl = null;
+        let coverUrl = null;
 
-        let r=await fetch('/profile/update',{method:'POST',body:fd});
+        if(f) {
+            let res = await uploadToCloudinary(f);
+            avatarUrl = res.secure_url;
+        }
+        if(c) {
+            let res = await uploadToCloudinary(c);
+            coverUrl = res.secure_url;
+        }
+
+        // Envia dados prontos pro servidor
+        let fd = new FormData();
+        fd.append('user_id', user.id);
+        if(avatarUrl) fd.append('avatar_url', avatarUrl);
+        if(coverUrl) fd.append('cover_url', coverUrl);
+        if(b) fd.append('bio', b);
+
+        let r = await fetch('/profile/update_meta', {method:'POST', body:fd});
         
         if(r.ok){
-            let d=await r.json();
-            Object.assign(user,d);
-            updateUI(); 
+            let d = await r.json();
+            Object.assign(user, d);
+            updateUI();
             document.getElementById('modal-profile').classList.add('hidden');
             showToast("Perfil Atualizado!");
         } else {
-            alert("Erro no servidor: " + r.statusText);
+            alert("Erro no servidor");
         }
     } catch(e) {
-        alert("Erro na conexão: " + e);
+        alert("Erro: " + e);
     } finally {
         btn.innerText = "SALVAR ALTERAÇÕES";
         btn.disabled = false;
     }
 }
 
+function connectWS(){if(ws)ws.close();let p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);ws.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('chat-list');let currentUserId=parseInt(user.id);let msgUserId=parseInt(d.user_id);let m=(msgUserId===currentUserId);let c=d.content.includes('cloudinary')&&(d.content.includes('.jpg')||d.content.includes('.png'))?`<img src="${d.content}" style="max-width:200px;border-radius:10px">`:d.content;let html=`<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})"><div><div style="font-size:11px;color:#888;margin-bottom:2px">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;b.insertAdjacentHTML('beforeend',html);b.scrollTop=b.scrollHeight;};}
+function sendMsg(){let i=document.getElementById('chat-msg');if(i.value.trim()){ws.send(i.value.trim());i.value='';toggleEmoji(true);}}
+async function uploadChatImage(){let f=document.getElementById('chat-file').files[0];showToast("Enviando...");try{let res=await uploadToCloudinary(f);ws.send(res.secure_url);}catch(e){showToast("Erro imagem chat")}}
+async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch('/users/search?q='+q);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><img src="${u.avatar_url}" style="width:30px;height:30px;border-radius:50%"><span>${u.username}</span></div>`})}
+async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch('/friend/requests?uid='+user.id)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div>${r.username} <button onclick="handleReq(${r.id},'accept')">✅</button></div>`).join(''):'Sem convites'):(d.friends.length?d.friends.map(f=>`<div onclick="openPublicProfile(${f.id})">${f.username}</div>`).join(''):'Sem aliados')}
+async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){showToast("Convite Enviado!");openPublicProfile(tid)}}
+async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){showToast("Processado!");toggleRequests('requests')}}
+async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})})).ok){lastFeedHash="";loadFeed()}}
 function closeUpload(){document.getElementById('modal-upload').classList.add('hidden');document.getElementById('file-upload').value="";document.getElementById('caption-upload').value="";document.getElementById('progress-bar').style.width='0%';}
 function openEmoji(id){currentEmojiTarget=id;document.getElementById('emoji-picker').style.display='flex'}
-
-function toggleEmoji(forceClose){
-    let e=document.getElementById('emoji-picker');
-    if(forceClose===true) e.style.display='none';
-    else e.style.display=e.style.display==='flex'?'none':'flex';
-}
-
-window.onload=()=>{
-    let g=document.getElementById('emoji-grid');
-    EMOJIS.forEach(e=>{
-        let s=document.createElement('div');
-        s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;";
-        s.innerText=e;
-        s.onclick=()=>{
-            if(currentEmojiTarget){
-                let inp = document.getElementById(currentEmojiTarget);
-                inp.value+=e;
-                inp.focus();
-            }
-        };
-        g.appendChild(s)
-    })
-};
+function toggleEmoji(forceClose){let e=document.getElementById('emoji-picker');if(forceClose===true)e.style.display='none';else e.style.display=e.style.display==='flex'?'none':'flex';}
+window.onload=()=>{let g=document.getElementById('emoji-grid');EMOJIS.forEach(e=>{let s=document.createElement('div');s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;";s.innerText=e;s.onclick=()=>{if(currentEmojiTarget){let inp=document.getElementById(currentEmojiTarget);inp.value+=e;inp.focus();}};g.appendChild(s)})};
 </script>
 <style>@keyframes fadeInOut{0%{top:0;opacity:0}20%{top:30px;opacity:1}80%{top:30px;opacity:1}100%{top:0;opacity:0}}</style>
 </body>
 </html>
 """
-
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
-# --- API ENDPOINTS OTIMIZADOS ---
+  # --- API ENDPOINTS (MODO LEVE - SÓ LINKS) ---
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first():
@@ -497,32 +478,14 @@ async def log(d: LoginData, db: Session=Depends(get_db)):
     patente = calcular_patente(u.xp)
     return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": patente}
 
-@app.post("/upload/post")
-async def upload_post(user_id: int = Form(...), caption: str = Form(""), file: UploadFile = File(...), db: Session=Depends(get_db)):
-    try:
-        # TÁTICA DE GUERRA: Envio em Pedaços (Chunks) para não estourar a RAM do Render
-        # O 'file.file' é um objeto que o Cloudinary sabe ler aos poucos
-        res = cloudinary.uploader.upload_large(
-            file.file, 
-            resource_type = "auto", 
-            chunk_size = 6000000, # Envia de 6 em 6 MB (Seguro para plano free)
-            folder="for_glory/posts"
-        )
-        
-        url = res["secure_url"]
-        m_type = "video" if res["resource_type"] == "video" else "image"
-        
-        db.add(Post(user_id=user_id, content_url=url, media_type=m_type, caption=caption))
-        
-        # Recompensa
-        user = db.query(User).filter(User.id == user_id).first()
-        if user: user.xp += 50 
-        
-        db.commit()
-        return {"status":"ok", "url": url}
-    except Exception as e:
-        logger.error(f"Erro Cloudinary: {e}")
-        raise HTTPException(500, f"Falha no envio: {str(e)}")
+# --- NOVO: RECEBE LINK PRONTO DO FRONTEND ---
+@app.post("/post/create_from_url")
+async def create_post_url(user_id: int = Form(...), caption: str = Form(""), content_url: str = Form(...), media_type: str = Form(...), db: Session=Depends(get_db)):
+    db.add(Post(user_id=user_id, content_url=content_url, media_type=media_type, caption=caption))
+    user = db.query(User).filter(User.id == user_id).first()
+    if user: user.xp += 50 
+    db.commit()
+    return {"status":"ok"}
 
 @app.post("/post/delete")
 async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
@@ -533,10 +496,20 @@ async def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
     db.commit()
     return {"status": "ok"}
 
+# --- NOVO: ATUALIZA PERFIL COM LINKS PRONTOS ---
+@app.post("/profile/update_meta")
+async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avatar_url: str = Form(None), cover_url: str = Form(None), db: Session=Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    if avatar_url: u.avatar_url = avatar_url
+    if cover_url: u.cover_url = cover_url
+    if bio: u.bio = bio
+    db.commit()
+    return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
+
+# Mantido para compatibilidade com o chat antigo, mas idealmente o chat tb usaria link direto
 @app.post("/upload/chat")
 async def upload_chat(file: UploadFile = File(...)):
     try:
-        # Upload simples para chat (geralmente são imagens leves)
         res = cloudinary.uploader.upload(file.file, resource_type = "auto", folder="for_glory/chat")
         return {"url": res["secure_url"]}
     except Exception as e:
@@ -557,38 +530,6 @@ async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.like(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
-
-@app.post("/profile/update")
-async def update_prof(user_id: int = Form(...), bio: str = Form(None), file: UploadFile = File(None), cover: UploadFile = File(None), db: Session=Depends(get_db)):
-    u = db.query(User).filter(User.id == user_id).first()
-    
-    # ATUALIZAÇÃO COM INVALIDAÇÃO DE CACHE
-    if file and file.filename:
-        # invalidate=True força o Cloudinary a limpar o cache antigo dessa imagem
-        res = cloudinary.uploader.upload(file.file, folder="for_glory/avatars", invalidate=True)
-        u.avatar_url = res["secure_url"]
-        
-    if cover and cover.filename:
-        res = cloudinary.uploader.upload(cover.file, folder="for_glory/covers", invalidate=True)
-        u.cover_url = res["secure_url"]
-        
-    if bio: u.bio = bio
-    
-    db.commit()
-    
-    # TÁTICA DE PROPAGAÇÃO: Envia um sinal para o chat avisando que mudou o perfil
-    # Isso ajuda a atualizar quem estiver com o chat aberto
-    try:
-        await manager.broadcast({
-            "user_id": u.id,
-            "username": u.username,
-            "avatar": u.avatar_url,
-            "content": "🔄 [Atualizou o Perfil]" # Mensagem silenciosa de sistema
-        }, "Geral")
-    except:
-        pass
-
-    return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio, "rank": calcular_patente(u.xp)}
 
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
@@ -656,6 +597,5 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    # Aumentei o Timeout para 300 segundos (5 minutos) para aguentar vídeos grandes
-    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
