@@ -21,19 +21,22 @@ from jose import jwt, JWTError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
-# --- SEGURANÇA E E-MAIL ---
-SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
-ALGORITHM = "HS256"
+# --- DEBUG DE E-MAIL (Vai aparecer nos logs do Render) ---
+mail_user = os.environ.get("MAIL_USERNAME", "NaoConfigurado")
+print(f"--- DEBUG EMAIL ---")
+print(f"Tentando conectar como: {mail_user}")
+print(f"Tem senha configurada? {'SIM' if os.environ.get('MAIL_PASSWORD') else 'NAO'}")
+print(f"-------------------")
 
-# Configuração de E-mail (Gmail/Outlook/etc) - PREENCHA NO RENDER
+# --- CONFIGURAÇÃO DE E-MAIL (MODO SSL BLINDADO) ---
 mail_conf = ConnectionConfig(
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "seu_email@gmail.com"),
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_de_app"),
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_app"),
     MAIL_FROM = os.environ.get("MAIL_FROM", "seu_email@gmail.com"),
-    MAIL_PORT = 587,
+    MAIL_PORT = 465,  # Mudança Tática: Porta SSL
     MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = True,
-    MAIL_SSL_TLS = False,
+    MAIL_STARTTLS = False, # Desliga TLS
+    MAIL_SSL_TLS = True,   # Liga SSL Direto
     USE_CREDENTIALS = True,
     VALIDATE_CERTS = True
 )
@@ -466,3 +469,4 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)  
+
