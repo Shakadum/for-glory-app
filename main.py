@@ -26,14 +26,19 @@ logger = logging.getLogger("ForGlory")
 SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
 ALGORITHM = "HS256"
 
+# --- SEGURANÇA E E-MAIL ---
+SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
+ALGORITHM = "HS256"
+
+# NOVA TÁTICA: Usando Porta 587 e STARTTLS (Padrão ouro do Gmail)
 mail_conf = ConnectionConfig(
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "seu_email@gmail.com"),
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_app"),
     MAIL_FROM = os.environ.get("MAIL_FROM", "seu_email@gmail.com"),
-    MAIL_PORT = 465,  
+    MAIL_PORT = 587,               # Mudança de 465 para 587
     MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = False, 
-    MAIL_SSL_TLS = True,   
+    MAIL_STARTTLS = True,          # Mudança de False para True
+    MAIL_SSL_TLS = False,          # Mudança de True para False
     USE_CREDENTIALS = True,
     VALIDATE_CERTS = True
 )
@@ -1387,4 +1392,5 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
