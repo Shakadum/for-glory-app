@@ -672,6 +672,14 @@ function updateUI(){
 }
 function logout(){location.reload()}
 
+function closeUpload() {
+    // Esconde o modal de postagem
+    document.getElementById('modal-upload').classList.add('hidden');
+    // Limpa o arquivo selecionado e o texto digitado
+    document.getElementById('file-upload').value = '';
+    document.getElementById('caption-upload').value = '';
+}
+
 function goView(v, btnElem){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
@@ -1379,3 +1387,4 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
