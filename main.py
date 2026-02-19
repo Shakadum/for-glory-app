@@ -200,13 +200,15 @@ def startup():
     db.close()
 
 # --- FRONTEND COMPLETO ---
-# O "r" antes das aspas blinda as expressões regulares do JS contra o Python
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
 <title>For Glory</title>
 <style>
@@ -225,21 +227,24 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 /* POSTS FEED E ENGAJAMENTO */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center}
-.post-card{background:var(--card-bg);width:100%;max-width:480px;margin-bottom:20px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden;}
+.post-card{background:var(--card-bg);width:100%;max-width:480px;margin-bottom:20px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
 .post-av{width:42px;height:42px;border-radius:50%;margin-right:12px;object-fit:cover;border:1px solid var(--primary); background:#111;}
 .rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3)}
-.post-media{width:100%;max-height:600px;object-fit:contain;background:#000;display:block}
+
+/* NOVO: CORREÇÃO DE VÍDEOS CORTADOS */
+.post-media-wrapper { width: 100%; background: #07080a; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02); }
+.post-media{width:100%; max-height:550px; object-fit:contain; display:block;}
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
 /* AÇÕES DO POST */
-.post-actions { padding: 10px 15px; display: flex; gap: 20px; border-top: 1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.1); }
-.action-btn { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
+.post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); }
+.action-btn { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
 .action-btn.liked { color: #ff5555; }
 .action-btn:hover { color: var(--primary); transform: scale(1.05); }
 
 /* COMENTÁRIOS */
-.comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); }
+.comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
 .comment-input-area { display: flex; gap: 8px; margin-top: 15px; }
@@ -488,7 +493,10 @@ async function loadFeed(){
         lastFeedHash=h;
         let ht='';
         p.forEach(x=>{
+            // Envolvendo a mídia no container blindado
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
+            m = `<div class="post-media-wrapper">${m}</div>`;
+            
             let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
             let heartIcon = x.user_liked ? "❤️" : "🤍";
             let heartClass = x.user_liked ? "liked" : "";
@@ -598,7 +606,6 @@ async function deletePost(pid){if(confirm("Confirmar baixa?"))if((await fetch('/
 </body>
 </html>
 """
-
 @app.get("/", response_class=HTMLResponse)
 async def get(): return HTMLResponse(content=html_content)
 
@@ -758,3 +765,4 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
