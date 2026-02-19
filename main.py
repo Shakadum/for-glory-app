@@ -17,6 +17,7 @@ import cloudinary
 import cloudinary.uploader
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from jose import jwt, JWTError
+from collections import Counter
 
 # --- CONFIGURAÇÃO DE LOGS ---
 logging.basicConfig(level=logging.INFO)
@@ -75,7 +76,7 @@ class User(Base):
     avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
     cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
-    is_invisible = Column(Integer, default=0) # NOVO: Status do Modo Furtivo
+    is_invisible = Column(Integer, default=0) 
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
 class FriendRequest(Base):
@@ -118,6 +119,7 @@ class PrivateMessage(Base):
     sender_id = Column(Integer, ForeignKey("users.id"))
     receiver_id = Column(Integer, ForeignKey("users.id"))
     content = Column(String)
+    is_read = Column(Integer, default=0) # NOVO: Status de Visualizado
     timestamp = Column(DateTime, default=datetime.now)
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
@@ -180,7 +182,7 @@ def verify_reset_token(token: str):
 class ConnectionManager:
     def __init__(self):
         self.active = {}
-        self.user_connections = {} # Rastreia quem está conectado
+        self.user_connections = {}
 
     async def connect(self, ws: WebSocket, chan: str, uid: int):
         await ws.accept()
@@ -223,6 +225,7 @@ class ForgotPasswordData(BaseModel): email: EmailStr
 class ResetPasswordData(BaseModel): token: str; new_password: str
 class CommentData(BaseModel): user_id: int; post_id: int; text: str
 class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
+class ReadData(BaseModel): uid: int # NOVO: Modelo de Visualização de Mensagem
 
 def get_db():
     db = SessionLocal()
@@ -235,13 +238,10 @@ def criptografar(s):
 @app.on_event("startup")
 def startup():
     db = SessionLocal()
-    # Blindagem: Atualiza a tabela antiga para suportar o Modo Furtivo sem deletar dados
-    try:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0"))
-        db.commit()
-    except:
-        pass # Ignora se a coluna já existir
-        
+    try: db.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0")); db.commit()
+    except: pass 
+    try: db.execute(text("ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0")); db.commit()
+    except: pass
     try:
         if not db.query(Channel).first():
             db.add(Channel(name="Geral"))
@@ -267,17 +267,19 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR */
+/* SIDEBAR E NOTIFICAÇÕES (BALÕES VERMELHOS) */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:20}
-.nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s}
+.nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:20px;cursor:pointer;transition:0.3s;position:relative;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
 .my-avatar-mini{width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--border); background:#111;}
+.nav-badge { position:absolute; top:-2px; right:-2px; background:#ff5555; color:white; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:10px; display:none; z-index:10; box-shadow:0 0 5px #ff5555; border:2px solid var(--dark-bg); font-family:'Inter',sans-serif; }
+.list-badge { background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:12px; display:none; box-shadow:0 0 5px #ff5555; font-family:'Inter',sans-serif; }
 
 #content-area{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS E FEED */
+/* POSTS FEED E ENGAJAMENTO */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -288,8 +290,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-media { max-width: 100%; max-height: 65vh; object-fit: contain !important; display: block; }
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
-/* CSS NOVO: INDICADORES ONLINE (BOLINHA) */
-.av-wrap { position: relative; display: inline-block; cursor: pointer; }
+/* INDICADORES ONLINE (BOLINHA) */
+.av-wrap { position: relative; display: inline-block; cursor: pointer; margin:0;}
 .status-dot { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card-bg); background: #555; transition: 0.3s; z-index: 5; }
 .status-dot.online { background: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
 .status-dot-lg { width: 20px; height: 20px; border-width: 3px; bottom: 5px; right: 10px; border-color: var(--dark-bg); }
@@ -302,7 +304,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .comments-section { display: none; padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); }
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; }
-.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
+.comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 .comment-input-area { display: flex; gap: 8px; margin-top: 15px; align-items: center; }
 .comment-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 10px 15px; color: white; outline: none; font-size: 13px; }
 .comment-inp:focus { border-color: var(--primary); }
@@ -311,7 +313,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #chat-list, #dm-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
-.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111;}
+.msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .chat-input-area {background:rgba(11,12,16,0.9);padding:15px;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border)}
@@ -434,7 +436,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <button class="nav-btn" onclick="goView('profile')"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('chat')">💬</button>
         <button class="nav-btn active" onclick="goView('feed')">🎬</button>
-        <button class="nav-btn" onclick="goView('inbox')">📩</button>
+        <button class="nav-btn" onclick="goView('inbox')" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
     </div>
 
     <div id="content-area">
@@ -534,7 +536,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <script>
 var user=null, ws=null, dmWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
-window.onlineUsers = []; // Array Global de quem está online
+window.onlineUsers = []; 
+window.unreadData = {}; // Guarda notificações ativas
 
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
@@ -569,39 +572,52 @@ checkToken();
 function openEmoji(id){currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex';}
 function toggleEmoji(forceClose){let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex';}
 
-// RADAR ONLINE
+// RADAR ONLINE E DE MENSAGENS NÃO LIDAS
 async function fetchOnlineUsers() {
     if(!user) return;
-    try {
-        let r = await fetch('/users/online');
-        window.onlineUsers = await r.json();
-        updateStatusDots();
-    } catch(e){}
+    try { let r = await fetch('/users/online'); window.onlineUsers = await r.json(); updateStatusDots(); } catch(e){}
 }
 function updateStatusDots() {
     document.querySelectorAll('.status-dot').forEach(dot => {
         let uid = parseInt(dot.getAttribute('data-uid'));
         if(!uid) return;
-        if(window.onlineUsers.includes(uid)) dot.classList.add('online');
-        else dot.classList.remove('online');
+        if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online');
     });
 }
 
-// MODO FURTIVO
+// SISTEMA DE NOTIFICAÇÕES (BALÕES)
+async function fetchUnread() {
+    if(!user) return;
+    try {
+        let r = await fetch(`/inbox/unread/${user.id}`);
+        let d = await r.json();
+        window.unreadData = d.by_sender;
+        let badge = document.getElementById('inbox-badge');
+        
+        if(d.total > 0) { badge.innerText = d.total; badge.style.display = 'block'; } 
+        else { badge.style.display = 'none'; }
+        
+        // Se a aba Inbox estiver aberta, atualiza as bolinhas de lá
+        if(document.getElementById('view-inbox').classList.contains('active')) {
+            document.querySelectorAll('.inbox-item').forEach(item => {
+                let sid = parseInt(item.getAttribute('data-id'));
+                let type = item.getAttribute('data-type');
+                let b = item.querySelector('.list-badge');
+                if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } 
+                else if(b) { b.style.display = 'none'; }
+            });
+        }
+    } catch(e){}
+}
+
 async function toggleStealth() {
     let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
     if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
 }
 function updateStealthUI() {
-    let btn = document.getElementById('btn-stealth');
-    let myDot = document.getElementById('my-status-dot');
-    if(user.is_invisible) {
-        btn.innerText = "🕵️ MODO FURTIVO: ATIVADO"; btn.style.borderColor = "#ffaa00"; btn.style.color = "#ffaa00";
-        myDot.classList.remove('online');
-    } else {
-        btn.innerText = "🟢 MODO FURTIVO: DESATIVADO"; btn.style.borderColor = "rgba(102, 252, 241, 0.3)"; btn.style.color = "var(--primary)";
-        myDot.classList.add('online');
-    }
+    let btn = document.getElementById('btn-stealth'); let myDot = document.getElementById('my-status-dot');
+    if(user.is_invisible) { btn.innerText = "🕵️ MODO FURTIVO: ATIVADO"; btn.style.borderColor = "#ffaa00"; btn.style.color = "#ffaa00"; myDot.classList.remove('online'); } 
+    else { btn.innerText = "🟢 MODO FURTIVO: DESATIVADO"; btn.style.borderColor = "rgba(102, 252, 241, 0.3)"; btn.style.color = "var(--primary)"; myDot.classList.add('online'); }
 }
 
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Digite seu e-mail!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("E-mail enviado! Verifique spam."); toggleAuth('login'); } catch(e) { showToast("Erro"); } }
@@ -611,10 +627,10 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
     updateUI(); loadFeed(); connectWS(); 
-    fetchOnlineUsers();
+    fetchOnlineUsers(); fetchUnread();
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        fetchOnlineUsers(); // Atualiza o radar a cada 4 segundos
+        fetchOnlineUsers(); fetchUnread(); // Atualiza a inteligência a cada 4 segundos
     },4000);
 }
 
@@ -636,7 +652,6 @@ function goView(v){
     if(v === 'inbox') loadInbox();
 }
 
-// FEED BLINDADO + RADAR
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);
@@ -740,19 +755,23 @@ async function loadInbox() {
     if(d.groups.length === 0 && d.friends.length === 0) { b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; return; }
     
     d.groups.forEach(g => {
-        b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')">
+        b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')">
             <img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;">
             <div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">👥 Esquadrão</span></div>
         </div>`;
     });
     
     d.friends.forEach(f => {
-        b.innerHTML += `<div style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
+        let unreadCount = (window.unreadData && window.unreadData[f.id]) ? window.unreadData[f.id] : 0;
+        let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
+        
+        b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
             <div class="av-wrap">
                 <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
                 <div class="status-dot" data-uid="${f.id}"></div>
             </div>
             <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div>
+            <div class="list-badge" style="display:${badgeDisplay}">${unreadCount}</div>
         </div>`;
     });
     updateStatusDots();
@@ -778,6 +797,12 @@ async function openChat(id, name, type) {
     document.getElementById('dm-header-name').innerText = type === 'group' ? "Grupo: " + name : "Chat: " + name;
     goView('dm');
     
+    // ZERA NOTIFICAÇÃO AO ABRIR O CHAT!
+    if(type === '1v1') {
+        await fetch(`/inbox/read/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
+        fetchUnread();
+    }
+    
     let list = document.getElementById('dm-list'); list.innerHTML = '';
     let fetchUrl = type === 'group' ? `/group/${id}/messages` : `/dms/${id}?uid=${user.id}`;
     let r = await fetch(fetchUrl);
@@ -801,6 +826,13 @@ async function openChat(id, name, type) {
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
         let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
         b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
+        
+        // Se eu recebi a mensagem E estou olhando o chat, zera a notificação de novo
+        if(currentChatType === '1v1' && currentChatId === d.user_id) {
+            fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());
+        } else {
+            fetchUnread();
+        }
     };
 }
 
@@ -812,10 +844,7 @@ async function openPublicProfile(uid){
     document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
     document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-rank').innerText=d.rank;
     let ab=document.getElementById('pub-actions'); ab.innerHTML='';
-    
-    // Injeta a marcação pro Radar saber quem é
-    document.getElementById('pub-status-dot').setAttribute('data-uid', uid);
-    updateStatusDots();
+    document.getElementById('pub-status-dot').setAttribute('data-uid', uid); updateStatusDots();
     
     if(d.friend_status==='friends') {
         ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:10px 15px; border-radius:12px; font-weight:bold;">✔ Aliado</span> <button class="glass-btn" style="padding:10px 20px; border-color:var(--primary); font-size:14px; max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;
@@ -893,6 +922,20 @@ async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
         db.commit()
         return {"is_invisible": u.is_invisible}
     return {"status": "error"}
+
+# NOTIFICAÇÕES DE MENSAGENS
+@app.get("/inbox/unread/{uid}")
+async def get_unread(uid: int, db: Session=Depends(get_db)):
+    unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
+    counts = Counter([u[0] for u in unread_pms])
+    total = sum(counts.values())
+    return {"total": total, "by_sender": dict(counts)}
+
+@app.post("/inbox/read/{sender_id}")
+async def mark_read(sender_id: int, d: ReadData, db: Session=Depends(get_db)):
+    db.query(PrivateMessage).filter(PrivateMessage.sender_id == sender_id, PrivateMessage.receiver_id == d.uid).update({"is_read": 1})
+    db.commit()
+    return {"status": "ok"}
 
 @app.post("/auth/forgot-password")
 async def forgot_password(d: ForgotPasswordData, background_tasks: BackgroundTasks, db: Session=Depends(get_db)):
@@ -1041,7 +1084,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, db: Session=Depends(get_db)):
                 parts = ch.split("_")
                 id1, id2 = int(parts[1]), int(parts[2])
                 rec_id = id2 if uid == id1 else id1
-                db.add(PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt))
+                db.add(PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0))
                 db.commit()
             elif ch.startswith("group_"):
                 grp_id = int(ch.split("_")[1])
