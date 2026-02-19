@@ -23,7 +23,6 @@ from collections import Counter
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
-# --- SEGURANÇA E E-MAIL ---
 SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
 ALGORITHM = "HS256"
 
@@ -39,7 +38,6 @@ mail_conf = ConnectionConfig(
     VALIDATE_CERTS = True
 )
 
-# --- CLOUDINARY ---
 cloudinary.config( 
   cloud_name = os.environ.get('CLOUDINARY_NAME'), 
   api_key = os.environ.get('CLOUDINARY_KEY'), 
@@ -47,11 +45,11 @@ cloudinary.config(
   secure = True
 )
 
-# --- BANCO DE DADOS (ANTI-TRAVAMENTO) ---
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v4.db")
+# --- BANCO DE DADOS (BLINDADO) ---
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v5.db")
 
 if "sqlite" in DATABASE_URL:
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 15}, pool_size=10, max_overflow=20)
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 20}, pool_size=15, max_overflow=30)
 else:
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     engine = create_engine(DATABASE_URL)
@@ -171,6 +169,14 @@ class CommunityMessage(Base):
     timestamp = Column(DateTime, default=datetime.now)
     sender = relationship("User", foreign_keys=[sender_id])
 
+class CommunityRequest(Base):
+    __tablename__ = "community_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    comm_id = Column(Integer, ForeignKey("communities.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    timestamp = Column(DateTime, default=datetime.now)
+    user = relationship("User", foreign_keys=[user_id])
+
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
@@ -182,33 +188,27 @@ def calcular_patente(xp):
     if xp < 5000: return "Capitão 👑"
     return "Lenda 🐲"
 
-def create_reset_token(email: str):
-    return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-
+def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
 def verify_reset_token(token: str):
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if p.get("type") != "reset": return None
-        return p.get("sub") 
+        return p.get("sub") if p.get("type") == "reset" else None
     except JWTError: return None
 
 class ConnectionManager:
     def __init__(self):
         self.active = {}
         self.user_connections = {}
-
     async def connect(self, ws: WebSocket, chan: str, uid: int):
         await ws.accept()
         if chan not in self.active: self.active[chan] = []
         self.active[chan].append(ws)
         self.user_connections[uid] = self.user_connections.get(uid, 0) + 1
-
     def disconnect(self, ws: WebSocket, chan: str, uid: int):
         if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
         if uid in self.user_connections:
             self.user_connections[uid] -= 1
             if self.user_connections[uid] <= 0: del self.user_connections[uid]
-
     async def broadcast(self, msg: dict, chan: str):
         for conn in self.active.get(chan, []):
             try: await conn.send_text(json.dumps(msg))
@@ -233,6 +233,7 @@ class DelCommentData(BaseModel): comment_id: int; user_id: int
 class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
 class ReadData(BaseModel): uid: int 
 class JoinCommData(BaseModel): user_id: int; comm_id: int
+class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
 
 def get_db():
     db = SessionLocal()
@@ -279,7 +280,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -304,30 +304,31 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
 /* CHAT E INPUT BLINDADO MOBILE */
-.chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; overflow: hidden; padding:15px; background:rgba(11,12,16,0.9); }
+.chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
+.chat-msg:disabled { opacity:0.5; background:rgba(0,0,0,0.5); cursor:not-allowed; }
 .btn-send-msg { background: var(--primary); border: none; flex: 0 0 45px !important; width: 45px !important; height: 45px !important; border-radius: 12px; font-weight: bold; color: #0b0c10; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; }
 .icon-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #888; flex: 0 0 35px; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; }
 
 #dm-list, #comm-chat-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
-.msg-row{display:flex;gap:10px;max-width:85%}
+.msg-row{display:flex;gap:10px;max-width:85%; animation: fadeIn 0.2s ease-out;}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
 .msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
-
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
-/* COMUNIDADES (Bases/Servidores) */
-.comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2);}
+/* COMUNIDADES (BASES MESTRES) */
+.comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
 .comm-layout { display:flex; flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
-/* Design Moderno da Barra do Topo da Base */
+/* Nome Efeito Glass */
 .comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; }
-#active-comm-name { font-size: 20px; text-transform: uppercase; color: white; letter-spacing: 1px; flex:1; text-align:center; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
-/* Abas Estilo Pill (Cápsulas) */
+#active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; background: linear-gradient(90deg, transparent, rgba(102,252,241,0.1), transparent); padding: 5px 20px; border-radius: 20px; text-shadow: 0 0 10px rgba(102,252,241,0.3); }
+
+/* Abas/Canais Modernos */
 .comm-channels-bar { padding: 12px 15px; background: #0b0c10; display: flex; gap: 10px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; }
 .channel-btn:hover { background: rgba(102,252,241,0.1); color: white; }
@@ -335,7 +336,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .ch-badge { font-size:10px; background:rgba(102,252,241,0.1); color:var(--primary); padding:3px 6px; border-radius:6px; margin-left:8px; border:1px solid rgba(102,252,241,0.3); font-weight:bold;}
 
-/* PERFIL */
+/* PERFIL E HISTÓRICO */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
@@ -378,9 +379,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;">CONFIRMAR BAIXA</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;">Tem certeza que deseja excluir isto do registro oficial?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">EXCLUIR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">CRIAR BASE</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome da Base (Ex: Tropa de Elite)"><input id="new-comm-desc" class="inp" placeholder="Descrição"><select id="new-comm-priv" class="inp"><option value="0">🌍 Pública (Qualquer um entra)</option><option value="1">🔒 Privada (Só com convite)</option></select><button onclick="submitCreateComm()" class="btn-main">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome da Base (Ex: Tropa de Elite)"><input id="new-comm-desc" class="inp" placeholder="Descrição"><select id="new-comm-priv" class="inp"><option value="0">🌍 Pública (Qualquer um entra)</option><option value="1">🔒 Privada (Só com convite)</option></select><button onclick="submitCreateComm(event)" class="btn-main">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
 
-<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)">NOVA ABA / CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome (Ex: avisos)"><select id="new-ch-type" class="inp"><option value="livre">💬 Mídia e Texto (Livre)</option><option value="text">📝 Só Texto</option><option value="media">🎬 Só Mídia (Fotos/Vídeos)</option></select><select id="new-ch-priv" class="inp"><option value="0">🌍 Público (Todos os membros)</option><option value="1">🔒 Privado (Só Admins)</option></select><button onclick="submitCreateChannel()" class="btn-main">CRIAR ABA</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
+<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">NOVA ABA / CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome (Ex: avisos)"><select id="new-ch-type" class="inp"><option value="livre">💬 Mídia e Texto (Livre)</option><option value="text">📝 Só Texto</option><option value="media">🎬 Só Mídia (Fotos/Vídeos)</option></select><select id="new-ch-priv" class="inp"><option value="0">🌍 Público (Todos os membros)</option><option value="1">🔒 Privado (Só Admins)</option></select><button onclick="submitCreateChannel()" class="btn-main">CRIAR ABA</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
 
 <div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Limite por arquivo: 100MB</span><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." style="margin:0"><button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button></div><div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div></div><div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div><button id="btn-pub" onclick="submitPost()" class="btn-main">PUBLICAR (+50 XP)</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
 
@@ -403,7 +404,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
         <div id="view-inbox" class="view">
             <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
-                <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;">MENSAGENS PRIVADAS</div>
+                <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;font-size:20px;">MENSAGENS PRIVADAS</div>
                 <button onclick="openCreateGroupModal()" class="glass-btn" style="padding:8px 12px; margin:0; flex:none;">+ GRUPO X1</button>
             </div>
             <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
@@ -467,6 +468,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                             <h3 style="color:var(--primary); margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Membros da Base</h3>
                             <div id="c-info-members" style="display:flex; flex-direction:column; gap:12px; max-height:300px; overflow-y:auto; padding-right:5px;"></div>
                         </div>
+                        <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
+                            <h3 style="color:orange; margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Solicitações de Entrada</h3>
+                            <div id="c-info-requests" style="display:flex; flex-direction:column; gap:12px;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -500,17 +505,21 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <button onclick="toggleRequests('friends')" class="glass-btn">👥 Amigos</button>
                 </div>
                 <div id="requests-list" style="margin-top:15px; background:rgba(0,0,0,0.3); border-radius:10px;"></div>
-                
-                <div style="margin-top: 40px; border-top: 1px solid #333; padding-top: 20px;">
-                    <h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; margin-bottom:15px;">🌐 EXPLORAR BASES PÚBLICAS</h3>
-                    <div class="search-glass">
-                        <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
-                        <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
-                    </div>
-                    <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; margin-top:15px;"></div>
-                </div>
+            </div>
 
-                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;">DESCONECTAR DO SISTEMA</button>
+            <div style="width:90%; max-width:600px; margin: 40px auto 0 auto; border-top: 1px solid #333; padding-top: 20px; text-align:center;">
+                <h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; margin-bottom:15px;">🌐 EXPLORAR BASES</h3>
+                <div class="search-glass" style="max-width:400px; margin:0 auto 15px auto;">
+                    <input id="search-comm-input" placeholder="Buscar Base..." onkeypress="if(event.key==='Enter')searchComms()">
+                    <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                </div>
+                <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; margin-top:15px;"></div>
+            </div>
+
+            <div style="width:90%; max-width:800px; margin: 40px auto 40px auto; border-top: 1px solid #333; padding-top: 20px; text-align:center;">
+                <h3 style="color:white; font-family:'Rajdhani'; letter-spacing:1px; margin-bottom:15px;">🎬 MEU HISTÓRICO DE MISSÕES</h3>
+                <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:0 auto;"></div>
+                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px; max-width:400px;">DESCONECTAR DO SISTEMA</button>
             </div>
         </div>
 
@@ -569,7 +578,7 @@ document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && user) {
         fetchUnread(); fetchOnlineUsers();
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        if(activeChannelId && commWS && commWS.readyState !== WebSocket.OPEN) joinChannel(activeChannelId, null, null); 
+        if(activeChannelId && commWS && commWS.readyState !== WebSocket.OPEN) connectCommWS(activeChannelId); 
     }
 });
 
@@ -616,7 +625,7 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    updateUI(); loadFeed(); fetchOnlineUsers(); fetchUnread(); loadPublicComms();
+    updateUI(); loadFeed(); fetchOnlineUsers(); fetchUnread(); loadPublicComms(); loadMyHistory();
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
         fetchOnlineUsers(); fetchUnread(); 
@@ -639,7 +648,14 @@ function goView(v){
     if(v !== 'public-profile' && v !== 'dm') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(event && event.target) event.target.closest('.nav-btn')?.classList.add('active'); }
     if(v === 'inbox') loadInbox();
     if(v === 'comms') loadCommsBrowser();
-    if(v === 'profile') loadPublicComms();
+    if(v === 'profile') { loadPublicComms(); loadMyHistory(); }
+}
+
+async function loadMyHistory() {
+    let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
+    let grid = document.getElementById('my-posts-grid'); grid.innerHTML = '';
+    if(d.posts.length === 0) grid.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma missão registrada.</p>";
+    d.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`; });
 }
 
 async function loadFeed(){
@@ -675,10 +691,9 @@ function confirmDeletePost(type, id) { deleteTarget = {type:type, id:id}; docume
 document.getElementById('btn-confirm-delete').onclick = async () => {
     if(!deleteTarget.id) return; 
     let t = deleteTarget.type; let id = deleteTarget.id; document.getElementById('modal-delete').classList.add('hidden');
-    
     if(t === 'post') {
         let r = await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:id,user_id:user.id})});
-        if(r.ok) { showToast("Missão excluída."); lastFeedHash=""; loadFeed(); }
+        if(r.ok) { showToast("Missão excluída."); lastFeedHash=""; loadFeed(); loadMyHistory(); }
     } else if (t === 'comment') {
         let r = await fetch('/comment/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comment_id:id,user_id:user.id})});
         if(r.ok) { showToast("Comentário excluído."); lastFeedHash=""; loadFeed(); }
@@ -687,7 +702,7 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
 
 async function toggleLike(pid, btn) {
     let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})});
-    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; loadFeed(); }
+    if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; }
 }
 
 async function toggleComments(pid) {
@@ -695,7 +710,6 @@ async function toggleComments(pid) {
     if(sec.style.display === 'block') { sec.style.display = 'none'; } else { sec.style.display = 'block'; loadComments(pid); }
 }
 
-// COMENTÁRIOS COM LIXEIRA DE EXCLUSÃO
 async function loadComments(pid) {
     let r = await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);
     let list = document.getElementById(`comment-list-${pid}`);
@@ -719,6 +733,7 @@ async function sendComment(pid) {
 async function loadInbox() {
     let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let b = document.getElementById('inbox-list'); b.innerHTML = '';
     if(d.groups.length === 0 && d.friends.length === 0) { b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; return; }
+    
     d.friends.forEach(f => {
         let unreadCount = (window.unreadData && window.unreadData[f.id]) ? window.unreadData[f.id] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
         b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div><div class="list-badge" style="display:${badgeDisplay}">${unreadCount}</div></div>`;
@@ -726,31 +741,43 @@ async function loadInbox() {
     updateStatusDots();
 }
 
-async function openChat(id, name, type) {
-    currentChatId = id; currentChatType = type;
-    document.getElementById('dm-header-name').innerText = type === 'group' ? "Grupo: " + name : "Chat: " + name;
-    goView('dm');
-    if(type === '1v1') { await fetch(`/inbox/read/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}); fetchUnread(); }
-    
-    let list = document.getElementById('dm-list'); list.innerHTML = '';
+async function openCreateGroupModal() {
+    let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let list = document.getElementById('group-friends-list');
+    if(d.friends.length === 0) { list.innerHTML = "<p style='color:#ff5555;font-size:13px;'>Você precisa de aliados para criar um grupo.</p>"; } 
+    else { list.innerHTML = d.friends.map(f => `<label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join(''); }
+    document.getElementById('new-group-name').value = ''; document.getElementById('modal-create-group').classList.remove('hidden');
+}
+
+async function submitCreateGroup() {
+    let name = document.getElementById('new-group-name').value.trim(); if(!name) return showToast("Dê um nome ao grupo!");
+    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
+    if(member_ids.length === 0) return showToast("Selecione pelo menos 1 aliado!");
+    let r = await fetch('/group/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids})});
+    if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); showToast("Esquadrão criado!"); loadInbox(); }
+}
+
+async function fetchChatMessages(id, type) {
+    let list = document.getElementById('dm-list');
     let fetchUrl = `/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;
     let r = await fetch(fetchUrl);
     if(r.ok) {
         let msgs = await r.json();
-        msgs.forEach(d => {
+        let newHtml = msgs.map(d => {
             let m = (d.sender_id === user.id); let c = d.content;
             if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-            let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-            list.insertAdjacentHTML('beforeend',h);
-        });
-        list.scrollTop = list.scrollHeight;
+            return `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+        }).join('');
+        if (list.innerHTML !== newHtml) { list.innerHTML = newHtml; list.scrollTop = list.scrollHeight; }
     }
-    
+}
+
+function connectDmWS(id, name, type) {
     if(dmWS) dmWS.close();
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
     let ch = `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);
-    dmWS.onclose = () => { setTimeout(() => { if(currentChatId && document.getElementById('view-dm').classList.contains('active')) openChat(currentChatId, name, type); }, 2000); };
+    
+    dmWS.onclose = () => { setTimeout(() => { if(currentChatId === id && document.getElementById('view-dm').classList.contains('active')) { fetchChatMessages(id, type); connectDmWS(id, name, type); } }, 2000); };
     dmWS.onmessage = e => {
         let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
@@ -759,8 +786,19 @@ async function openChat(id, name, type) {
         if(currentChatType === '1v1' && currentChatId === d.user_id) { fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); } else { fetchUnread(); }
     };
 }
+
+async function openChat(id, name, type) {
+    currentChatId = id; currentChatType = type;
+    document.getElementById('dm-header-name').innerText = type === 'group' ? "Grupo: " + name : "Chat: " + name;
+    goView('dm');
+    if(type === '1v1') { await fetch(`/inbox/read/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}); fetchUnread(); }
+    document.getElementById('dm-list').innerHTML = ''; // Limpa antes do primeiro load manual
+    await fetchChatMessages(id, type);
+    connectDmWS(id, name, type);
+}
+
 function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
-async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; showToast("Enviando..."); try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro ao enviar: " + e)} }
+async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; showToast("Enviando arquivo privado..."); try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro ao enviar: " + e)} }
 
 // --- SISTEMA DE BASES/COMUNIDADES MÁXIMO ---
 async function loadCommsBrowser() {
@@ -776,32 +814,43 @@ async function loadPublicComms() {
     let r = await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
     let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
     if(d.length === 0) pList.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma base encontrada.</p>";
-    d.forEach(c => { pList.innerHTML += `<div class="comm-card" onclick="joinCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b><button class="glass-btn" style="padding:5px 10px; width:100%;">ENTRAR</button></div>`; });
+    d.forEach(c => { 
+        let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">🔒 SOLICITAR</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%;" onclick="joinCommunity(${c.id})">🌍 ENTRAR</button>`;
+        pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
+    });
 }
 async function searchComms() {
     let q = document.getElementById('search-comm-input').value.trim();
     let r = await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`); let d = await r.json();
     let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
     if(d.length === 0) pList.innerHTML = "<p style='color:#888;grid-column:1/-1;'>Nenhuma base encontrada.</p>";
-    d.forEach(c => { pList.innerHTML += `<div class="comm-card" onclick="joinCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b><button class="glass-btn" style="padding:5px 10px; width:100%;">ENTRAR</button></div>`; });
+    d.forEach(c => { 
+        let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">🔒 SOLICITAR</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%;" onclick="joinCommunity(${c.id})">🌍 ENTRAR</button>`;
+        pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
+    });
 }
 
-async function submitCreateComm() {
+async function submitCreateComm(e) {
     let n = document.getElementById('new-comm-name').value.trim(); let d = document.getElementById('new-comm-desc').value.trim(); let p = document.getElementById('new-comm-priv').value; let f = document.getElementById('comm-avatar-upload').files[0];
     if(!n) return showToast("Dê um nome à Base!");
-    let btn = event.target; btn.innerText = "CRIANDO..."; btn.disabled = true;
+    let btn = e.target; btn.innerText = "CRIANDO..."; btn.disabled = true;
     try {
         let av = "https://ui-avatars.com/api/?name="+n+"&background=111&color=66fcf1";
         if(f) { let c = await uploadToCloudinary(f); av = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av);
         let r = await fetch('/community/create', {method:'POST', body:fd});
         if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Estabelecida!"); loadCommsBrowser(); }
-    } catch(e) { alert("Erro ao criar."); } finally { btn.innerText = "CRIAR"; btn.disabled = false; }
+    } catch(e) { alert("Erro ao criar."); } finally { btn.innerText = "ESTABELECER"; btn.disabled = false; }
 }
 
 async function joinCommunity(cid) {
-    let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
+    let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
     if(r.ok) { showToast("Você entrou na Base!"); goView('comms'); openCommunity(cid); loadPublicComms(); }
+}
+
+async function requestCommJoin(cid) {
+    let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
+    if(r.ok) { let d = await r.json(); if(d.status === 'requested') showToast("Solicitação enviada ao Líder!"); else showToast("Você já está na base!"); }
 }
 
 async function openCommunity(cid) {
@@ -820,13 +869,31 @@ async function openCommunity(cid) {
     document.getElementById('c-info-members').innerHTML = mHtml;
     
     let addBtn = document.getElementById('c-info-admin-btn');
-    if(d.is_admin) { addBtn.innerHTML = `<button class="glass-btn" style="width:100%; border-color:#2ecc71; color:#2ecc71; font-size:15px; letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ CRIAR ABA / CANAL</button>`; } else { addBtn.innerHTML=''; }
+    let reqCont = document.getElementById('c-info-requests-container');
+    let reqList = document.getElementById('c-info-requests');
+    if(d.is_admin) { 
+        addBtn.innerHTML = `<button class="glass-btn" style="width:100%; border-color:#2ecc71; color:#2ecc71; font-size:15px; letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ CRIAR ABA / CANAL</button>`; 
+        // Puxar Solicitações
+        let reqR = await fetch(`/community/${cid}/requests?uid=${user.id}`);
+        let reqs = await reqR.json();
+        if(reqs.length > 0) {
+            reqCont.style.display = 'block'; reqList.innerHTML = '';
+            reqs.forEach(rq => {
+                reqList.innerHTML += `<div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;"><img src="${rq.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReq(${rq.id}, 'accept')">✔</button><button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 'reject')">✕</button></div>`;
+            });
+        } else { reqCont.style.display = 'none'; }
+    } else { addBtn.innerHTML=''; reqCont.style.display = 'none'; }
 
     let cb = document.getElementById('comm-channels-bar'); cb.innerHTML = '';
     if(d.channels.length > 0) {
-        d.channels.forEach(ch => { cb.innerHTML += `<button class="channel-btn" onclick="joinChannel(${ch.id}, '${ch.type}', this)"># ${ch.name}</button>`; });
+        d.channels.forEach(ch => { cb.innerHTML += `<button class="channel-btn" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${ch.name}</button>`; });
         joinChannel(d.channels[0].id, d.channels[0].type, cb.children[0]); 
     } else { document.getElementById('comm-chat-list').innerHTML = "<p style='color:#888;text-align:center;'>Nenhum canal liberado para você.</p>"; }
+}
+
+async function handleCommReq(rid, act) {
+    let r = await fetch('/community/request/handle', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({req_id:rid, action:act, admin_id:user.id})});
+    if(r.ok) { showToast("Solicitação processada!"); openCommunity(activeCommId); }
 }
 
 function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
@@ -839,41 +906,49 @@ async function submitCreateChannel() {
     if(r.ok) { document.getElementById('modal-create-channel').classList.add('hidden'); showToast("Canal criado!"); openCommunity(activeCommId); }
 }
 
-// 🛡️ CORREÇÃO DO BUG DA CAIXA DE TEXTO NO CANAL DA BASE
+// 🛡️ CORREÇÃO DEFINITIVA DO PISCA-PISCA E DA BARRA DE TEXTO NO CANAL
+async function fetchCommMessages(chid) {
+    let list = document.getElementById('comm-chat-list');
+    let r = await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);
+    if(r.ok) {
+        let msgs = await r.json();
+        let newHtml = msgs.map(d => {
+            let m = (d.sender_id === user.id); let c = d.content;
+            if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+            return `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+        }).join('');
+        if (list.innerHTML !== newHtml) { list.innerHTML = newHtml; list.scrollTop = list.scrollHeight; }
+    }
+}
+
+function connectCommWS(chid) {
+    if(commWS) commWS.close();
+    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    commWS = new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);
+    commWS.onclose = () => { setTimeout(() => { if(activeChannelId === chid && document.getElementById('comm-chat-area').style.display==='flex') { fetchCommMessages(chid); connectCommWS(chid); } }, 2000); };
+    commWS.onmessage = e => {
+        let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
+        if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+        let h = `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
+        b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
+    };
+}
+
 async function joinChannel(chid, type, btnElem) {
     activeChannelId = chid;
     document.getElementById('comm-info-area').style.display='none'; document.getElementById('comm-chat-area').style.display='flex';
     if(btnElem) { document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active')); btnElem.classList.add('active'); }
     
-    // Tratamento sem quebrar o Flexbox
+    // Configura a caixa de texto usando disabled em vez de hide (Evita o Esmagamento Mobile)
     let inp = document.getElementById('comm-msg'); let clip = document.getElementById('btn-comm-clip'); let emj = document.getElementById('btn-comm-emoji');
-    inp.style.display=''; clip.style.display=''; emj.style.display=''; 
-    if(type === 'media') { inp.style.display='none'; emj.style.display='none'; } 
-    else if(type === 'text') { clip.style.display='none'; }
+    inp.disabled = false; clip.style.display = 'flex'; emj.style.display = 'flex';
+    if(type === 'media') { inp.disabled = true; inp.placeholder = "Canal restrito para mídia 📎"; emj.style.display = 'none'; } 
+    else if(type === 'text') { inp.placeholder = "Mensagem para a base..."; clip.style.display = 'none'; }
+    else { inp.placeholder = "Mensagem para a base..."; }
 
-    let list = document.getElementById('comm-chat-list'); list.innerHTML = '';
-    let r = await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);
-    if(r.ok) {
-        let msgs = await r.json();
-        msgs.forEach(d => {
-            let m = (d.sender_id === user.id); let c = d.content;
-            if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-            list.innerHTML += `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        });
-        list.scrollTop = list.scrollHeight;
-    }
-
-    if(commWS) commWS.close();
-    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    commWS = new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);
-    commWS.onclose = () => { setTimeout(() => { if(activeChannelId && document.getElementById('comm-chat-area').style.display==='flex') joinChannel(activeChannelId, type, null); }, 2000); };
-    
-    commWS.onmessage = e => {
-        let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
-        if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-        b.innerHTML += `<div class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}</div></div></div>`;
-        b.scrollTop = b.scrollHeight;
-    };
+    document.getElementById('comm-chat-list').innerHTML = ''; // Limpa na troca de canal
+    await fetchCommMessages(chid);
+    connectCommWS(chid);
 }
 
 function sendCommMsg() { let i = document.getElementById('comm-msg'); let msg = i.value.trim(); if(msg && commWS && commWS.readyState === WebSocket.OPEN) { commWS.send(msg); i.value = ''; toggleEmoji(true); } }
@@ -908,7 +983,7 @@ async function uploadToCloudinary(file){
         x.onerror=()=>rej("Conexão caiu."); x.send(fd)
     });
 }
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return showToast("Selecione um arquivo!");let btn=document.getElementById('btn-pub');btn.innerText="ENVIANDO...";btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){showToast("Sucesso!");user.xp+=50;lastFeedHash="";loadFeed();closeUpload();loadMyHistory();}}catch(e){alert("Ops! " + e);}finally{btn.innerText="PUBLICAR (+50 XP)";btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.innerText="ENVIANDO...";btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');showToast("Atualizado!")}}catch(e){alert("Ops! " + e)}finally{btn.innerText="SALVAR";btn.disabled=false;}}
 
 function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
@@ -1093,15 +1168,46 @@ async def list_comms(uid: int, db: Session=Depends(get_db)):
 async def search_comms(uid: int, q: str = "", db: Session=Depends(get_db)):
     my_memberships = db.query(CommunityMember).filter(CommunityMember.user_id == uid).all()
     my_comm_ids = [m.comm_id for m in my_memberships]
-    query = db.query(Community).filter(Community.is_private == 0, ~Community.id.in_(my_comm_ids))
+    query = db.query(Community).filter(~Community.id.in_(my_comm_ids))
     if q: query = query.filter(Community.name.ilike(f"%{q}%"))
-    public_comms = query.limit(20).all()
-    return [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url, "desc": c.description} for c in public_comms]
+    comms = query.limit(20).all()
+    return [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url, "desc": c.description, "is_private": c.is_private} for c in comms]
 
-@app.post("/community/join")
-async def join_comm(d: JoinCommData, db: Session=Depends(get_db)):
-    if not db.query(CommunityMember).filter_by(comm_id=d.comm_id, user_id=d.user_id).first():
-        db.add(CommunityMember(comm_id=d.comm_id, user_id=d.user_id, role="member")); db.commit()
+@app.post("/community/request/send")
+async def send_comm_req(d: JoinCommData, db: Session=Depends(get_db)):
+    c = db.query(Community).get(d.comm_id)
+    if not c: return {"status": "error"}
+    
+    if c.is_private == 0:
+        if not db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.user_id).first():
+            db.add(CommunityMember(comm_id=c.id, user_id=d.user_id, role="member"))
+            db.commit()
+        return {"status": "joined"}
+    else:
+        ext = db.query(CommunityRequest).filter_by(comm_id=c.id, user_id=d.user_id).first()
+        if not ext:
+            db.add(CommunityRequest(comm_id=c.id, user_id=d.user_id))
+            db.commit()
+        return {"status": "requested"}
+
+@app.get("/community/{cid}/requests")
+async def get_comm_reqs(cid: int, uid: int, db: Session=Depends(get_db)):
+    role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
+    if not role or role.role != "admin": return []
+    reqs = db.query(CommunityRequest).filter_by(comm_id=cid).all()
+    return [{"id": r.id, "user_id": r.user.id, "username": r.user.username, "avatar": r.user.avatar_url} for r in reqs]
+
+@app.post("/community/request/handle")
+async def handle_comm_req(d: HandleCommReqData, db: Session=Depends(get_db)):
+    role = db.query(CommunityMember).filter_by(comm_id=db.query(CommunityRequest).get(d.req_id).comm_id, user_id=d.admin_id).first()
+    if not role or role.role != "admin": return {"status": "unauthorized"}
+    
+    req = db.query(CommunityRequest).filter_by(id=d.req_id).first()
+    if not req: return {"status": "error"}
+    if d.action == "accept":
+        db.add(CommunityMember(comm_id=req.comm_id, user_id=req.user_id, role="member"))
+    db.delete(req)
+    db.commit()
     return {"status": "ok"}
 
 @app.get("/community/{cid}/{uid}")
@@ -1146,6 +1252,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     chid = int(ch.split("_")[1])
                     db.add(CommunityMessage(channel_id=chid, sender_id=uid, content=txt))
                     db.commit()
+                
                 await manager.broadcast(user_data, ch)
                 if ch.startswith("dm_"): await manager.broadcast({"type": "ping"}, "Geral")
             except Exception as e: db.rollback()
