@@ -232,9 +232,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-av{width:42px;height:42px;border-radius:50%;margin-right:12px;object-fit:cover;border:1px solid var(--primary); background:#111;}
 .rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3)}
 
-/* NOVO: CORREÇÃO DE VÍDEOS CORTADOS */
-.post-media-wrapper { width: 100%; background: #07080a; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02); }
-.post-media{width:100%; max-height:550px; object-fit:contain; display:block;}
+/* CIRURGIA NO VÍDEO: O segredo está aqui */
+.post-media-wrapper { width: 100%; background: #000; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); }
+.post-media { width: 100%; max-height: 70vh; object-fit: contain; display: block; } /* 70vh garante que cabe na tela e 'contain' não corta */
+
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
 /* AÇÕES DO POST */
@@ -493,8 +494,9 @@ async function loadFeed(){
         lastFeedHash=h;
         let ht='';
         p.forEach(x=>{
-            // Envolvendo a mídia no container blindado
             let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
+            
+            // O BLINDADO DO VÍDEO
             m = `<div class="post-media-wrapper">${m}</div>`;
             
             let delBtn=x.author_id===user.id?`<span onclick="deletePost(${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;">🗑️</span>`:'';
@@ -765,4 +767,5 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
