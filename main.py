@@ -614,31 +614,79 @@ function updateStatusDots() {
 }
 
 // 🔔 SISTEMA DE NOTIFICAÇÃO (TOAST E BADGE)
+// 1. O RADAR GERAL DE MENSAGENS E ALERTAS
 async function fetchUnread() {
     if(!user) return;
     try {
-        let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); window.unreadData = d.by_sender;
-        let badge = document.getElementById('inbox-badge');
-        if(d.total > 0) { badge.innerText = d.total; badge.style.display = 'block'; } else { badge.style.display = 'none'; }
+        let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); 
+        let d = await r.json(); 
+        window.unreadData = d.by_sender || {};
         
-        // Verifica se chegou mensagem nova e dispara o Toast
+        let badge = document.getElementById('inbox-badge');
+        if(d.total > 0) { 
+            badge.innerText = d.total; 
+            badge.style.display = 'block'; 
+            badge.style.top = '0px'; // Ajuste para não cortar no celular
+            badge.style.right = '0px';
+        } else { 
+            badge.style.display = 'none'; 
+        }
+        
         if (window.lastTotalUnread !== undefined && d.total > window.lastTotalUnread) {
             showToast("🔔 Nova mensagem privada!");
         }
         window.lastTotalUnread = d.total;
 
-        if(document.getElementById('view-inbox').classList.contains('active')) {
-            document.querySelectorAll('.inbox-item').forEach(item => {
-                let sid = parseInt(item.getAttribute('data-id')); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge');
-                if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; }
-            });
-        }
+        // Atualiza em tempo real as bolinhas dentro da aba Mensagens
+        document.querySelectorAll('.inbox-item').forEach(item => {
+            let sid = item.getAttribute('data-id'); 
+            let type = item.getAttribute('data-type'); 
+            let b = item.querySelector('.list-badge');
+            if(type === '1v1' && window.unreadData[sid]) { 
+                b.innerText = window.unreadData[sid]; 
+                b.style.display = 'block'; 
+            } else if(b) { 
+                b.style.display = 'none'; 
+            }
+        });
     } catch(e){}
 }
 
-async function toggleStealth() {
-    let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
-    if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
+// 2. A TELA DE MENSAGENS COM AS BOLINHAS PARA CADA SOLDADO
+async function loadInbox() {
+    let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); 
+    let d = await r.json(); 
+    let b = document.getElementById('inbox-list'); 
+    b.innerHTML = '';
+    
+    if(d.groups.length === 0 && d.friends.length === 0) { 
+        b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; 
+        return; 
+    }
+    
+    d.groups.forEach(g => { 
+        b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">👥 Esquadrão DM</span></div></div>`; 
+    });
+    
+    d.friends.forEach(f => {
+        // Converte as IDs com precisão para puxar o número vermelho exato
+        let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
+        let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
+        
+        b.innerHTML += `
+        <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
+            <div class="av-wrap">
+                <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
+                <div class="status-dot" data-uid="${f.id}"></div>
+            </div>
+            <div style="flex:1;">
+                <b style="color:white;font-size:16px;">${f.name}</b><br>
+                <span style="font-size:12px;color:#888;">Mensagem Direta</span>
+            </div>
+            <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
+        </div>`;
+    });
+    updateStatusDots();
 }
 function updateStealthUI() {
     let btn = document.getElementById('btn-stealth'); let myDot = document.getElementById('my-status-dot');
@@ -1530,3 +1578,4 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
