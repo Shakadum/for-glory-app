@@ -19,11 +19,12 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from jose import jwt, JWTError
 from collections import Counter
 
-# --- CONFIGURAÇÕES GERAIS ---
+# --- CONFIGURAÇÕES GERAIS E CHAVES ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
+AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "") # CHAVE DA CALL (AGORA.IO)
 ALGORITHM = "HS256"
 
 mail_conf = ConnectionConfig(
@@ -176,7 +177,7 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
-# --- SISTEMA DE CARREIRA MILITAR (PATENTES E MEDALHAS EXPANDIDAS) ---
+# --- SISTEMA DE CARREIRA MILITAR ---
 def get_user_badges(xp, user_id, role):
     tiers = [
         (0, "Recruta", 100, "#888888"),
@@ -194,16 +195,12 @@ def get_user_badges(xp, user_id, role):
         (50000, "General ⭐", 50000, "#FFD700")
     ]
     
-    rank = tiers[0][1]
-    color = tiers[0][3]
-    next_xp = tiers[0][2]
-    next_rank = tiers[1][1]
+    rank = tiers[0][1]; color = tiers[0][3]
+    next_xp = tiers[0][2]; next_rank = tiers[1][1]
     
     for i, t in enumerate(tiers):
         if xp >= t[0]:
-            rank = t[1]
-            color = t[3]
-            next_xp = t[2]
+            rank = t[1]; color = t[3]; next_xp = t[2]
             next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
             
     percent = int((xp / next_xp) * 100) if next_xp > xp else 100
@@ -223,21 +220,15 @@ def get_user_badges(xp, user_id, role):
         {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
     ]
     
-    if user_id == 1 or role == "fundador":
-        medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
-    
+    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
     for m in all_medals:
         earned = xp >= m['req']
         missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
 
-    return {
-        "rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent,
-        "special_emblem": special_emblem, "medals": medals
-    }
+    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
-
 def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
 def verify_reset_token(token: str):
     try:
@@ -292,7 +283,18 @@ def get_db():
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-# --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM CARREIRA MILITAR ---
+@app.on_event("startup")
+def startup():
+    if "sqlite" in str(engine.url):
+        with engine.connect() as conn:
+            try: conn.execute(text("PRAGMA journal_mode=WAL;")); conn.commit()
+            except: pass
+    for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
+        try:
+            with engine.connect() as conn: conn.execute(text(query)); conn.commit()
+        except Exception: pass
+
+# --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM CALL SFU ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -301,6 +303,7 @@ html_content = r"""
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
 <title>For Glory</title>
 <style>
 :root{--primary:#66fcf1;--dark-bg:#0b0c10;--card-bg:#1f2833;--glass:rgba(31, 40, 51, 0.7);--border:rgba(102,252,241,0.15)}
@@ -308,7 +311,6 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR REORGANIZADA DE 6 ABAS */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -319,9 +321,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* DESIGN MINIMALISTA PARA PATENTES NO CHAT E FEED */
+/* SISTEMA DE EMBLEMAS E BADGES */
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
+
+/* HUD DA CALL EM SEGUNDO PLANO */
+#call-hud { display:none; position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:rgba(11,12,16,0.95); border:1px solid #2ecc71; border-radius:20px; padding:12px 20px; z-index:9999; align-items:center; gap:20px; box-shadow:0 10px 30px rgba(46,204,113,0.3); width:90%; max-width:350px; backdrop-filter:blur(10px); animation: scaleUp 0.3s ease-out; }
+.call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
+.call-btn-circle:hover { transform:scale(1.1); }
+.call-btn-circle.muted { background:#ffaa00; color:#000; box-shadow:0 0 10px rgba(255,170,0,0.5); }
+.call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; transform:rotate(135deg); transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.5); }
+.call-btn-hangup:hover { background:#cc0000; }
 
 /* POSTS FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
@@ -368,8 +378,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .del-msg-btn { font-size:12px; cursor:pointer; color:#ff5555; opacity:0.6; position:absolute; bottom:-15px; right:5px; transition:0.2s; }
 .del-msg-btn:hover { opacity:1; transform:scale(1.2); }
 .msg-time { display:block; font-size:10px; color:rgba(255,255,255,0.5); text-align:right; margin-top:4px; font-family:'Inter', sans-serif;}
-
 .msg-deleted { font-style: italic; color: #ffaa00; background: rgba(255,170,0,0.1); padding: 5px 10px; border-radius: 8px; font-size: 13px; display: inline-block; border: 1px dashed rgba(255,170,0,0.5); }
+
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
 /* COMUNIDADES E BASES */
@@ -377,8 +387,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
-.comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; }
-#active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; background: linear-gradient(90deg, transparent, rgba(102,252,241,0.1), transparent); padding: 5px 20px; border-radius: 20px; text-shadow: 0 0 10px rgba(102,252,241,0.3); }
+.comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; gap:10px; }
+#active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; background: linear-gradient(90deg, transparent, rgba(102,252,241,0.1), transparent); padding: 5px 10px; border-radius: 20px; text-shadow: 0 0 10px rgba(102,252,241,0.3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
 .comm-channels-bar { padding: 12px 15px; background: #0b0c10; display: flex; gap: 10px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; }
@@ -405,7 +415,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
-/* TOAST SUPERIOR E CENTRALIZADO */
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
 #toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
@@ -414,13 +423,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes pulse{0%{opacity:1; transform:scale(1);} 50%{opacity:0.5; transform:scale(1.2);} 100%{opacity:1; transform:scale(1);}}
 
-/* CARROSSEL MOBILE */
+/* CARROSSEL MOBILE E BOTÃO DA CALL */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
     #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden; white-space:nowrap; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
     #sidebar::-webkit-scrollbar { display:none; }
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
+    #call-hud { bottom: 85px; width:95%; padding:10px; }
+    .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
 </style>
 </head>
@@ -436,6 +447,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="emoji-picker" style="position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:rgba(20,25,35,0.95);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8);backdrop-filter:blur(10px)">
     <div style="padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333"><span style="color:var(--primary);font-weight:bold;font-family:'Rajdhani'">EMOJIS</span><span onclick="toggleEmoji(true)" style="color:#ff5555;cursor:pointer;font-weight:bold">✕</span></div>
     <div id="emoji-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:10px;max-height:220px;overflow-y:auto"></div>
+</div>
+
+<div id="call-hud">
+    <div style="flex:1;">
+        <div style="color:#2ecc71; font-size:12px; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status">EM CHAMADA</span></div>
+        <div id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:18px;">00:00</div>
+    </div>
+    <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()">🎤</button>
+    <button class="call-btn-hangup" onclick="leaveCall()">📞</button>
 </div>
 
 <div id="modal-login" class="modal"><div class="modal-box"><h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1><div id="login-form"><input id="l-user" class="inp" data-i18n="codename"><input id="l-pass" class="inp" type="password" data-i18n="password" onkeypress="if(event.key==='Enter')doLogin()"><button onclick="doLogin()" class="btn-main" data-i18n="login">ENTRAR</button><div style="margin-top:20px;display:flex;justify-content:space-between"><span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;" data-i18n="create_acc">Criar Conta</span><span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;" data-i18n="forgot">Esqueci Senha</span></div></div><div id="register-form" class="hidden"><input id="r-user" class="inp" data-i18n="new_user"><input id="r-email" class="inp" data-i18n="email_real"><input id="r-pass" class="inp" type="password" data-i18n="password"><button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button><p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p></div><div id="forgot-form" class="hidden"><h3 style="color:white" data-i18n="recover">RECUPERAR ACESSO</h3><input id="f-email" class="inp" data-i18n="reg_email"><button onclick="requestReset()" class="btn-main" data-i18n="send_link">ENVIAR LINK</button><p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p></div><div id="reset-form" class="hidden"><h3 style="color:var(--primary)" data-i18n="new_pass_title">NOVA SENHA</h3><input id="new-pass" class="inp" type="password" data-i18n="new_pass"><button onclick="doResetPassword()" class="btn-main" data-i18n="save_pass">SALVAR SENHA</button></div></div></div>
@@ -553,9 +573,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
-                <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;margin-right:15px;">⬅</button>
-                    <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;">Chat</div>
+                <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
+                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">⬅</button>
+                    <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;flex:1;">Chat</div>
+                    
+                    <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
                 </div>
                 <div id="dm-list"></div>
                 <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
@@ -573,7 +595,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <div class="comm-topbar">
                 <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
                 <div id="active-comm-name">NOME DA BASE</div>
-                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
+                
+                <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 12px; border-color:#2ecc71; color:#2ecc71; margin-right:5px;">📞 CALL</button>
+                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️</button>
             </div>
             <div class="comm-channels-bar" id="comm-channels-bar"></div>
             
@@ -630,7 +654,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
-// --- DICIONÁRIO DE TRADUÇÃO ---
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -728,11 +751,14 @@ var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
+// SISTEMA DE CALL (SFU AGORA.IO)
+let rtc = { localAudioTrack: null, client: null };
+let callDuration = 0, callInterval = null;
+
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
-// --- TABELA DE TODAS AS PATENTES ---
 const RANK_TIERS = [
     { xp: 0, name: "Recruta", color: "#888888" },
     { xp: 100, name: "Soldado", color: "#2ecc71" },
@@ -902,7 +928,6 @@ function updateUI(){
     document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     
-    // HUD de Progresso
     let missingXP = user.next_xp - user.xp;
     document.getElementById('p-progression-box').innerHTML = `
         <div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;">
@@ -965,6 +990,99 @@ function goView(v, btnElem){
     if(v === 'feed') loadFeed();
 }
 
+/* =========================================
+   SISTEMA DE CALL (AGORA.IO SFU) EM SEGUNDO PLANO
+   ========================================= */
+async function initCall() {
+    if (rtc.client) return showToast("Você já está em uma call!");
+    
+    let channelName = "";
+    if (document.getElementById('view-dm').classList.contains('active')) {
+        channelName = `call_${currentChatType}_${currentChatId}`;
+    } else if (document.getElementById('view-comm-dashboard').classList.contains('active')) {
+        channelName = `call_comm_${activeCommId}`;
+    } else {
+        return showToast("Entre em um chat para iniciar a Call.");
+    }
+
+    showToast("Conectando ao Satélite de Voz...");
+    try {
+        let res = await fetch('/agora-config');
+        let conf = await res.json();
+        if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado no Servidor.");
+
+        // Inicia cliente com Codec VP8 (padrão do Discord para voz fluída)
+        rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        
+        rtc.client.on("user-published", async (remoteUser, mediaType) => {
+            await rtc.client.subscribe(remoteUser, mediaType);
+            if (mediaType === "audio") { remoteUser.audioTrack.play(); }
+        });
+
+        // Conecta ao canal (UID aleatório para evitar conflitos se abrir em 2 abas)
+        let uid = await rtc.client.join(conf.app_id, channelName, null, user.id);
+        
+        // Cria faixa de áudio de ALTA QUALIDADE com cancelamento de ruído
+        rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+            encoderConfig: "high_quality", // 48kHz, 128kbps
+            AEC: true, ANS: true, AGC: false 
+        });
+        
+        await rtc.client.publish([rtc.localAudioTrack]);
+        
+        showCallHUD();
+    } catch(e) {
+        showToast("Erro ao iniciar Call. Verifique o Microfone.");
+        console.error(e);
+        leaveCall();
+    }
+}
+
+function showCallHUD() {
+    document.getElementById('call-hud').style.display = 'flex';
+    callDuration = 0;
+    document.getElementById('call-hud-time').innerText = "00:00";
+    callInterval = setInterval(() => {
+        callDuration++;
+        let m = String(Math.floor(callDuration / 60)).padStart(2, '0');
+        let s = String(callDuration % 60).padStart(2, '0');
+        document.getElementById('call-hud-time').innerText = `${m}:${s}`;
+    }, 1000);
+}
+
+async function leaveCall() {
+    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); }
+    if (rtc.client) { await rtc.client.leave(); }
+    rtc.localAudioTrack = null;
+    rtc.client = null;
+    
+    clearInterval(callInterval);
+    document.getElementById('call-hud').style.display = 'none';
+    
+    let btn = document.getElementById('btn-mute-call');
+    btn.classList.remove('muted');
+    btn.innerHTML = '🎤';
+    showToast("Chamada Encerrada.");
+}
+
+function toggleMuteCall() {
+    if(rtc.localAudioTrack) {
+        let muted = !rtc.localAudioTrack.muted;
+        rtc.localAudioTrack.setMuted(muted);
+        let btn = document.getElementById('btn-mute-call');
+        if(muted) {
+            btn.classList.add('muted');
+            btn.innerHTML = '🔇';
+        } else {
+            btn.classList.remove('muted');
+            btn.innerHTML = '🎤';
+        }
+    }
+}
+
+/* =========================================
+   GRAVAÇÃO DE MENSAGEM DE VOZ (RÁDIO)
+   ========================================= */
 async function toggleRecord(type) {
     let btn = document.getElementById(`btn-mic-${type}`);
     let inpId = type === 'dm' ? 'dm-msg' : (type === 'comm' ? 'comm-msg' : `comment-inp-${type.split('-')[1]}`);
@@ -1433,6 +1551,10 @@ async function openPublicProfile(uid){
     goView('public-profile')
 }
 
+@app.get("/agora-config")
+async def get_agora_config():
+    return {"app_id": AGORA_APP_ID}
+
 async function uploadToCloudinary(file){
     let limiteMB = 100; if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject();
     let resType = (file.type.startsWith('video') || file.type.startsWith('audio')) ? 'video' : 'image'; 
@@ -1864,6 +1986,10 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
         
     b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
     return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
+
+@app.get("/agora-config")
+async def get_agora_config():
+    return {"app_id": AGORA_APP_ID}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
