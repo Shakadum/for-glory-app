@@ -178,15 +178,38 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
+# --- AUTO-REPARADOR DE BANCO DE DADOS ---
+@app.on_event("startup")
+def startup_db_fix():
+    def fix_columns():
+        queries = [
+            "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'",
+            "ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0",
+            "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0"
+        ]
+        try:
+            with engine.connect() as conn:
+                if "postgres" in str(engine.url):
+                    conn.execute(text("SET statement_timeout = '5s'"))
+                for q in queries:
+                    try:
+                        conn.execute(text(q))
+                        conn.commit()
+                    except Exception: pass
+        except Exception: pass
+    # Roda em segundo plano para o app iniciar imediatamente e não travar o Login!
+    threading.Thread(target=fix_columns).start()
+
 # --- SISTEMA DE CARREIRA MILITAR ---
 def get_user_badges(xp, user_id, role):
     tiers = [
-        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"),
-        (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"),
-        (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"),
-        (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"),
-        (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"),
-        (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")
+        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"),
+        (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"),
+        (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"),
+        (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"),
+        (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"),
+        (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"),
+        (50000, "General ⭐", 50000, "#FFD700")
     ]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
     
@@ -273,28 +296,9 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# Tática de escape: Impede que o servidor gratuito trave ao iniciar
-# Tática de escape: Impede que o servidor gratuito trave ao iniciar
-@app.on_event("startup")
-def startup():
-    def upgrade_db():
-        try:
-            if "sqlite" in str(engine.url):
-                with engine.connect() as conn:
-                    conn.execute(text("PRAGMA journal_mode=WAL;"))
-                    conn.commit()
-        except Exception: pass
-        
-        for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
-            try:
-                with engine.connect() as conn:
-                    if "postgres" in str(engine.url): conn.execute(text("SET statement_timeout = '3s'"))
-                    conn.execute(text(query))
-                    conn.commit()
-            except Exception: pass
-    threading.Thread(target=upgrade_db).start()
+def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-# --- FRONTEND (HTML/CSS/JS) COMPLETAMENTE BLINDADO ---
+# --- FRONTEND (HTML/CSS/JS) ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -303,7 +307,7 @@ html_content = r"""
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
-<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+<script async defer src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
 <title>For Glory</title>
 <style>
 :root{--primary:#66fcf1;--dark-bg:#0b0c10;--card-bg:#1f2833;--glass:rgba(31, 40, 51, 0.7);--border:rgba(102,252,241,0.15)}
@@ -465,7 +469,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
         <div id="register-form" class="hidden">
             <input id="r-user" class="inp" placeholder="NOVO USUÁRIO" data-i18n="new_user">
-            <input id="r-email" class="inp" placeholder="EMAIL" data-i18n="email_real">
+            <input id="r-email" class="inp" placeholder="EMAIL (Real)" data-i18n="email_real">
             <input id="r-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password">
             <button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button>
             <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
@@ -486,7 +490,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*"><input id="new-comm-name" class="inp" placeholder="Nome da Base" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Descrição" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
 <div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
@@ -513,7 +517,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
     </div>
-
     <div id="content-area">
         <div id="view-profile" class="view">
             <div class="profile-header-container">
@@ -528,10 +531,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="p-emblems" style="margin-bottom:10px;"></div>
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
-            
             <div id="p-progression-box"></div>
             <div id="p-medals-box" style="text-align:center;"></div>
-
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
                 <div class="search-glass">
@@ -548,7 +549,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;" data-i18n="disconnect">DESCONECTAR</button>
             </div>
         </div>
-
         <div id="view-inbox" class="view">
             <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;font-size:20px;" data-i18n="private_msgs">MENSAGENS PRIVADAS</div>
@@ -556,12 +556,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
         </div>
-
         <div id="view-feed" class="view active">
             <div id="feed-container"></div>
             <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
         </div>
-
         <div id="view-mycomms" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
                 <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="my_bases">🛡️ MINHAS BASES</span>
@@ -571,7 +569,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
             </div>
         </div>
-
         <div id="view-explore" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
                 <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="explore_bases">🌐 EXPLORAR BASES</span>
@@ -585,7 +582,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
             </div>
         </div>
-
         <div id="view-history" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
                 <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="my_history">🕒 MEU HISTÓRICO</span>
@@ -594,7 +590,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin:0 auto; max-width:800px;"></div>
             </div>
         </div>
-
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
@@ -613,7 +608,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 </form>
             </div>
         </div>
-
         <div id="view-comm-dashboard" class="view comm-layout">
             <div class="comm-topbar">
                 <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
@@ -622,7 +616,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️</button>
             </div>
             <div class="comm-channels-bar" id="comm-channels-bar"></div>
-            
             <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
                 <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
                 <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
@@ -634,7 +627,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
                 </form>
             </div>
-            
             <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding:30px; align-items:center; flex-direction:column;">
                 <div style="background:var(--card-bg); border:1px solid #444; border-radius:20px; padding:30px; width:100%; max-width:500px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
                     <img id="c-info-av" src="" style="width:120px;height:120px;border-radius:24px;object-fit:cover;border:3px solid var(--primary);margin-bottom:15px;">
@@ -653,7 +645,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 </div>
             </div>
         </div>
-
         <div id="view-public-profile" class="view">
             <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;" data-i18n="back">⬅ Voltar</button>
             <div class="profile-header-container">
@@ -676,15 +667,14 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
-// --- DICIONÁRIO BLINDADO CONTRA CURTO-CIRCUITOS ---
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
         'codename': 'CODINOME', 'password': 'SENHA', 'new_user': 'NOVO USUÁRIO', 'email_real': 'EMAIL (Real)', 'enlist': 'ALISTAR-SE', 'back': 'Voltar',
         'recover': 'RECUPERAR ACESSO', 'reg_email': 'SEU EMAIL CADASTRADO', 'send_link': 'ENVIAR LINK', 'new_pass_title': 'NOVA SENHA', 'new_pass': 'NOVA SENHA', 'save_pass': 'SALVAR SENHA',
         'confirm_action': 'CONFIRMAR AÇÃO', 'confirm_del': 'Tem certeza que deseja apagar isto?', 'delete': 'APAGAR', 'cancel': 'CANCELAR',
-        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa de Elite)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
-        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
+        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública (Livre)', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
+        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CRIAR CANAL',
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
@@ -692,9 +682,9 @@ const T = {
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
         'msg_placeholder': 'Mensagem secreta...', 'base_msg_placeholder': 'Mensagem para a base...',
-        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando...',
-        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic p/ enviar)',
-        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão',
+        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando áudio...',
+        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic para enviar)',
+        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão DM',
         'no_bases': 'Você ainda não tem bases.', 'no_bases_found': 'Nenhuma base encontrada.', 'no_history': 'Nenhuma missão registrada no Feed.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover',
@@ -707,8 +697,8 @@ const T = {
         'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL (Real)', 'enlist': 'ENLIST', 'back': 'Back',
         'recover': 'RECOVER ACCESS', 'reg_email': 'REGISTERED EMAIL', 'send_link': 'SEND LINK', 'new_pass_title': 'NEW PASSWORD', 'new_pass': 'NEW PASSWORD', 'save_pass': 'SAVE PASSWORD',
         'confirm_action': 'CONFIRM ACTION', 'confirm_del': 'Are you sure you want to delete this?', 'delete': 'DELETE', 'cancel': 'CANCEL',
-        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name (Ex: Elite Squad)', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
-        'new_channel': 'NEW CHANNEL', 'channel_name': 'Name (Ex: alerts)', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private (Admins)', 'create_channel': 'CREATE CHANNEL',
+        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name (Ex: Squad)', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
+        'new_channel': 'NEW CHANNEL', 'channel_name': 'Name (Ex: alerts)', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private', 'create_channel': 'CREATE CHANNEL',
         'new_squad': 'NEW SQUAD', 'group_name': 'Group Name', 'select_allies': 'Select allies:', 'create': 'CREATE',
         'new_post': 'NEW POST', 'caption_placeholder': 'Caption...', 'publish': 'PUBLISH (+50 XP)',
         'edit_profile': 'EDIT PROFILE', 'bio_placeholder': 'Write your Bio...', 'save': 'SAVE',
@@ -716,7 +706,7 @@ const T = {
         'private_msgs': 'PRIVATE MESSAGES', 'group_x1': '+ DM SQUAD', 'my_bases': '🛡️ MY BASES', 'create_base': '+ CREATE BASE',
         'explore_bases': '🌐 EXPLORE BASES', 'search_base': 'Search Base...', 'my_history': '🕒 MY HISTORY',
         'msg_placeholder': 'Secret message...', 'base_msg_placeholder': 'Message to base...',
-        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing...',
+        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing audio...',
         'recording': '🔴 Recording...', 'click_to_send': '(Click mic to send)',
         'empty_box': 'Your inbox is empty. Recruit allies!', 'direct_msg': 'Direct Message', 'squad': '👥 DM Squad',
         'no_bases': 'You have no bases yet.', 'no_bases_found': 'No bases found.', 'no_history': 'No missions recorded in Feed.',
@@ -731,7 +721,7 @@ const T = {
         'codename': 'NOMBRE EN CLAVE', 'password': 'CONTRASEÑA', 'new_user': 'NUEVO USUARIO', 'email_real': 'CORREO (Real)', 'enlist': 'ALISTARSE', 'back': 'Volver',
         'recover': 'RECUPERAR ACCESO', 'reg_email': 'CORREO REGISTRADO', 'send_link': 'ENVIAR ENLACE', 'new_pass_title': 'NUEVA CONTRASEÑA', 'new_pass': 'NUEVA CONTRASEÑA', 'save_pass': 'GUARDAR CONTRASEÑA',
         'confirm_action': 'CONFIRMAR ACCIÓN', 'confirm_del': '¿Seguro que quieres borrar esto?', 'delete': 'BORRAR', 'cancel': 'CANCELAR',
-        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción de la Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
+        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
         'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
@@ -740,13 +730,13 @@ const T = {
         'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
-        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
-        'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
+        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando audio...',
+        'recording': '🔴 Grabando...', 'click_to_send': '(Click en mic para enviar)',
         'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones registradas.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
-        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE',
+        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
         'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!',
         'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
     }
@@ -757,21 +747,11 @@ let validLangs = ['pt', 'en', 'es'];
 window.currentLang = 'en';
 try {
     let savedLang = localStorage.getItem('lang');
-    if (validLangs.includes(savedLang)) {
-        window.currentLang = savedLang;
-    } else {
-        window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en';
-        localStorage.setItem('lang', window.currentLang);
-    }
-} catch(e) {
-    window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en';
-}
+    if (validLangs.includes(savedLang)) { window.currentLang = savedLang; } 
+    else { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; localStorage.setItem('lang', window.currentLang); }
+} catch(e) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; }
 
-function t(key) { 
-    let dict = T[window.currentLang];
-    if (!dict) dict = T['en'];
-    return dict[key] || key; 
-}
+function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
 function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -788,7 +768,6 @@ var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
-// SISTEMA DE CALL (SFU AGORA.IO)
 let rtc = { localAudioTrack: null, client: null };
 let callDuration = 0, callInterval = null;
 
@@ -820,37 +799,38 @@ function showRanksModal() {
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
-// LOGIN SEGURO COM LOADING TÁTICO
-async function doLogin(){
+async function doLogin() {
     let btn = document.querySelector('#login-form .btn-main');
     let oldText = btn.innerText;
-    btn.innerText = "CARREGANDO...";
+    btn.innerText = "⏳ CONECTANDO...";
+    btn.disabled = true;
     try {
-        let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});
-        if(!r.ok) throw 1;
-        user=await r.json();
+        let r = await fetch('/login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: document.getElementById('l-user').value, password: document.getElementById('l-pass').value})
+        });
+        if (!r.ok) throw new Error("Erro no login");
+        user = await r.json();
         startApp();
-        btn.innerText = oldText; 
-    } catch(e) {
-        btn.innerText = oldText;
-        showToast("Erro: Tente novamente em 5 segundos.");
-    }
+    } catch(e) { showToast("❌ Codinome/Senha incorretos ou Servidor Ocupado.");
+    } finally { btn.innerText = oldText; btn.disabled = false; }
 }
 
-async function doRegister(){
+async function doRegister() {
     let btn = document.querySelector('#register-form .btn-main');
     let oldText = btn.innerText;
-    btn.innerText = "CRIANDO...";
+    btn.innerText = "⏳ REGISTRANDO...";
+    btn.disabled = true;
     try {
-        let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});
-        if(!r.ok) throw 1;
-        showToast("Registrado com sucesso!");
+        let r = await fetch('/register', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})
+        });
+        if (!r.ok) throw new Error("Erro");
+        showToast("✔ Registrado! Faça login.");
         toggleAuth('login');
-        btn.innerText = oldText;
-    } catch(e) {
-        btn.innerText = oldText;
-        showToast("Erro ao Registrar. Usuário já existe?");
-    }
+    } catch(e) { showToast("❌ Erro. Usuário ou e-mail já existe.");
+    } finally { btn.innerText = oldText; btn.disabled = false; }
 }
 
 function formatMsgTime(iso) {
@@ -869,6 +849,16 @@ function formatRankInfo(rank, special, color) {
     if(rank) h += `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>`;
     return h;
 }
+
+function initEmojis() {
+    let g = document.getElementById('emoji-grid'); if(!g) return; g.innerHTML = '';
+    EMOJIS.forEach(e => {
+        let s = document.createElement('div'); s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText = e;
+        s.onclick = () => { if(currentEmojiTarget){ let inp = document.getElementById(currentEmojiTarget); inp.value += e; inp.focus(); } };
+        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)"; s.onmouseout = () => s.style.background = "transparent"; g.appendChild(s);
+    });
+}
+initEmojis();
 
 function checkToken() {
     const urlParams = new URLSearchParams(window.location.search); const token = urlParams.get('token');
@@ -1586,10 +1576,6 @@ async function openPublicProfile(uid){
     goView('public-profile')
 }
 
-@app.get("/agora-config")
-async def get_agora_config():
-    return {"app_id": AGORA_APP_ID}
-
 async function uploadToCloudinary(file){
     let limiteMB = 100; if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject();
     let resType = (file.type.startsWith('video') || file.type.startsWith('audio')) ? 'video' : 'image'; 
@@ -2029,4 +2015,3 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
