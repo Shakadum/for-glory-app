@@ -274,6 +274,7 @@ def get_db():
     finally: db.close()
 
 # Tática de escape: Impede que o servidor gratuito trave ao iniciar
+# Tática de escape: Impede que o servidor gratuito trave ao iniciar
 @app.on_event("startup")
 def startup():
     def upgrade_db():
@@ -2028,3 +2029,4 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
