@@ -222,7 +222,9 @@ def get_user_badges(xp, user_id, role):
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
+
 def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+
 def verify_reset_token(token: str):
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -250,7 +252,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- INSTANCIAÇÃO DO APP (MUITO IMPORTANTE FICAR AQUI) ---
+# --- APP FASTAPI ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -271,11 +273,8 @@ class ReadData(BaseModel): uid: int
 class JoinCommData(BaseModel): user_id: int; comm_id: int
 class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
 
+# --- FUNÇÕES DE BD E CRIPTOGRAFIA ---
 def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
-        def get_db():
     db = SessionLocal()
     try: yield db
     finally: db.close()
@@ -283,7 +282,7 @@ def get_db():
 def criptografar(s): 
     return hashlib.sha256(s.encode()).hexdigest()
 
-# --- TÁTICA DE REPARO EM SEGUNDO PLANO (AGORA O APP EXISTE!) ---
+# --- TÁTICA DE REPARO DE BD EM SEGUNDO PLANO ---
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
@@ -726,7 +725,7 @@ const T = {
         'codename': 'NOMBRE EN CLAVE', 'password': 'CONTRASEÑA', 'new_user': 'NUEVO USUARIO', 'email_real': 'CORREO (Real)', 'enlist': 'ALISTARSE', 'back': 'Volver',
         'recover': 'RECUPERAR ACCESO', 'reg_email': 'CORREO REGISTRADO', 'send_link': 'ENVIAR ENLACE', 'new_pass_title': 'NUEVA CONTRASEÑA', 'new_pass': 'NUEVA CONTRASEÑA', 'save_pass': 'GUARDAR CONTRASEÑA',
         'confirm_action': 'CONFIRMAR ACCIÓN', 'confirm_del': '¿Seguro que quieres borrar esto?', 'delete': 'BORRAR', 'cancel': 'CANCELAR',
-        'new_base': 'NUEVA BASE', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
+        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
         'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
@@ -737,13 +736,13 @@ const T = {
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
-        'base_members': 'Miembros', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
+        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!',
-        'progression': 'PROGRESO (XP)', 'medals': '🏆 MEDALLAS'
+        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
     }
 };
 
@@ -2020,4 +2019,3 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
