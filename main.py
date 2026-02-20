@@ -188,21 +188,12 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
-
-# --- APP FASTAPI ---
-app = FastAPI(title="For Glory Cloud")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
-if not os.path.exists("static"): os.makedirs("static")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --- NOVO: INSPETOR DE BANCO DE DADOS (AUTO-REPARO DE 100% EFICIÊNCIA) ---
+# --- NOVO: INSPETOR DE BANCO DE DADOS (AUTO-REPARO) ---
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
         try:
             insp = inspect(engine)
-            
             if "sqlite" in str(engine.url):
                 try:
                     with engine.connect() as conn:
@@ -210,24 +201,13 @@ def startup_db_fix():
                         conn.commit()
                 except: pass
             
-            # Mapeamento do que falta no banco de dados antigo
             tables_to_check = {
-                "users": [
-                    ("is_invisible", "INTEGER DEFAULT 0"),
-                    ("role", "VARCHAR DEFAULT 'membro'")
-                ],
-                "private_messages": [
-                    ("is_read", "INTEGER DEFAULT 0")
-                ],
-                "communities": [
-                    ("banner_url", "VARCHAR DEFAULT ''")
-                ],
-                "community_channels": [
-                    ("banner_url", "VARCHAR DEFAULT ''")
-                ]
+                "users": [("is_invisible", "INTEGER DEFAULT 0"), ("role", "VARCHAR DEFAULT 'membro'")],
+                "private_messages": [("is_read", "INTEGER DEFAULT 0")],
+                "communities": [("banner_url", "VARCHAR DEFAULT ''")],
+                "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
             }
             
-            # Adiciona apenas as colunas que estão faltando sem usar timeout
             for table_name, cols in tables_to_check.items():
                 if insp.has_table(table_name):
                     existing_cols = [c['name'] for c in insp.get_columns(table_name)]
@@ -237,12 +217,8 @@ def startup_db_fix():
                                 with engine.connect() as conn:
                                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
                                     conn.commit()
-                            except Exception as e:
-                                logger.error(f"Erro ao atualizar {table_name}: {e}")
-        except Exception as e:
-            logger.error(f"Erro no Inspector Geral: {e}")
-
-    # Roda em segundo plano para o seu site ligar de imediato
+                            except Exception: pass
+        except Exception: pass
     threading.Thread(target=upgrade_db).start()
 
 
@@ -258,12 +234,10 @@ def get_user_badges(xp, user_id, role):
         (50000, "General ⭐", 50000, "#FFD700")
     ]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
-    
     for i, t in enumerate(tiers):
         if xp >= t[0]:
             rank = t[1]; color = t[3]; next_xp = t[2]
             next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
-            
     percent = int((xp / next_xp) * 100) if next_xp > xp else 100
     if percent > 100: percent = 100
 
@@ -280,53 +254,51 @@ def get_user_badges(xp, user_id, role):
         {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
         {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
     ]
-    
-    if user_id == 1 or role == "fundador": 
-        medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
-        
+    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
     for m in all_medals:
         earned = xp >= m['req']
         missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
 
-    return {
-        "rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, 
-        "percent": percent, "special_emblem": special_emblem, "medals": medals
-    }
+    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
-def get_utc_iso(dt): 
-    return dt.isoformat() + "Z" if dt else ""
-
-def create_reset_token(email: str): 
-    return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-
+def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
+def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
 def verify_reset_token(token: str):
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return p.get("sub") if p.get("type") == "reset" else None
-    except JWTError: 
-        return None
+    except JWTError: return None
 
 class ConnectionManager:
     def __init__(self):
         self.active = {}
-        self.user_connections = {}
+        self.user_ws = {} # Dict de conexões para invites privados
     async def connect(self, ws: WebSocket, chan: str, uid: int):
         await ws.accept()
         if chan not in self.active: self.active[chan] = []
         self.active[chan].append(ws)
-        self.user_connections[uid] = self.user_connections.get(uid, 0) + 1
+        if chan == "Geral": self.user_ws[uid] = ws
     def disconnect(self, ws: WebSocket, chan: str, uid: int):
         if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
-        if uid in self.user_connections:
-            self.user_connections[uid] -= 1
-            if self.user_connections[uid] <= 0: del self.user_connections[uid]
+        if chan == "Geral" and uid in self.user_ws: del self.user_ws[uid]
     async def broadcast(self, msg: dict, chan: str):
         for conn in self.active.get(chan, []):
             try: await conn.send_text(json.dumps(msg))
             except: pass
+    async def send_personal(self, msg: dict, uid: int):
+        ws = self.user_ws.get(uid)
+        if ws:
+            try: await ws.send_text(json.dumps(msg))
+            except: pass
 
 manager = ConnectionManager()
+
+app = FastAPI(title="For Glory Cloud")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+if not os.path.exists("static"): os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
@@ -341,17 +313,17 @@ class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[i
 class ReadData(BaseModel): uid: int 
 class JoinCommData(BaseModel): user_id: int; comm_id: int
 class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
+class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
+class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
 
-# --- FUNÇÕES DE BD E CRIPTOGRAFIA ---
 def get_db():
     db = SessionLocal()
     try: yield db
     finally: db.close()
 
-def criptografar(s): 
-    return hashlib.sha256(s.encode()).hexdigest()
+def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-# --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO (À PROVA DE FALHAS) ---
+# --- FRONTEND (HTML/CSS/JS) ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -391,11 +363,16 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-#call-hud { display:none; position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:rgba(11,12,16,0.95); border:1px solid #2ecc71; border-radius:20px; padding:12px 20px; z-index:9999; align-items:center; gap:20px; box-shadow:0 10px 30px rgba(46,204,113,0.3); width:90%; max-width:350px; backdrop-filter:blur(10px); animation: scaleUp 0.3s ease-out; }
-.call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
-.call-btn-circle:hover { transform:scale(1.1); }
+/* HUD DA CALL FLUTUANTE */
+#floating-call-btn { position:fixed; bottom:30px; right:30px; width:65px; height:65px; border-radius:50%; background:#2ecc71; color:white; font-size:30px; cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; box-shadow:0 5px 20px rgba(46,204,113,0.6); animation:pulse 2s infinite; border:3px solid var(--dark-bg); transition:0.3s; }
+#floating-call-btn:hover { transform:scale(1.1); }
+#expanded-call-panel { display:none; position:fixed; bottom:110px; right:30px; width:320px; background:rgba(15,20,25,0.98); border:1px solid var(--primary); border-radius:16px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8); backdrop-filter:blur(10px); animation:scaleUp 0.2s ease-out; }
+.remote-user-row { display:flex; align-items:center; gap:10px; margin-bottom:15px; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid #333;}
+.vol-slider { flex:1; accent-color: var(--primary); height:4px; }
+.call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
+.call-btn-circle:hover { transform:scale(1.1); background:#444;}
 .call-btn-circle.muted { background:#ffaa00; color:#000; box-shadow:0 0 10px rgba(255,170,0,0.5); }
-.call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; transform:rotate(135deg); transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.5); }
+.call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:30px; width:100%; padding:12px; font-size:16px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.3); margin-top:10px;}
 .call-btn-hangup:hover { background:#cc0000; }
 
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
@@ -457,7 +434,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; padding: 5px 10px; text-shadow: 0 0 10px rgba(102,252,241,0.3), 0 2px 5px rgba(0,0,0,1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
 .comm-channels-bar { padding: 12px 15px; background: #0b0c10; display: flex; gap: 10px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; background-size: cover; background-position: center; position: relative; overflow:hidden; text-shadow: 0 1px 3px rgba(0,0,0,0.8);}
+.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; background-size: cover; background-position: center; position: relative; overflow:hidden; text-shadow: 0 1px 3px rgba(0,0,0,0.8); display:flex; align-items:center; gap:5px;}
 .channel-btn:hover { border-color: var(--primary); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .channel-btn.active { border-color: var(--primary); box-shadow: 0 0 12px rgba(102,252,241,0.6); transform:scale(1.05); color:var(--primary); }
 
@@ -494,13 +471,27 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     #sidebar::-webkit-scrollbar { display:none; }
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
-    #call-hud { bottom: 85px; width:95%; padding:10px; }
+    #floating-call-btn { bottom: 80px; right: 20px; width:55px; height:55px; font-size:24px; }
+    #expanded-call-panel { bottom: 150px; right: 20px; width: 90%; max-width: 320px; }
     .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
 </style>
 </head>
 <body>
 <div id="toast">Notificação</div>
+
+<div id="modal-incoming-call" class="modal hidden">
+    <div class="modal-box" style="border-color: #2ecc71;">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="incoming_call">CHAMADA RECEBIDA</h2>
+        <img id="incoming-call-av" src="" style="width:80px;height:80px;border-radius:50%;border:3px solid #2ecc71; margin:10px auto; display:block;">
+        <h3 id="incoming-call-name" style="color:white; margin:10px 0;">...</h3>
+        <p style="color:#aaa; font-size:14px; margin-bottom:20px;">está chamando...</p>
+        <div style="display:flex; gap:10px;">
+            <button onclick="acceptCall()" class="btn-main" style="background:#2ecc71; color:white; margin-top:0;">ACEITAR</button>
+            <button onclick="declineCall()" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">RECUSAR</button>
+        </div>
+    </div>
+</div>
 
 <div class="lang-dropdown">
     <div class="lang-btn" id="lang-btn-current">🌍 Idioma</div>
@@ -512,17 +503,28 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <div id="emoji-picker" style="position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:rgba(20,25,35,0.95);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8);backdrop-filter:blur(10px)">
-    <div style="padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333"><span style="color:var(--primary);font-weight:bold;font-family:'Rajdhani'">EMOJIS</span><span onclick="toggleEmoji(true)" style="color:#ff5555;cursor:pointer;font-weight:bold">✕</span></div>
+    <div style="padding:10px 15px;display:flex;justify-content:space-between;border-bottom:1px solid #333">
+        <span style="color:var(--primary);font-weight:bold;font-family:'Rajdhani'">EMOJIS</span>
+        <span onclick="toggleEmoji(true)" style="color:#ff5555;cursor:pointer;font-weight:bold">✕</span>
+    </div>
     <div id="emoji-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:10px;max-height:220px;overflow-y:auto"></div>
 </div>
 
-<div id="call-hud">
-    <div style="flex:1;">
-        <div style="color:#2ecc71; font-size:12px; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></div>
-        <div id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:18px;">00:00</div>
+<div id="floating-call-btn" onclick="toggleCallPanel()">📞</div>
+<div id="expanded-call-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
+        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></span>
+        <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:18px; font-weight:bold;">00:00</span>
     </div>
-    <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()">🎤</button>
-    <button class="call-btn-hangup" onclick="leaveCall()">📞</button>
+    
+    <div id="call-users-list" style="max-height:200px; overflow-y:auto; margin-bottom:15px;">
+        </div>
+    
+    <div style="display:flex; gap:10px; justify-content:center;">
+        <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()" title="Mutar Meu Microfone">🎤</button>
+        <button class="call-btn-circle" onclick="toggleCallPanel()" title="Minimizar">🔽</button>
+        <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 DESLIGAR</button>
+    </div>
 </div>
 
 <div id="modal-login" class="modal">
@@ -558,19 +560,128 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
+<div id="modal-delete" class="modal hidden">
+    <div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);">
+        <h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2>
+        <p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button>
+            <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
+        </div>
+    </div>
+</div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="base_banner_opt">Banner da Base (Opcional):</p><input type="file" id="comm-banner-upload" class="inp" accept="image/*" title="Banner da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2>
+        <input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base">
+        <p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="base_banner_opt">Banner da Base (Opcional):</p>
+        <input type="file" id="comm-banner-upload" class="inp" accept="image/*" title="Banner da Base">
+        <input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name">
+        <input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc">
+        <select id="new-comm-priv" class="styled-select">
+            <option value="0" data-i18n="pub_base">🌍 Pública</option>
+            <option value="1" data-i18n="priv_base">🔒 Privada</option>
+        </select>
+        <button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button>
+        <button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
+    </div>
+</div>
 
-<div id="modal-edit-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="edit_base">EDITAR BASE</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_avatar">Novo Avatar</label><input type="file" id="edit-comm-avatar" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_banner">Novo Banner (Base e Geral)</label><input type="file" id="edit-comm-banner" class="inp" accept="image/*"><button id="btn-save-comm" onclick="submitEditComm()" class="btn-main" data-i18n="save">SALVAR</button><button onclick="document.getElementById('modal-edit-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-edit-comm" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="edit_base">EDITAR BASE</h2>
+        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_avatar">Novo Avatar</label>
+        <input type="file" id="edit-comm-avatar" class="inp" accept="image/*">
+        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_banner">Novo Banner (Base e Geral)</label>
+        <input type="file" id="edit-comm-banner" class="inp" accept="image/*">
+        <button id="btn-save-comm" onclick="submitEditComm()" class="btn-main" data-i18n="save">SALVAR</button>
+        <button onclick="document.getElementById('modal-edit-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
+    </div>
+</div>
 
-<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="ch_banner_opt">Banner do Canal (Opcional):</p><input type="file" id="new-ch-banner" class="inp" accept="image/*" title="Banner do Canal"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option><option value="voice" data-i18n="voice_channel">🎙️ Canal de Voz</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button id="btn-create-ch" onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-channel" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2>
+        <input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name">
+        <p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="ch_banner_opt">Banner do Canal (Opcional):</p>
+        <input type="file" id="new-ch-banner" class="inp" accept="image/*" title="Banner do Canal">
+        <select id="new-ch-type" class="styled-select">
+            <option value="livre" data-i18n="ch_free">💬 Livre</option>
+            <option value="text" data-i18n="ch_text">📝 Só Texto</option>
+            <option value="media" data-i18n="ch_media">🎬 Só Mídia</option>
+            <option value="voice" data-i18n="voice_channel">🎙️ Canal de Voz</option>
+        </select>
+        <select id="new-ch-priv" class="styled-select">
+            <option value="0" data-i18n="ch_pub">🌍 Público</option>
+            <option value="1" data-i18n="ch_priv">🔒 Privado</option>
+        </select>
+        <button id="btn-create-ch" onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button>
+        <button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
+    </div>
+</div>
 
-<div id="modal-create-group" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_squad">NOVO ESQUADRÃO</h2><input id="new-group-name" class="inp" placeholder="Grupo" data-i18n="group_name"><p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;" data-i18n="select_allies">Selecione os aliados:</p><div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div><div style="display:flex; gap:10px;"><button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;" data-i18n="create">CRIAR</button><button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
+<div id="modal-edit-channel" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">EDITAR CANAL</h2>
+        <input id="edit-ch-name" class="inp" placeholder="Novo Nome">
+        <p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;">Novo Banner:</p>
+        <input type="file" id="edit-ch-banner" class="inp" accept="image/*">
+        <select id="edit-ch-type" class="styled-select">
+            <option value="livre">💬 Livre</option><option value="text">📝 Só Texto</option>
+            <option value="media">🎬 Só Mídia</option><option value="voice">🎙️ Canal de Voz</option>
+        </select>
+        <select id="edit-ch-priv" class="styled-select">
+            <option value="0">🌍 Público</option><option value="1">🔒 Privado</option>
+        </select>
+        <button id="btn-edit-ch" onclick="submitEditChannel()" class="btn-main" data-i18n="save">SALVAR</button>
+        <button onclick="document.getElementById('modal-edit-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
+    </div>
+</div>
 
-<div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white" data-i18n="new_post">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." data-i18n="caption_placeholder" style="margin:0"><button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button></div><div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div></div><div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div><button id="btn-pub" onclick="submitPost()" class="btn-main" data-i18n="publish">PUBLICAR (+50 XP)</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-group" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_squad">NOVO ESQUADRÃO</h2>
+        <input id="new-group-name" class="inp" placeholder="Grupo" data-i18n="group_name">
+        <p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;" data-i18n="select_allies">Selecione os aliados:</p>
+        <div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div>
+        <div style="display:flex; gap:10px;">
+            <button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;" data-i18n="create">CRIAR</button>
+            <button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
+        </div>
+    </div>
+</div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)" data-i18n="edit_profile">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Avatar</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Cover</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" placeholder="Bio" data-i18n="bio_placeholder"><button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button></div></div>
+<div id="modal-upload" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:white" data-i18n="new_post">NOVO POST</h2>
+        <input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;">
+        <span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span>
+        <div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px">
+            <input type="text" id="caption-upload" class="inp" placeholder="Legenda..." data-i18n="caption_placeholder" style="margin:0">
+            <button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button>
+        </div>
+        <div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden">
+            <div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div>
+        </div>
+        <div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div>
+        <button id="btn-pub" onclick="submitPost()" class="btn-main" data-i18n="publish">PUBLICAR (+50 XP)</button>
+        <button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
+    </div>
+</div>
+
+<div id="modal-profile" class="modal hidden">
+    <div class="modal-box">
+        <h2 style="color:var(--primary)" data-i18n="edit_profile">EDITAR PERFIL</h2>
+        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Avatar</label>
+        <input type="file" id="avatar-upload" class="inp" accept="image/*">
+        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Cover</label>
+        <input type="file" id="cover-upload" class="inp" accept="image/*">
+        <input id="bio-update" class="inp" placeholder="Bio" data-i18n="bio_placeholder">
+        <button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button>
+        <button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button>
+    </div>
+</div>
 
 <div id="modal-ranks" class="modal hidden">
     <div class="modal-box" style="max-height: 80vh; overflow-y: auto;">
@@ -585,11 +696,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
         <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
-        <button class="nav-btn" onclick="goView('mycomms', this)">🛡️</button>
+        <button class="nav-btn" onclick="goView('mycomms', this)" style="position:relative;">🛡️<div id="bases-badge" class="nav-badge"></div></button>
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
     </div>
-
+    
     <div id="content-area">
         <div id="view-profile" class="view">
             <div class="profile-header-container">
@@ -604,10 +715,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="p-emblems" style="margin-bottom:10px;"></div>
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
-            
             <div id="p-progression-box"></div>
             <div id="p-medals-box" style="text-align:center;"></div>
-            
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
                 <div class="search-glass">
@@ -830,12 +939,12 @@ const T = {
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar',
-        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
-        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL',
+        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE',
+        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL',
         'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):'
     }
 };
@@ -1067,27 +1176,31 @@ function updateStatusDots() {
     });
 }
 
+// --- INTEGRAÇÃO COM NOVA ROTA DE NOTIFICAÇÕES (DMs + Bases) ---
 async function fetchUnread() {
     if(!user) return;
     try {
-        let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); 
+        let r = await fetch(`/notifications/${user.id}?nocache=${new Date().getTime()}`); 
         let d = await r.json(); 
-        window.unreadData = d.by_sender || {};
         
-        let badge = document.getElementById('inbox-badge');
-        if(d.total > 0) { 
-            badge.innerText = d.total; 
-            badge.style.display = 'block'; 
-            badge.style.top = '0px'; 
-            badge.style.right = '0px';
-        } else { 
-            badge.style.display = 'none'; 
-        }
+        window.unreadData = d.dms.by_sender || {};
         
-        if (window.lastTotalUnread !== undefined && d.total > window.lastTotalUnread) { 
+        let badgeInbox = document.getElementById('inbox-badge');
+        if(d.dms.total > 0) { 
+            badgeInbox.innerText = d.dms.total; 
+            badgeInbox.style.display = 'block'; 
+        } else { badgeInbox.style.display = 'none'; }
+        
+        let badgeBases = document.getElementById('bases-badge');
+        if(d.comms.total > 0) { 
+            badgeBases.innerText = d.comms.total; 
+            badgeBases.style.display = 'block'; 
+        } else { badgeBases.style.display = 'none'; }
+        
+        if (window.lastTotalUnread !== undefined && d.dms.total > window.lastTotalUnread) { 
             showToast(t('new_msg_alert')); 
         }
-        window.lastTotalUnread = d.total;
+        window.lastTotalUnread = d.dms.total;
 
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => {
@@ -1095,261 +1208,18 @@ async function fetchUnread() {
                 let type = item.getAttribute('data-type'); 
                 let b = item.querySelector('.list-badge');
                 if(type === '1v1' && window.unreadData[sid]) { 
-                    b.innerText = window.unreadData[sid]; 
-                    b.style.display = 'block'; 
-                } else if(b) { 
-                    b.style.display = 'none'; 
-                }
+                    b.innerText = window.unreadData[sid]; b.style.display = 'block'; 
+                } else if(b) { b.style.display = 'none'; }
             });
         }
-    } catch(e) { console.error(e); }
-}
-
-async function loadInbox() {
-    try {
-        let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); 
-        let d = await r.json(); 
-        let b = document.getElementById('inbox-list'); 
-        b.innerHTML = '';
-        
-        if((d.groups || []).length === 0 && (d.friends || []).length === 0) { 
-            b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; 
-            return; 
-        }
-        
-        (d.groups || []).forEach(g => { 
-            b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; 
-        });
-        
-        (d.friends || []).forEach(f => {
-            let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
-            let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-            b.innerHTML += `
-            <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
-                <div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div>
-                <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div>
-                <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
-            </div>`;
-        });
-        updateStatusDots();
-    } catch(e) { console.error(e); }
-}
-
-async function openCreateGroupModal() {
-    try {
-        let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); 
-        let d = await r.json(); 
-        let list = document.getElementById('group-friends-list');
-        
-        if((d.friends || []).length === 0) { 
-            list.innerHTML = `<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`; 
-        } else { 
-            list.innerHTML = d.friends.map(f => `<label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join(''); 
-        }
-        document.getElementById('new-group-name').value = ''; 
-        document.getElementById('modal-create-group').classList.remove('hidden');
-    } catch(e) { console.error(e); }
-}
-
-async function submitCreateGroup() {
-    let name = document.getElementById('new-group-name').value.trim(); 
-    if(!name) return;
-    
-    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); 
-    let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
-    if(member_ids.length === 0) return;
-    
-    try {
-        let r = await fetch('/group/create', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids})
-        });
-        if(r.ok) { 
-            document.getElementById('modal-create-group').classList.add('hidden'); 
-            loadInbox(); 
-        }
-    } catch(e) { console.error(e); }
-}
-
-async function toggleRequests(type) {
-    let b = document.getElementById('requests-list');
-    if(b.style.display === 'block') { b.style.display = 'none'; return; }
-    b.style.display = 'block';
-    
-    try {
-        let r = await fetch(`/friend/requests?uid=${user.id}&nocache=${new Date().getTime()}`);
-        let d = await r.json();
-        
-        if (type === 'requests') {
-            b.innerHTML = (d.requests || []).length ? d.requests.map(r => `
-                <div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">
-                    ${r.username} 
-                    <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button>
-                </div>
-            `).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`;
-        } else {
-            b.innerHTML = (d.friends || []).length ? d.friends.map(f => `
-                <div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})">
-                    <div class="av-wrap">
-                        <img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;">
-                        <div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div>
-                    </div>
-                    ${f.username}
-                </div>
-            `).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`;
-        }
-        updateStatusDots();
-    } catch (e) { console.error(e); }
-}
-
-async function sendRequest(tid) {
-    try {
-        let r = await fetch('/friend/request', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body:JSON.stringify({target_id:tid, sender_id:user.id})
-        });
-        if (r.ok) { openPublicProfile(tid); }
-    } catch(e) { console.error(e); }
-}
-
-async function handleReq(rid, act) {
-    try {
-        let r = await fetch('/friend/handle', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body:JSON.stringify({request_id:rid, action:act})
-        });
-        if (r.ok) { toggleRequests('requests'); }
-    } catch(e) { console.error(e); }
-}
-
-// --- CRIAÇÃO DE BASES E CANAIS BLINDADA ---
-async function submitCreateComm(e) {
-    e.preventDefault();
-    let n = document.getElementById('new-comm-name').value.trim(); 
-    let d = document.getElementById('new-comm-desc').value.trim(); 
-    let p = document.getElementById('new-comm-priv').value; 
-    let avFile = document.getElementById('comm-avatar-upload').files[0];
-    let banFile = document.getElementById('comm-banner-upload').files[0];
-    
-    if(!n) return showToast("Digite um nome!");
-    let btn = e.target; 
-    btn.disabled = true;
-    btn.innerText = "CRIANDO...";
-    
-    try {
-        let safeName = encodeURIComponent(n);
-        let av = "https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";
-        // PREVENÇÃO DE ERRO: SE NÃO MANDAR BANNER, GERA IMAGEM VAZIA PARA NÃO BUGAR O LAYOUT INFO
-        let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
-        
-        if(avFile) { let c = await uploadToCloudinary(avFile); av = c.secure_url; }
-        if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
-        
-        let fd = new FormData(); 
-        fd.append('user_id', user.id); 
-        fd.append('name', n); 
-        fd.append('desc', d); 
-        fd.append('is_priv', p); 
-        fd.append('avatar_url', av); 
-        fd.append('banner_url', ban);
-        
-        let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { 
-            document.getElementById('modal-create-comm').classList.add('hidden'); 
-            showToast("Base Criada!");
-            loadMyComms(); 
-            goView('mycomms', document.querySelectorAll('.nav-btn')[3]); 
-        }
-    } catch(err) { 
-        console.error(err); 
-        showToast("Erro ao criar a base.");
-    } finally { 
-        btn.disabled = false; 
-        btn.innerText = t('establish');
-    }
-}
-
-// --- EDIÇÃO DE BASE (NOVO) ---
-async function submitEditComm() {
-    let avFile = document.getElementById('edit-comm-avatar').files[0];
-    let banFile = document.getElementById('edit-comm-banner').files[0];
-    
-    if(!avFile && !banFile) return showToast("Selecione alguma imagem.");
-    
-    let btn = document.getElementById('btn-save-comm'); 
-    btn.disabled = true;
-    btn.innerText = "ENVIANDO...";
-    
-    try {
-        let fd = new FormData();
-        fd.append('comm_id', activeCommId);
-        fd.append('user_id', user.id);
-        
-        if(avFile) { let c = await uploadToCloudinary(avFile); fd.append('avatar_url', c.secure_url); }
-        if(banFile) { let c = await uploadToCloudinary(banFile); fd.append('banner_url', c.secure_url); }
-        
-        let r = await fetch('/community/edit', {method:'POST', body:fd});
-        if(r.ok) { 
-            document.getElementById('modal-edit-comm').classList.add('hidden'); 
-            showToast("Base Atualizada!");
-            openCommunity(activeCommId); 
-            loadMyComms();
-        }
-    } catch(e) { 
-        showToast("Erro ao atualizar base."); 
-    } finally { 
-        btn.disabled = false; 
-        btn.innerText = t('save'); 
-    }
-}
-
-async function submitCreateChannel() {
-    let n = document.getElementById('new-ch-name').value.trim(); 
-    let tType = document.getElementById('new-ch-type').value; 
-    let p = document.getElementById('new-ch-priv').value;
-    let banFile = document.getElementById('new-ch-banner').files[0];
-    
-    if(!n) return showToast("Digite o nome do canal!");
-    let btn = document.getElementById('btn-create-ch'); 
-    btn.disabled = true;
-    btn.innerText = "CRIANDO...";
-    
-    try {
-        let safeName = encodeURIComponent(n);
-        let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
-        if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
-        
-        let fd = new FormData(); 
-        fd.append('comm_id', activeCommId); 
-        fd.append('user_id', user.id); 
-        fd.append('name', n); 
-        fd.append('type', tType); 
-        fd.append('is_private', p); 
-        fd.append('banner_url', ban);
-        
-        let r = await fetch('/community/channel/create', {method:'POST', body:fd});
-        if(r.ok) { 
-            document.getElementById('modal-create-channel').classList.add('hidden'); 
-            showToast("Canal Criado!");
-            openCommunity(activeCommId); 
-        }
-    } catch(err) { 
-        console.error(err);
-        showToast("Erro ao criar canal.");
-    } finally { 
-        btn.disabled = false; 
-        btn.innerText = t('create_channel');
-    }
+    } catch(e) {}
 }
 
 async function toggleStealth() {
     try {
         let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
         if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
-    } catch(e) { console.error(e); }
+    } catch(e) {}
 }
 
 function updateStealthUI() {
@@ -1428,6 +1298,18 @@ function startApp(){
     globalWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
         if(d.type === 'ping') { fetchUnread(); }
+        // ALERTA DE CALL RECEBIDA
+        if(d.type === 'incoming_call') {
+            document.getElementById('incoming-call-name').innerText = d.caller_name;
+            document.getElementById('incoming-call-av').src = d.caller_avatar;
+            window.pendingCallChannel = d.channel_name;
+            document.getElementById('modal-incoming-call').classList.remove('hidden');
+            try {
+                window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg');
+                window.ringtone.loop = true;
+                window.ringtone.play();
+            } catch(err){}
+        }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
 
@@ -1457,27 +1339,61 @@ function goView(v, btnElem){
 }
 
 /* =========================================
-   SISTEMA DE CALL (AGORA.IO SFU) EM SEGUNDO PLANO
+   SISTEMA DE CALL (AGORA.IO SFU) EM SEGUNDO PLANO E RINGING
    ========================================= */
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     
     let channelName = "";
-    if (typeParam === 'dm') { channelName = `call_dm_${targetId}`; } 
-    else if (typeParam === 'channel') { channelName = `call_channel_${targetId}`; }
-    else { return showToast("Alvo da call inválido."); }
+    if (typeParam === 'dm') { 
+        channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
+        showToast("Chamando...");
+        await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
+    } else if (typeParam === 'group') { 
+        channelName = `call_group_${targetId}`; 
+        showToast("Chamando o Esquadrão...");
+        await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
+    } else if (typeParam === 'channel') { 
+        channelName = `call_channel_${targetId}`; 
+    } else {
+        return showToast("Alvo da call inválido.");
+    }
 
-    showToast("Conectando ao Satélite de Voz...");
+    connectToAgora(channelName, typeParam);
+}
+
+function declineCall() {
+    document.getElementById('modal-incoming-call').classList.add('hidden');
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+}
+
+function acceptCall() {
+    document.getElementById('modal-incoming-call').classList.add('hidden');
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+    connectToAgora(window.pendingCallChannel, 'dm');
+}
+
+async function connectToAgora(channelName, typeParam) {
     try {
         let res = await fetch('/agora-config');
         let conf = await res.json();
         if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado no Servidor.");
 
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        rtc.remoteUsers = {};
         
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
             await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") { remoteUser.audioTrack.play(); }
+            if (mediaType === "audio") { 
+                rtc.remoteUsers[remoteUser.uid] = remoteUser;
+                remoteUser.audioTrack.play(); 
+                renderCallPanel();
+            }
+        });
+
+        rtc.client.on("user-unpublished", (remoteUser) => {
+            delete rtc.remoteUsers[remoteUser.uid];
+            renderCallPanel();
         });
 
         let uid = await rtc.client.join(conf.app_id, channelName, null, user.id);
@@ -1487,7 +1403,9 @@ async function initCall(typeParam, targetId) {
         });
         
         await rtc.client.publish([rtc.localAudioTrack]);
-        showCallHUD();
+        
+        document.getElementById('floating-call-btn').style.display = 'flex';
+        showCallPanel();
         
         if (typeParam === 'channel') {
             document.getElementById('comm-chat-list').innerHTML = `
@@ -1500,22 +1418,50 @@ async function initCall(typeParam, targetId) {
         }
     } catch(e) {
         showToast("Erro ao iniciar Call. Verifique o Microfone.");
-        console.error(e);
         leaveCall();
     }
 }
 
-function showCallHUD() {
-    document.getElementById('call-hud').style.display = 'flex';
+function toggleCallPanel() {
+    let p = document.getElementById('expanded-call-panel');
+    p.style.display = (p.style.display === 'flex') ? 'none' : 'flex';
+}
+
+function showCallPanel() {
+    document.getElementById('expanded-call-panel').style.display = 'flex';
     document.getElementById('call-hud-status').innerText = t('in_call');
     callDuration = 0;
     document.getElementById('call-hud-time').innerText = "00:00";
+    clearInterval(callInterval);
     callInterval = setInterval(() => {
         callDuration++;
         let m = String(Math.floor(callDuration / 60)).padStart(2, '0');
         let s = String(callDuration % 60).padStart(2, '0');
         document.getElementById('call-hud-time').innerText = `${m}:${s}`;
     }, 1000);
+    renderCallPanel();
+}
+
+function renderCallPanel() {
+    let list = document.getElementById('call-users-list');
+    list.innerHTML = '';
+    let count = 0;
+    for(let uid in rtc.remoteUsers) {
+        count++;
+        list.innerHTML += `
+            <div class="remote-user-row">
+                <div style="width:30px;height:30px;border-radius:50%;background:#444;display:flex;align-items:center;justify-content:center;font-size:14px;">👤</div>
+                <input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)">
+            </div>
+        `;
+    }
+    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center;">Aguardando aliados...</p>`;
+}
+
+function changeRemoteVol(uid, val) {
+    if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) {
+        rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val));
+    }
 }
 
 async function leaveCall() {
@@ -1525,14 +1471,14 @@ async function leaveCall() {
     rtc.client = null;
     
     clearInterval(callInterval);
-    document.getElementById('call-hud').style.display = 'none';
+    document.getElementById('expanded-call-panel').style.display = 'none';
+    document.getElementById('floating-call-btn').style.display = 'none';
     
     let btn = document.getElementById('btn-mute-call');
     btn.classList.remove('muted');
     btn.innerHTML = '🎤';
     showToast("Chamada Encerrada.");
     
-    // Devolve a tela original do canal se estava em um canal de voz
     if(activeChannelId && window.currentCommType === 'voice') { 
         joinChannel(activeChannelId, 'voice', null); 
     }
@@ -1581,7 +1527,7 @@ async function toggleRecord(type) {
                     await fetch('/post/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id, text:audioMsg})});
                     lastFeedHash=""; loadFeed();
                 }
-            } catch(err) { showToast("Erro."); }
+            } catch(err) {}
             stream.getTracks().forEach(t => t.stop());
             if(inp) { inp.placeholder = ""; } 
         };
@@ -1662,6 +1608,10 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
             let fd = new FormData(); fd.append('user_id', user.id);
             let r = await fetch(`/community/${id}/delete`,{method:'POST', body:fd});
             if(r.ok) { closeComm(); }
+        } else if (tp === 'channel') {
+            let fd = new FormData(); fd.append('user_id', user.id);
+            let r = await fetch(`/community/channel/${id}/delete`,{method:'POST', body:fd});
+            if(r.ok) { document.getElementById('modal-edit-channel').classList.add('hidden'); openCommunity(activeCommId); }
         } else if (tp === 'dm_msg' || tp === 'comm_msg' || tp === 'group_msg') {
             let mainType = tp === 'dm_msg' ? 'dm' : (tp === 'comm_msg' ? 'comm' : 'group');
             let r = await fetch('/message/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({msg_id:id, type:mainType, user_id:user.id})});
@@ -1671,10 +1621,6 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
                 let timeSpan = msgBubble.querySelector('.msg-time');
                 let timeStr = timeSpan ? timeSpan.outerHTML : '';
                 msgBubble.innerHTML = `<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;
-                let btn = document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');
-                if(btn) btn.remove();
-            } else if (res.status === 'timeout') {
-                showToast(res.msg);
                 let btn = document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');
                 if(btn) btn.remove();
             }
@@ -1796,57 +1742,7 @@ async function openChat(id, name, type) {
 }
 
 function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
-async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro: " + e)} }
-
-async function loadMyComms() {
-    try {
-        let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-        let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
-        if((d.my_comms || []).length === 0) mList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;
-        (d.my_comms || []).forEach(c => { mList.innerHTML += `<div class="comm-card" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
-    } catch(e) {}
-}
-
-async function loadPublicComms() {
-    try {
-        let r = await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
-        let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
-        if((d || []).length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
-        (d || []).forEach(c => { 
-            let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
-            pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
-        });
-    } catch(e) {}
-}
-
-function clearCommSearch() { document.getElementById('search-comm-input').value = ''; loadPublicComms(); }
-
-async function searchComms() {
-    try {
-        let q = document.getElementById('search-comm-input').value.trim();
-        let r = await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`); let d = await r.json();
-        let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
-        if((d || []).length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
-        (d || []).forEach(c => { 
-            let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
-            pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
-        });
-    } catch(e) {}
-}
-
-async function joinCommunity(cid) {
-    try {
-        let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
-        if(r.ok) { loadPublicComms(); openCommunity(cid); }
-    } catch(e) {}
-}
-
-async function requestCommJoin(cid) {
-    try {
-        let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
-        if(r.ok) { let d = await r.json(); }
-    } catch(e) {}
-}
+async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){} }
 
 async function openCommunity(cid) {
     activeCommId = cid;
@@ -1863,7 +1759,6 @@ async function openCommunity(cid) {
         
         document.getElementById('c-info-av').src = d.avatar_url; 
         document.getElementById('c-info-banner').style.backgroundImage = headerBg;
-        
         document.getElementById('c-info-name').innerText = d.name; 
         document.getElementById('c-info-desc').innerText = d.description;
         
@@ -1902,11 +1797,15 @@ async function openCommunity(cid) {
             d.channels.forEach(ch => { 
                 let bgStyle = ch.banner_url ? `background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('${ch.banner_url}'); border:none;` : '';
                 let icon = ch.type === 'voice' ? '🎙️ ' : '';
-                cb.innerHTML += `<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name}</button>`; 
+                
+                // Botão de editar canal se for admin
+                let editBtn = d.is_admin ? `<span style="margin-left:5px; font-size:11px; cursor:pointer; opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>` : '';
+                
+                cb.innerHTML += `<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`; 
             });
             joinChannel(d.channels[0].id, d.channels[0].type, cb.children[0]); 
         } else { document.getElementById('comm-chat-list').innerHTML = ""; }
-    } catch(e) { console.error(e); }
+    } catch(e) {}
 }
 
 async function promoteMember(cid, tid) { try { let r = await fetch('/community/member/promote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, admin_id:user.id, target_id:tid})}); if(r.ok) { openCommunity(cid); } } catch(e){} }
@@ -1914,6 +1813,45 @@ async function demoteMember(cid, tid) { try { let r = await fetch('/community/me
 
 function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
 function closeComm() { goView('mycomms', document.querySelectorAll('.nav-btn')[3]); if(commWS) commWS.close(); }
+
+// --- EDIÇÃO DE CANAL ---
+window.currentEditChannelId = null;
+function openEditChannelModal(id, name, type, priv) {
+    window.currentEditChannelId = id;
+    document.getElementById('edit-ch-name').value = name;
+    document.getElementById('edit-ch-type').value = type;
+    document.getElementById('edit-ch-priv').value = priv;
+    document.getElementById('modal-edit-channel').classList.remove('hidden');
+}
+
+async function submitEditChannel() {
+    let n = document.getElementById('edit-ch-name').value.trim(); 
+    let tType = document.getElementById('edit-ch-type').value; 
+    let p = document.getElementById('edit-ch-priv').value;
+    let banFile = document.getElementById('edit-ch-banner').files[0];
+    
+    if(!n) return;
+    let btn = document.getElementById('btn-edit-ch'); 
+    btn.disabled = true;
+    btn.innerText = "SALVANDO...";
+    
+    try {
+        let fd = new FormData();
+        fd.append('channel_id', window.currentEditChannelId);
+        fd.append('user_id', user.id);
+        fd.append('name', n);
+        fd.append('type', tType);
+        fd.append('is_private', p);
+        
+        if(banFile) { let c = await uploadToCloudinary(banFile); fd.append('banner_url', c.secure_url); }
+        
+        let r = await fetch('/community/channel/edit', {method:'POST', body:fd});
+        if(r.ok) { 
+            document.getElementById('modal-edit-channel').classList.add('hidden'); 
+            openCommunity(activeCommId); 
+        }
+    } catch(e) {} finally { btn.disabled = false; btn.innerText = t('save'); }
+}
 
 async function fetchCommMessages(chid) {
     let list = document.getElementById('comm-chat-list');
@@ -2104,6 +2042,22 @@ async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
         return {"is_invisible": u.is_invisible}
     return {"status": "error"}
 
+@app.get("/notifications/{uid}")
+async def get_notifications(uid: int, db: Session=Depends(get_db)):
+    # DMs Unread
+    unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
+    pm_counts = Counter([str(u[0]) for u in unread_pms])
+    total_dms = sum(pm_counts.values())
+    
+    # Community Requests (Bases)
+    admin_roles = db.query(CommunityMember.comm_id).filter_by(user_id=uid, role="admin").all()
+    admin_comm_ids = [r[0] for r in admin_roles]
+    pending_reqs = db.query(CommunityRequest.comm_id).filter(CommunityRequest.comm_id.in_(admin_comm_ids)).all()
+    req_counts = Counter([str(r[0]) for r in pending_reqs])
+    total_reqs = sum(req_counts.values())
+    
+    return {"dms": {"total": total_dms, "by_sender": dict(pm_counts)}, "comms": {"total": total_reqs, "by_comm": dict(req_counts)}}
+
 @app.get("/inbox/unread/{uid}")
 async def get_unread(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
@@ -2272,6 +2226,37 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
         res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
+# SISTEMA DE LIGAÇÃO PRIVADA (RINGING)
+@app.post("/call/ring/dm")
+async def ring_dm(d: CallRingDMData, db: Session=Depends(get_db)):
+    caller = db.query(User).get(d.caller_id)
+    await manager.send_personal({
+        "type": "incoming_call", 
+        "caller_name": caller.username, 
+        "caller_avatar": caller.avatar_url,
+        "channel_name": d.channel_name,
+        "call_type": "dm",
+        "target_id": d.target_id
+    }, d.target_id)
+    return {"status": "ok"}
+    
+@app.post("/call/ring/group")
+async def ring_group(d: CallRingGroupData, db: Session=Depends(get_db)):
+    caller = db.query(User).get(d.caller_id)
+    group = db.query(ChatGroup).get(d.group_id)
+    members = db.query(GroupMember).filter_by(group_id=d.group_id).all()
+    for m in members:
+        if m.user_id != d.caller_id:
+            await manager.send_personal({
+                "type": "incoming_call",
+                "caller_name": f"{caller.username} (Grp: {group.name})",
+                "caller_avatar": caller.avatar_url,
+                "channel_name": d.channel_name,
+                "call_type": "group",
+                "target_id": d.group_id
+            }, m.user_id)
+    return {"status": "ok"}
+
 @app.post("/community/create")
 async def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""), is_priv: int=Form(0), avatar_url: str=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
     c = Community(name=name, description=desc, avatar_url=avatar_url, banner_url=banner_url, is_private=is_priv, creator_id=user_id)
@@ -2374,7 +2359,7 @@ async def get_comm_details(cid: int, uid: int, db: Session=Depends(get_db)):
     my_role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
     is_admin = my_role and my_role.role == "admin"
     channels = db.query(CommunityChannel).filter_by(comm_id=cid).all()
-    visible_channels = [{"id": ch.id, "name": ch.name, "type": ch.channel_type, "banner_url": ch.banner_url} for ch in channels if ch.is_private == 0 or is_admin]
+    visible_channels = [{"id": ch.id, "name": ch.name, "type": ch.channel_type, "banner_url": ch.banner_url, "is_private": ch.is_private} for ch in channels if ch.is_private == 0 or is_admin]
     members = db.query(CommunityMember).filter_by(comm_id=cid).all()
     members_data = [{"id": m.user.id, "name": m.user.username, "avatar": m.user.avatar_url, "role": m.role} for m in members]
     return {"name": c.name, "description": c.description, "avatar_url": c.avatar_url, "banner_url": c.banner_url, "is_admin": is_admin, "creator_id": c.creator_id, "channels": visible_channels, "members": members_data}
@@ -2384,6 +2369,27 @@ async def create_channel(comm_id: int=Form(...), user_id: int=Form(...), name: s
     role = db.query(CommunityMember).filter_by(comm_id=comm_id, user_id=user_id).first()
     if not role or role.role != "admin": return {"status": "error"}
     db.add(CommunityChannel(comm_id=comm_id, name=name, channel_type=type, is_private=is_private, banner_url=banner_url)); db.commit()
+    return {"status": "ok"}
+
+@app.post("/community/channel/edit")
+async def edit_channel(channel_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(None), db: Session=Depends(get_db)):
+    ch = db.query(CommunityChannel).get(channel_id)
+    if not ch: return {"status": "error"}
+    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=user_id).first()
+    if not role or role.role != "admin": return {"status": "error"}
+    ch.name = name; ch.channel_type = type; ch.is_private = is_private
+    if banner_url: ch.banner_url = banner_url
+    db.commit()
+    return {"status": "ok"}
+
+@app.post("/community/channel/{chid}/delete")
+async def destroy_channel(chid: int, user_id: int=Form(...), db: Session=Depends(get_db)):
+    ch = db.query(CommunityChannel).get(chid)
+    if not ch: return {"status": "error"}
+    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=user_id).first()
+    if not role or role.role != "admin": return {"status": "error"}
+    db.query(CommunityMessage).filter_by(channel_id=chid).delete()
+    db.delete(ch); db.commit()
     return {"status": "ok"}
 
 @app.get("/community/channel/{chid}/messages")
