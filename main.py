@@ -275,6 +275,13 @@ def get_db():
     db = SessionLocal()
     try: yield db
     finally: db.close()
+        def get_db():
+    db = SessionLocal()
+    try: yield db
+    finally: db.close()
+
+def criptografar(s): 
+    return hashlib.sha256(s.encode()).hexdigest()
 
 # --- TÁTICA DE REPARO EM SEGUNDO PLANO (AGORA O APP EXISTE!) ---
 @app.on_event("startup")
@@ -2013,3 +2020,4 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
