@@ -252,18 +252,18 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SIDEBAR REORGANIZADA DE 6 ABAS */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
 .my-avatar-mini{width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--border); background:#111;}
 .nav-badge { position:absolute; top:-2px; right:-2px; background:#ff5555; color:white; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:10px; display:none; z-index:10; box-shadow:0 0 5px #ff5555; border:2px solid var(--dark-bg); }
+.list-badge { background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:12px; display:none; box-shadow:0 0 5px #ff5555; }
 
 #content-area{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS E FEED */
+/* POSTS FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -277,6 +277,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .av-wrap { position: relative; display: inline-block; cursor: pointer; margin:0;}
 .status-dot { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card-bg); background: #555; transition: 0.3s; z-index: 5; }
 .status-dot.online { background: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
+.status-dot-lg { width: 20px; height: 20px; border-width: 3px; bottom: 5px; right: 10px; border-color: var(--dark-bg); }
 
 .post-actions { padding: 10px 15px; display: flex; gap: 20px; background:rgba(0,0,0,0.15); border-top: 1px solid rgba(255,255,255,0.02); }
 .action-btn { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; font-family:'Inter', sans-serif;}
@@ -287,12 +288,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; align-items:flex-start; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
-/* SELETORES MODERNOS */
 .styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
-/* CHAT, ÁUDIO E INPUTS BLINDADOS */
+/* CHAT E INPUTS BLINDADOS */
 .chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
@@ -309,6 +309,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .del-msg-btn { font-size:12px; cursor:pointer; color:#ff5555; opacity:0.6; position:absolute; bottom:-15px; right:5px; transition:0.2s; }
 .del-msg-btn:hover { opacity:1; transform:scale(1.2); }
+
+/* MENSAGEM FANTASMA (DELETADA) */
+.msg-deleted { font-style: italic; color: #ffaa00; background: rgba(255,170,0,0.1); padding: 5px 10px; border-radius: 8px; font-size: 13px; display: inline-block; border: 1px dashed rgba(255,170,0,0.5); }
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
@@ -327,7 +330,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .ch-badge { font-size:10px; background:rgba(102,252,241,0.1); color:var(--primary); padding:3px 6px; border-radius:6px; margin-left:8px; border:1px solid rgba(102,252,241,0.3); font-weight:bold;}
 
-/* PERFIL */
+/* PERFIL E DEMAIS BOTÕES */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
@@ -354,7 +357,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes pulse{0%{opacity:1; transform:scale(1);} 50%{opacity:0.5; transform:scale(1.2);} 100%{opacity:1; transform:scale(1);}}
 
-/* CARROSSEL DE BOTÕES NO MOBILE (SCROLL HORIZONTAL BLINDADO) */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
     #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden; white-space:nowrap; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
@@ -374,7 +376,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-login" class="modal"><div class="modal-box"><h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0">FOR GLORY</h1><div id="login-form"><input id="l-user" class="inp" placeholder="CODINOME"><input id="l-pass" class="inp" type="password" placeholder="SENHA" onkeypress="if(event.key==='Enter')doLogin()"><button onclick="doLogin()" class="btn-main">ENTRAR</button><div style="margin-top:20px;display:flex;justify-content:space-between"><span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;">Criar Conta</span><span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;">Esqueci Senha</span></div></div><div id="register-form" class="hidden"><input id="r-user" class="inp" placeholder="NOVO USUÁRIO"><input id="r-email" class="inp" placeholder="EMAIL (Real)"><input id="r-pass" class="inp" type="password" placeholder="SENHA"><button onclick="doRegister()" class="btn-main">ALISTAR-SE</button><p onclick="toggleAuth('login')" class="btn-link">Voltar</p></div><div id="forgot-form" class="hidden"><h3 style="color:white">RECUPERAR ACESSO</h3><input id="f-email" class="inp" placeholder="SEU EMAIL CADASTRADO"><button onclick="requestReset()" class="btn-main">ENVIAR LINK</button><p onclick="toggleAuth('login')" class="btn-link">Voltar</p></div><div id="reset-form" class="hidden"><h3 style="color:var(--primary)">NOVA SENHA</h3><input id="new-pass" class="inp" type="password" placeholder="NOVA SENHA"><button onclick="doResetPassword()" class="btn-main">SALVAR SENHA</button></div></div></div>
 
-<div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;">CONFIRMAR BAIXA</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;">Tem certeza que deseja excluir isto para sempre?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">EXCLUIR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button></div></div></div>
+<div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;">CANCELAR</button></div></div></div>
 
 <div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome da Base (Ex: Tropa de Elite)"><input id="new-comm-desc" class="inp" placeholder="Descrição da Base"><select id="new-comm-priv" class="styled-select"><option value="0">🌍 Pública (Qualquer um entra)</option><option value="1">🔒 Privada (Só com convite)</option></select><button onclick="submitCreateComm(event)" class="btn-main">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none">CANCELAR</button></div></div>
 
@@ -390,7 +392,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div id="sidebar">
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
+        <button class="nav-btn active" onclick="goView('feed', this)">🎬</button>
         <button class="nav-btn" onclick="goView('mycomms', this)">🛡️</button>
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
@@ -413,20 +415,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;">MODO FURTIVO</button>
-
                 <div class="search-glass">
                     <input id="search-input" placeholder="Buscar Soldado..." onkeypress="if(event.key==='Enter')searchUsers()">
                     <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
                     <button type="button" onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
                 </div>
                 <div id="search-results"></div>
-                
                 <div style="display:flex; gap:10px; margin-top:10px">
                     <button onclick="toggleRequests('requests')" class="glass-btn">📩 Solicitações</button>
                     <button onclick="toggleRequests('friends')" class="glass-btn">👥 Amigos</button>
                 </div>
                 <div id="requests-list" style="margin-top:15px; background:rgba(0,0,0,0.3); border-radius:10px;"></div>
-                
                 <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;">DESCONECTAR DO SISTEMA</button>
             </div>
         </div>
@@ -501,7 +500,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="active-comm-name">NOME DA BASE</div>
                 <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
             </div>
-            
             <div class="comm-channels-bar" id="comm-channels-bar"></div>
             
             <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
@@ -536,7 +534,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
 
         <div id="view-public-profile" class="view">
-            <button onclick="goView('feed')" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;">⬅ Voltar</button>
+            <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;">⬅ Voltar</button>
             <div class="profile-header-container">
                 <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
@@ -644,8 +642,7 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    updateUI(); 
-    fetchOnlineUsers(); fetchUnread(); 
+    updateUI(); fetchOnlineUsers(); fetchUnread(); 
     goView('profile', document.getElementById('nav-profile-btn'));
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
@@ -681,14 +678,9 @@ function goView(v, btnElem){
     if(v === 'feed') loadFeed();
 }
 
-/* SISTEMA DE VOZ (RADIO) */
 async function toggleRecord(type) {
     let btn = document.getElementById(`btn-mic-${type}`);
-    if (mediaRecorders[type] && mediaRecorders[type].state === 'recording') {
-        mediaRecorders[type].stop();
-        btn.classList.remove('recording');
-        return;
-    }
+    if (mediaRecorders[type] && mediaRecorders[type].state === 'recording') { mediaRecorders[type].stop(); btn.classList.remove('recording'); return; }
     try {
         let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorders[type] = new MediaRecorder(stream);
@@ -751,7 +743,6 @@ async function loadFeed(){
     }catch(e){}
 }
 
-let deleteTarget = {type:null, id:null};
 function confirmDelete(type, id) { deleteTarget = {type:type, id:id}; document.getElementById('modal-delete').classList.remove('hidden'); }
 document.getElementById('btn-confirm-delete').onclick = async () => {
     if(!deleteTarget.id) return; 
@@ -770,7 +761,16 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
     } else if (t === 'dm_msg' || t === 'comm_msg' || t === 'group_msg') {
         let mainType = t === 'dm_msg' ? 'dm' : (t === 'comm_msg' ? 'comm' : 'group');
         let r = await fetch('/message/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({msg_id:id, type:mainType, user_id:user.id})});
-        if(r.ok) { document.getElementById(`${t}-${id}`).remove(); showToast("Arquivo apagado."); }
+        let res = await r.json();
+        if(res.status === 'ok') {
+            let msgBubble = document.getElementById(`${t}-${id}`).querySelector('.msg-bubble');
+            msgBubble.innerHTML = `<span class="msg-deleted">🚫 Mensagem apagada</span>`;
+            showToast("Apagado dos registros.");
+        } else if (res.status === 'timeout') {
+            showToast(res.msg);
+            let btn = document.getElementById(`${t}-${id}`).querySelector('.del-msg-btn');
+            if(btn) btn.remove();
+        }
     }
 };
 
@@ -842,11 +842,14 @@ async function fetchChatMessages(id, type) {
         msgs.forEach(d => {
             let prefix = type === 'group' ? 'group_msg' : 'dm_msg'; let msgId = `${prefix}-${d.id}`;
             if(!document.getElementById(msgId)) {
-                let m = (d.sender_id === user.id); let c = d.content;
-                if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
-                else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-                let delBtn = m ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+                let m = (d.user_id === user.id); let c = d.content; let delBtn = '';
+                if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
+                else {
+                    if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                    else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                    delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+                }
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend',h);
             }
         });
@@ -866,9 +869,13 @@ function connectDmWS(id, name, type) {
         if(d.type === 'ping') return;
         let prefix = type === 'group' ? 'group_msg' : 'dm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
-            if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
-            else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-            let delBtn = m ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+            let delBtn = '';
+            if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
+            else {
+                if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+            }
             let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
@@ -950,7 +957,7 @@ async function openCommunity(cid) {
     document.getElementById('comm-chat-area').style.display = 'flex';
     
     let r = await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    document.getElementById('active-comm-name').innerText = "🛡️ " + d.name;
+    document.getElementById('active-comm-name').innerText = d.name;
     document.getElementById('c-info-av').src = d.avatar_url; document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
     
     let mHtml = "";
@@ -995,7 +1002,7 @@ async function promoteMember(cid, tid) {
 }
 
 function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
-function closeComm() { goView('mycomms'); if(commWS) commWS.close(); }
+function closeComm() { goView('mycomms', document.querySelectorAll('.nav-btn')[3]); if(commWS) commWS.close(); }
 
 async function submitCreateChannel() {
     let n = document.getElementById('new-ch-name').value.trim(); let t = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value;
@@ -1012,13 +1019,16 @@ async function fetchCommMessages(chid) {
         let msgs = await r.json();
         let isAtBottom = (list.scrollHeight - list.scrollTop <= list.clientHeight + 50);
         msgs.forEach(d => {
-            let msgId = `comm-msg-${d.id}`;
+            let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
             if(!document.getElementById(msgId)) {
-                let m = (d.sender_id === user.id); let c = d.content;
-                if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
-                else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-                let delBtn = m ? `<span class="del-msg-btn" onclick="confirmDelete('comm_msg', ${d.id})">🗑️</span>` : '';
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.sender_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.sender_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+                let m = (d.user_id === user.id); let c = d.content; let delBtn = '';
+                if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
+                else {
+                    if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                    else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                    delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+                }
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend', h);
             }
         });
@@ -1034,11 +1044,15 @@ function connectCommWS(chid) {
     commWS.onmessage = e => {
         let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(d.type === 'ping') return;
-        let msgId = `comm-msg-${d.id}`;
+        let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
-            if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
-            else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-            let delBtn = m ? `<span class="del-msg-btn" onclick="confirmDelete('comm_msg', ${d.id})">🗑️</span>` : '';
+            let delBtn = '';
+            if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
+            else {
+                if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+            }
             let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
@@ -1213,17 +1227,18 @@ async def del_comment(d: DelCommentData, db: Session=Depends(get_db)):
 @app.post("/message/delete")
 async def delete_msg(d: dict, db: Session=Depends(get_db)):
     msg_id = d.get('msg_id'); msg_type = d.get('type'); uid = d.get('user_id')
-    if msg_type == 'dm_msg':
-        msg = db.query(PrivateMessage).get(msg_id)
-        if msg and msg.sender_id == uid: db.delete(msg)
-    elif msg_type == 'comm_msg':
-        msg = db.query(CommunityMessage).get(msg_id)
-        if msg and msg.sender_id == uid: db.delete(msg)
-    elif msg_type == 'group_msg':
-        msg = db.query(GroupMessage).get(msg_id)
-        if msg and msg.sender_id == uid: db.delete(msg)
-    db.commit()
-    return {"status": "ok"}
+    msg = None
+    if msg_type == 'dm': msg = db.query(PrivateMessage).get(msg_id)
+    elif msg_type == 'comm': msg = db.query(CommunityMessage).get(msg_id)
+    elif msg_type == 'group': msg = db.query(GroupMessage).get(msg_id)
+    
+    if msg and msg.sender_id == uid:
+        if (datetime.now() - msg.timestamp).total_seconds() > 300:
+            return {"status": "timeout", "msg": "Tempo limite de 5 minutos excedido. Essa mensagem entrou para a história."}
+        msg.content = "[DELETED]"
+        db.commit()
+        return {"status": "ok"}
+    return {"status": "error"}
 
 @app.get("/post/{post_id}/comments")
 async def get_comments(post_id: int, db: Session=Depends(get_db)):
@@ -1278,7 +1293,7 @@ async def get_inbox(uid: int, db: Session=Depends(get_db)):
 @app.get("/dms/{target_id}")
 async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     msgs = db.query(PrivateMessage).filter(or_(and_(PrivateMessage.sender_id == uid, PrivateMessage.receiver_id == target_id),and_(PrivateMessage.sender_id == target_id, PrivateMessage.receiver_id == uid))).order_by(PrivateMessage.timestamp.asc()).limit(100).all()
-    return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.now() - m.timestamp).total_seconds() <= 300} for m in msgs]
 
 @app.post("/community/create")
 async def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""), is_priv: int=Form(0), avatar_url: str=Form(...), db: Session=Depends(get_db)):
@@ -1377,7 +1392,7 @@ async def create_channel(d: dict, db: Session=Depends(get_db)):
 @app.get("/community/channel/{chid}/messages")
 async def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
     msgs = db.query(CommunityMessage).filter_by(channel_id=chid).order_by(CommunityMessage.timestamp.asc()).limit(100).all()
-    return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.now() - m.timestamp).total_seconds() <= 300} for m in msgs]
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
@@ -1402,7 +1417,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     msg_id = new_msg.id
                 
                 if msg_id:
-                    user_data = {"id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt}
+                    user_data = {"id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt, "can_delete": True}
                     await manager.broadcast(user_data, ch)
                     if ch.startswith("dm_"): await manager.broadcast({"type": "ping"}, "Geral")
             except Exception as e: db.rollback()
@@ -1422,7 +1437,7 @@ async def create_group(d: CreateGroupData, db: Session=Depends(get_db)):
 @app.get("/group/{group_id}/messages")
 async def get_group_msgs(group_id: int, db: Session=Depends(get_db)):
     msgs = db.query(GroupMessage).filter(GroupMessage.group_id == group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
-    return [{"id": m.id, "sender_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username} for m in msgs]
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.now() - m.timestamp).total_seconds() <= 300} for m in msgs]
 
 @app.post("/friend/request")
 async def send_req(d: dict, db: Session=Depends(get_db)):
