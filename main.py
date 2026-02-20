@@ -4,6 +4,7 @@ import hashlib
 import random
 import os
 import logging
+import threading
 from typing import List
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -24,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
-AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "") # CHAVE DA CALL (AGORA.IO)
+AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "") 
 ALGORITHM = "HS256"
 
 mail_conf = ConnectionConfig(
@@ -180,23 +181,14 @@ except Exception as e: logger.error(f"Erro BD: {e}")
 # --- SISTEMA DE CARREIRA MILITAR ---
 def get_user_badges(xp, user_id, role):
     tiers = [
-        (0, "Recruta", 100, "#888888"),
-        (100, "Soldado", 300, "#2ecc71"),
-        (300, "Cabo", 600, "#27ae60"),
-        (600, "3º Sargento", 1000, "#3498db"),
-        (1000, "2º Sargento", 1500, "#2980b9"),
-        (1500, "1º Sargento", 2500, "#9b59b6"),
-        (2500, "Subtenente", 4000, "#8e44ad"),
-        (4000, "Tenente", 6000, "#f1c40f"),
-        (6000, "Capitão", 10000, "#f39c12"),
-        (10000, "Major", 15000, "#e67e22"),
-        (15000, "Tenente-Coronel", 25000, "#e74c3c"),
-        (25000, "Coronel", 50000, "#c0392b"),
-        (50000, "General ⭐", 50000, "#FFD700")
+        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"),
+        (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"),
+        (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"),
+        (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"),
+        (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"),
+        (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")
     ]
-    
-    rank = tiers[0][1]; color = tiers[0][3]
-    next_xp = tiers[0][2]; next_rank = tiers[1][1]
+    rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
     
     for i, t in enumerate(tiers):
         if xp >= t[0]:
@@ -281,32 +273,27 @@ def get_db():
     try: yield db
     finally: db.close()
 
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-
+# Tática de escape: Impede que o servidor gratuito trave ao iniciar
 @app.on_event("startup")
 def startup():
-    import threading # Tática de escape
-    
-    if "sqlite" in str(engine.url):
-        with engine.connect() as conn:
-            try: conn.execute(text("PRAGMA journal_mode=WAL;")); conn.commit()
-            except: pass
-            
     def upgrade_db():
+        try:
+            if "sqlite" in str(engine.url):
+                with engine.connect() as conn:
+                    conn.execute(text("PRAGMA journal_mode=WAL;"))
+                    conn.commit()
+        except Exception: pass
+        
         for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
             try:
                 with engine.connect() as conn:
-                    # Se o banco demorar mais de 3 segundos, ele desiste e liga o servidor mesmo assim!
-                    if "postgres" in str(engine.url):
-                        conn.execute(text("SET statement_timeout = '3s'"))
+                    if "postgres" in str(engine.url): conn.execute(text("SET statement_timeout = '3s'"))
                     conn.execute(text(query))
                     conn.commit()
             except Exception: pass
-            
-    # Joga a atualização do banco para o Segundo Plano para NÃO TRAVAR o Login
     threading.Thread(target=upgrade_db).start()
 
-# --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM CALL SFU ---
+# --- FRONTEND (HTML/CSS/JS) COMPLETAMENTE BLINDADO ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -333,11 +320,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* SISTEMA DE EMBLEMAS E BADGES */
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-/* HUD DA CALL EM SEGUNDO PLANO */
 #call-hud { display:none; position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:rgba(11,12,16,0.95); border:1px solid #2ecc71; border-radius:20px; padding:12px 20px; z-index:9999; align-items:center; gap:20px; box-shadow:0 10px 30px rgba(46,204,113,0.3); width:90%; max-width:350px; backdrop-filter:blur(10px); animation: scaleUp 0.3s ease-out; }
 .call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
 .call-btn-circle:hover { transform:scale(1.1); }
@@ -345,7 +330,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:50%; width:45px; height:45px; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; transform:rotate(135deg); transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.5); }
 .call-btn-hangup:hover { background:#cc0000; }
 
-/* POSTS FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -372,7 +356,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
-/* CHAT E INPUT BLINDADO MOBILE */
 .chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
@@ -394,7 +377,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
-/* COMUNIDADES E BASES */
 .comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
@@ -407,7 +389,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .channel-btn:hover { background: rgba(102,252,241,0.1); color: white; }
 .channel-btn.active { background: var(--primary); color: #0b0c10; border-color: var(--primary); box-shadow: 0 0 12px rgba(102,252,241,0.4); }
 
-/* PERFIL */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
@@ -435,7 +416,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes pulse{0%{opacity:1; transform:scale(1);} 50%{opacity:0.5; transform:scale(1.2);} 100%{opacity:1; transform:scale(1);}}
 
-/* CARROSSEL MOBILE E BOTÃO DA CALL */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
     #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden; white-space:nowrap; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
@@ -470,19 +450,50 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <button class="call-btn-hangup" onclick="leaveCall()">📞</button>
 </div>
 
-<div id="modal-login" class="modal"><div class="modal-box"><h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1><div id="login-form"><input id="l-user" class="inp" data-i18n="codename"><input id="l-pass" class="inp" type="password" data-i18n="password" onkeypress="if(event.key==='Enter')doLogin()"><button onclick="doLogin()" class="btn-main" data-i18n="login">ENTRAR</button><div style="margin-top:20px;display:flex;justify-content:space-between"><span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;" data-i18n="create_acc">Criar Conta</span><span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;" data-i18n="forgot">Esqueci Senha</span></div></div><div id="register-form" class="hidden"><input id="r-user" class="inp" data-i18n="new_user"><input id="r-email" class="inp" data-i18n="email_real"><input id="r-pass" class="inp" type="password" data-i18n="password"><button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button><p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p></div><div id="forgot-form" class="hidden"><h3 style="color:white" data-i18n="recover">RECUPERAR ACESSO</h3><input id="f-email" class="inp" data-i18n="reg_email"><button onclick="requestReset()" class="btn-main" data-i18n="send_link">ENVIAR LINK</button><p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p></div><div id="reset-form" class="hidden"><h3 style="color:var(--primary)" data-i18n="new_pass_title">NOVA SENHA</h3><input id="new-pass" class="inp" type="password" data-i18n="new_pass"><button onclick="doResetPassword()" class="btn-main" data-i18n="save_pass">SALVAR SENHA</button></div></div></div>
+<div id="modal-login" class="modal">
+    <div class="modal-box">
+        <h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1>
+        <div id="login-form">
+            <input id="l-user" class="inp" placeholder="CODINOME" data-i18n="codename">
+            <input id="l-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password" onkeypress="if(event.key==='Enter')doLogin()">
+            <button onclick="doLogin()" class="btn-main" data-i18n="login">ENTRAR</button>
+            <div style="margin-top:20px;display:flex;justify-content:space-between">
+                <span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;" data-i18n="create_acc">Criar Conta</span>
+                <span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;" data-i18n="forgot">Esqueci Senha</span>
+            </div>
+        </div>
+        <div id="register-form" class="hidden">
+            <input id="r-user" class="inp" placeholder="NOVO USUÁRIO" data-i18n="new_user">
+            <input id="r-email" class="inp" placeholder="EMAIL" data-i18n="email_real">
+            <input id="r-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password">
+            <button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button>
+            <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
+        </div>
+        <div id="forgot-form" class="hidden">
+            <h3 style="color:white" data-i18n="recover">RECUPERAR ACESSO</h3>
+            <input id="f-email" class="inp" placeholder="SEU EMAIL" data-i18n="reg_email">
+            <button onclick="requestReset()" class="btn-main" data-i18n="send_link">ENVIAR LINK</button>
+            <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
+        </div>
+        <div id="reset-form" class="hidden">
+            <h3 style="color:var(--primary)" data-i18n="new_pass_title">NOVA SENHA</h3>
+            <input id="new-pass" class="inp" type="password" placeholder="NOVA SENHA" data-i18n="new_pass">
+            <button onclick="doResetPassword()" class="btn-main" data-i18n="save_pass">SALVAR SENHA</button>
+        </div>
+    </div>
+</div>
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" data-i18n="base_name"><input id="new-comm-desc" class="inp" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
-<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
-<div id="modal-create-group" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_squad">NOVO ESQUADRÃO</h2><input id="new-group-name" class="inp" data-i18n="group_name"><p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;" data-i18n="select_allies">Selecione os aliados:</p><div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div><div style="display:flex; gap:10px;"><button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;" data-i18n="create">CRIAR</button><button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
+<div id="modal-create-group" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_squad">NOVO ESQUADRÃO</h2><input id="new-group-name" class="inp" placeholder="Grupo" data-i18n="group_name"><p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;" data-i18n="select_allies">Selecione os aliados:</p><div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div><div style="display:flex; gap:10px;"><button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;" data-i18n="create">CRIAR</button><button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white" data-i18n="new_post">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px"><input type="text" id="caption-upload" class="inp" data-i18n="caption_placeholder" style="margin:0"><button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button></div><div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div></div><div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div><button id="btn-pub" onclick="submitPost()" class="btn-main" data-i18n="publish">PUBLICAR (+50 XP)</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white" data-i18n="new_post">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px"><input type="text" id="caption-upload" class="inp" placeholder="Legenda..." data-i18n="caption_placeholder" style="margin:0"><button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button></div><div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div></div><div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div><button id="btn-pub" onclick="submitPost()" class="btn-main" data-i18n="publish">PUBLICAR (+50 XP)</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
-<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)" data-i18n="edit_profile">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Avatar</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Cover</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" data-i18n="bio_placeholder"><button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button></div></div>
+<div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)" data-i18n="edit_profile">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Avatar</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Cover</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" placeholder="Bio" data-i18n="bio_placeholder"><button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button></div></div>
 
 <div id="modal-ranks" class="modal hidden">
     <div class="modal-box" style="max-height: 80vh; overflow-y: auto;">
@@ -523,7 +534,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
                 <div class="search-glass">
-                    <input id="search-input" data-i18n="search_soldier" onkeypress="if(event.key==='Enter')searchUsers()">
+                    <input id="search-input" placeholder="Buscar..." data-i18n="search_soldier" onkeypress="if(event.key==='Enter')searchUsers()">
                     <button type="button" onclick="searchUsers()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
                     <button type="button" onclick="clearSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
                 </div>
@@ -566,7 +577,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
                 <div class="search-glass" style="max-width:400px; margin:0 auto 20px auto;">
-                    <input id="search-comm-input" data-i18n="search_base" onkeypress="if(event.key==='Enter')searchComms()">
+                    <input id="search-comm-input" placeholder="Buscar..." data-i18n="search_base" onkeypress="if(event.key==='Enter')searchComms()">
                     <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
                     <button type="button" onclick="clearCommSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
                 </div>
@@ -588,7 +599,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
                     <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">⬅</button>
                     <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;flex:1;">Chat</div>
-                    
                     <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
                 </div>
                 <div id="dm-list"></div>
@@ -596,7 +606,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <input type="file" id="dm-file" class="hidden" onchange="uploadDMImage()" accept="image/*,video/*,audio/*">
                     <button type="button" class="icon-btn" onclick="document.getElementById('dm-file').click()">📎</button>
                     <button type="button" class="icon-btn" id="btn-mic-dm" onclick="toggleRecord('dm')">🎤</button>
-                    <input id="dm-msg" class="chat-msg" data-i18n="msg_placeholder" autocomplete="off">
+                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" autocomplete="off">
                     <button type="button" class="icon-btn" onclick="openEmoji('dm-msg')">😀</button>
                     <button type="submit" class="btn-send-msg">➤</button>
                 </form>
@@ -607,7 +617,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <div class="comm-topbar">
                 <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
                 <div id="active-comm-name">NOME DA BASE</div>
-                
                 <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 12px; border-color:#2ecc71; color:#2ecc71; margin-right:5px;">📞 CALL</button>
                 <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️</button>
             </div>
@@ -619,7 +628,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <input type="file" id="comm-file" class="hidden" onchange="uploadCommImage()" accept="image/*,video/*,audio/*">
                     <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()">📎</button>
                     <button type="button" id="btn-comm-mic" class="icon-btn" onclick="toggleRecord('comm')">🎤</button>
-                    <input id="comm-msg" class="chat-msg" data-i18n="base_msg_placeholder" autocomplete="off">
+                    <input id="comm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="base_msg_placeholder" autocomplete="off">
                     <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')">😀</button>
                     <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
                 </form>
@@ -666,13 +675,14 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
+// --- DICIONÁRIO BLINDADO CONTRA CURTO-CIRCUITOS ---
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
         'codename': 'CODINOME', 'password': 'SENHA', 'new_user': 'NOVO USUÁRIO', 'email_real': 'EMAIL (Real)', 'enlist': 'ALISTAR-SE', 'back': 'Voltar',
         'recover': 'RECUPERAR ACESSO', 'reg_email': 'SEU EMAIL CADASTRADO', 'send_link': 'ENVIAR LINK', 'new_pass_title': 'NOVA SENHA', 'new_pass': 'NOVA SENHA', 'save_pass': 'SALVAR SENHA',
         'confirm_action': 'CONFIRMAR AÇÃO', 'confirm_del': 'Tem certeza que deseja apagar isto?', 'delete': 'APAGAR', 'cancel': 'CANCELAR',
-        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa de Elite)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública (Qualquer um entra)', 'priv_base': '🔒 Privada (Só com convite)', 'establish': 'ESTABELECER',
+        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa de Elite)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
         'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
@@ -681,9 +691,9 @@ const T = {
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
         'msg_placeholder': 'Mensagem secreta...', 'base_msg_placeholder': 'Mensagem para a base...',
-        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando áudio...',
-        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic para enviar)',
-        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão DM',
+        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando...',
+        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic p/ enviar)',
+        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão',
         'no_bases': 'Você ainda não tem bases.', 'no_bases_found': 'Nenhuma base encontrada.', 'no_history': 'Nenhuma missão registrada no Feed.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover',
@@ -696,7 +706,7 @@ const T = {
         'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL (Real)', 'enlist': 'ENLIST', 'back': 'Back',
         'recover': 'RECOVER ACCESS', 'reg_email': 'REGISTERED EMAIL', 'send_link': 'SEND LINK', 'new_pass_title': 'NEW PASSWORD', 'new_pass': 'NEW PASSWORD', 'save_pass': 'SAVE PASSWORD',
         'confirm_action': 'CONFIRM ACTION', 'confirm_del': 'Are you sure you want to delete this?', 'delete': 'DELETE', 'cancel': 'CANCEL',
-        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name (Ex: Elite Squad)', 'base_desc': 'Base Description', 'pub_base': '🌍 Public (Anyone can join)', 'priv_base': '🔒 Private (Invite only)', 'establish': 'ESTABLISH',
+        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name (Ex: Elite Squad)', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
         'new_channel': 'NEW CHANNEL', 'channel_name': 'Name (Ex: alerts)', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private (Admins)', 'create_channel': 'CREATE CHANNEL',
         'new_squad': 'NEW SQUAD', 'group_name': 'Group Name', 'select_allies': 'Select allies:', 'create': 'CREATE',
         'new_post': 'NEW POST', 'caption_placeholder': 'Caption...', 'publish': 'PUBLISH (+50 XP)',
@@ -705,7 +715,7 @@ const T = {
         'private_msgs': 'PRIVATE MESSAGES', 'group_x1': '+ DM SQUAD', 'my_bases': '🛡️ MY BASES', 'create_base': '+ CREATE BASE',
         'explore_bases': '🌐 EXPLORE BASES', 'search_base': 'Search Base...', 'my_history': '🕒 MY HISTORY',
         'msg_placeholder': 'Secret message...', 'base_msg_placeholder': 'Message to base...',
-        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing audio...',
+        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing...',
         'recording': '🔴 Recording...', 'click_to_send': '(Click mic to send)',
         'empty_box': 'Your inbox is empty. Recruit allies!', 'direct_msg': 'Direct Message', 'squad': '👥 DM Squad',
         'no_bases': 'You have no bases yet.', 'no_bases_found': 'No bases found.', 'no_history': 'No missions recorded in Feed.',
@@ -720,8 +730,8 @@ const T = {
         'codename': 'NOMBRE EN CLAVE', 'password': 'CONTRASEÑA', 'new_user': 'NUEVO USUARIO', 'email_real': 'CORREO (Real)', 'enlist': 'ALISTARSE', 'back': 'Volver',
         'recover': 'RECUPERAR ACCESO', 'reg_email': 'CORREO REGISTRADO', 'send_link': 'ENVIAR ENLACE', 'new_pass_title': 'NUEVA CONTRASEÑA', 'new_pass': 'NUEVA CONTRASEÑA', 'save_pass': 'GUARDAR CONTRASEÑA',
         'confirm_action': 'CONFIRMAR ACCIÓN', 'confirm_del': '¿Seguro que quieres borrar esto?', 'delete': 'BORRAR', 'cancel': 'CANCELAR',
-        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base (Ej: Escuadrón)', 'base_desc': 'Descripción de la Base', 'pub_base': '🌍 Pública (Todos entran)', 'priv_base': '🔒 Privada (Solo invitación)', 'establish': 'ESTABLECER',
-        'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre (Ej: avisos)', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Admins)', 'create_channel': 'CREAR CANAL',
+        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción de la Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
+        'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escribe tu Bio...', 'save': 'GUARDAR',
@@ -729,36 +739,39 @@ const T = {
         'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
-        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando audio...',
-        'recording': '🔴 Grabando...', 'click_to_send': '(Click en mic para enviar)',
+        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
+        'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
         'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones registradas.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
-        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
+        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!',
         'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
     }
 };
 
-// --- TRADUTOR BLINDADO ---
 let sysLang = navigator.language ? navigator.language.substring(0,2) : 'en';
 let validLangs = ['pt', 'en', 'es'];
-window.currentLang = localStorage.getItem('lang');
-
-// Se tiver lixo na memória do navegador ou um idioma não suportado, força o inglês!
-if(!validLangs.includes(window.currentLang)) { 
-    window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; 
-    localStorage.setItem('lang', window.currentLang); 
+window.currentLang = 'en';
+try {
+    let savedLang = localStorage.getItem('lang');
+    if (validLangs.includes(savedLang)) {
+        window.currentLang = savedLang;
+    } else {
+        window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en';
+        localStorage.setItem('lang', window.currentLang);
+    }
+} catch(e) {
+    window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en';
 }
 
-// Função de tradução imune a curto-circuitos
 function t(key) { 
     let dict = T[window.currentLang];
-    if (!dict) dict = T['en']; // Prevenção de falha máxima
-    return dict[key] || "Erro_Txt"; 
+    if (!dict) dict = T['en'];
+    return dict[key] || key; 
 }
-function changeLanguage(lang) { localStorage.setItem('lang', lang); location.reload(); }
+function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('lang-selector').value = window.currentLang;
@@ -783,18 +796,12 @@ const UPLOAD_PRESET = "for_glory_preset";
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
 const RANK_TIERS = [
-    { xp: 0, name: "Recruta", color: "#888888" },
-    { xp: 100, name: "Soldado", color: "#2ecc71" },
-    { xp: 300, name: "Cabo", color: "#27ae60" },
-    { xp: 600, name: "3º Sargento", color: "#3498db" },
-    { xp: 1000, name: "2º Sargento", color: "#2980b9" },
-    { xp: 1500, name: "1º Sargento", color: "#9b59b6" },
-    { xp: 2500, name: "Subtenente", color: "#8e44ad" },
-    { xp: 4000, name: "Tenente", color: "#f1c40f" },
-    { xp: 6000, name: "Capitão", color: "#f39c12" },
-    { xp: 10000, name: "Major", color: "#e67e22" },
-    { xp: 15000, name: "Tenente-Coronel", color: "#e74c3c" },
-    { xp: 25000, name: "Coronel", color: "#c0392b" },
+    { xp: 0, name: "Recruta", color: "#888888" }, { xp: 100, name: "Soldado", color: "#2ecc71" },
+    { xp: 300, name: "Cabo", color: "#27ae60" }, { xp: 600, name: "3º Sargento", color: "#3498db" },
+    { xp: 1000, name: "2º Sargento", color: "#2980b9" }, { xp: 1500, name: "1º Sargento", color: "#9b59b6" },
+    { xp: 2500, name: "Subtenente", color: "#8e44ad" }, { xp: 4000, name: "Tenente", color: "#f1c40f" },
+    { xp: 6000, name: "Capitão", color: "#f39c12" }, { xp: 10000, name: "Major", color: "#e67e22" },
+    { xp: 15000, name: "Tenente-Coronel", color: "#e74c3c" }, { xp: 25000, name: "Coronel", color: "#c0392b" },
     { xp: 50000, name: "General ⭐", color: "#FFD700" }
 ];
 
@@ -812,6 +819,39 @@ function showRanksModal() {
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
+// LOGIN SEGURO COM LOADING TÁTICO
+async function doLogin(){
+    let btn = document.querySelector('#login-form .btn-main');
+    let oldText = btn.innerText;
+    btn.innerText = "CARREGANDO...";
+    try {
+        let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});
+        if(!r.ok) throw 1;
+        user=await r.json();
+        startApp();
+        btn.innerText = oldText; 
+    } catch(e) {
+        btn.innerText = oldText;
+        showToast("Erro: Tente novamente em 5 segundos.");
+    }
+}
+
+async function doRegister(){
+    let btn = document.querySelector('#register-form .btn-main');
+    let oldText = btn.innerText;
+    btn.innerText = "CRIANDO...";
+    try {
+        let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});
+        if(!r.ok) throw 1;
+        showToast("Registrado com sucesso!");
+        toggleAuth('login');
+        btn.innerText = oldText;
+    } catch(e) {
+        btn.innerText = oldText;
+        showToast("Erro ao Registrar. Usuário já existe?");
+    }
+}
+
 function formatMsgTime(iso) {
     if(!iso) return "";
     let d = new Date(iso); 
@@ -828,16 +868,6 @@ function formatRankInfo(rank, special, color) {
     if(rank) h += `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>`;
     return h;
 }
-
-function initEmojis() {
-    let g = document.getElementById('emoji-grid'); if(!g) return; g.innerHTML = '';
-    EMOJIS.forEach(e => {
-        let s = document.createElement('div'); s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText = e;
-        s.onclick = () => { if(currentEmojiTarget){ let inp = document.getElementById(currentEmojiTarget); inp.value += e; inp.focus(); } };
-        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)"; s.onmouseout = () => s.style.background = "transparent"; g.appendChild(s);
-    });
-}
-initEmojis();
 
 function checkToken() {
     const urlParams = new URLSearchParams(window.location.search); const token = urlParams.get('token');
@@ -914,37 +944,7 @@ function updateStealthUI() {
 
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Erro!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("Enviado!"); toggleAuth('login'); } catch(e) { showToast("Erro"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Erro!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Alterada!"); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
-async function doLogin(){
-    let btn = document.querySelector('#login-form .btn-main');
-    let oldText = btn.innerText;
-    btn.innerText = "CARREGANDO...";
-    try {
-        let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});
-        if(!r.ok) throw 1;
-        user=await r.json();
-        startApp();
-        btn.innerText = oldText; // Restaura o botão após o login
-    } catch(e) {
-        btn.innerText = oldText; // Restaura o botão se der erro
-        showToast("Erro: Credenciais erradas ou servidor ocupado.");
-    }
-}
 
-async function doRegister(){
-    let btn = document.querySelector('#register-form .btn-main');
-    let oldText = btn.innerText;
-    btn.innerText = "CRIANDO REGISTRO...";
-    try {
-        let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});
-        if(!r.ok) throw 1;
-        showToast("Registrado!");
-        toggleAuth('login');
-        btn.innerText = oldText;
-    } catch(e) {
-        btn.innerText = oldText;
-        showToast("Erro ao Registrar. Já existe?");
-    }
-}
 function renderMedals(boxId, medalsData) {
     let box = document.getElementById(boxId);
     if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
@@ -997,7 +997,6 @@ function updateUI(){
     `;
     
     renderMedals('p-medals-box', user.medals);
-
     document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar);
     updateStealthUI();
 }
@@ -1062,7 +1061,6 @@ async function initCall() {
         let conf = await res.json();
         if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado no Servidor.");
 
-        // Inicia cliente com Codec VP8 (padrão do Discord para voz fluída)
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
@@ -1070,21 +1068,16 @@ async function initCall() {
             if (mediaType === "audio") { remoteUser.audioTrack.play(); }
         });
 
-        // Conecta ao canal (UID aleatório para evitar conflitos se abrir em 2 abas)
         let uid = await rtc.client.join(conf.app_id, channelName, null, user.id);
         
-        // Cria faixa de áudio de ALTA QUALIDADE com cancelamento de ruído
         rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-            encoderConfig: "high_quality", // 48kHz, 128kbps
-            AEC: true, ANS: true, AGC: false 
+            encoderConfig: "high_quality", AEC: true, ANS: true, AGC: false 
         });
         
         await rtc.client.publish([rtc.localAudioTrack]);
-        
         showCallHUD();
     } catch(e) {
         showToast("Erro ao iniciar Call. Verifique o Microfone.");
-        console.error(e);
         leaveCall();
     }
 }
@@ -1121,19 +1114,11 @@ function toggleMuteCall() {
         let muted = !rtc.localAudioTrack.muted;
         rtc.localAudioTrack.setMuted(muted);
         let btn = document.getElementById('btn-mute-call');
-        if(muted) {
-            btn.classList.add('muted');
-            btn.innerHTML = '🔇';
-        } else {
-            btn.classList.remove('muted');
-            btn.innerHTML = '🎤';
-        }
+        if(muted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } 
+        else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; }
     }
 }
 
-/* =========================================
-   GRAVAÇÃO DE MENSAGEM DE VOZ (RÁDIO)
-   ========================================= */
 async function toggleRecord(type) {
     let btn = document.getElementById(`btn-mic-${type}`);
     let inpId = type === 'dm' ? 'dm-msg' : (type === 'comm' ? 'comm-msg' : `comment-inp-${type.split('-')[1]}`);
@@ -1397,7 +1382,6 @@ async function openChat(id, name, type) {
 function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
 async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro: " + e)} }
 
-// --- MINHAS BASES E BUSCADOR ---
 async function loadMyComms() {
     let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
     let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
@@ -1511,7 +1495,6 @@ async function submitCreateChannel() {
     if(r.ok) { document.getElementById('modal-create-channel').classList.add('hidden'); openCommunity(activeCommId); }
 }
 
-// 🛡️ ANTI-FLICKER DOS CANAIS DA BASE
 async function fetchCommMessages(chid) {
     let list = document.getElementById('comm-chat-list');
     let r = await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);
@@ -2045,5 +2028,3 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
