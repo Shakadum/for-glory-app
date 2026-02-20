@@ -304,12 +304,11 @@ def criptografar(s):
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
-        try:
-            if "sqlite" in str(engine.url):
-                with engine.connect() as conn:
+        if "sqlite" in str(engine.url):
+            try:
+                with engine.begin() as conn:
                     conn.execute(text("PRAGMA journal_mode=WAL;"))
-                    conn.commit()
-        except Exception: pass
+            except Exception: pass
         
         queries = [
             "ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", 
@@ -319,13 +318,15 @@ def startup_db_fix():
             "ALTER TABLE community_channels ADD COLUMN banner_url VARCHAR DEFAULT ''"
         ]
         
+        # Executa CADA alteração em uma "caixa isolada" (engine.begin). 
+        # Se a coluna já existir, ele ignora o erro e constrói a próxima normalmente!
         for q in queries:
             try:
-                with engine.connect() as conn:
-                    if "postgres" in str(engine.url): conn.execute(text("SET statement_timeout = '3s'"))
+                with engine.begin() as conn:
                     conn.execute(text(q))
-                    conn.commit()
-            except Exception: pass
+            except Exception: 
+                pass
+                
     threading.Thread(target=upgrade_db).start()
 
 # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO (À PROVA DE FALHAS) ---
@@ -2263,3 +2264,4 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
