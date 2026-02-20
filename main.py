@@ -139,6 +139,7 @@ class Community(Base):
     name = Column(String)
     description = Column(String)
     avatar_url = Column(String)
+    banner_url = Column(String, default="") # NOVO
     is_private = Column(Integer, default=0) 
     creator_id = Column(Integer, ForeignKey("users.id"))
 
@@ -156,6 +157,7 @@ class CommunityChannel(Base):
     comm_id = Column(Integer, ForeignKey("communities.id"))
     name = Column(String)
     channel_type = Column(String, default="livre") 
+    banner_url = Column(String, default="") # NOVO
     is_private = Column(Integer, default=0) 
 
 class CommunityMessage(Base):
@@ -222,9 +224,7 @@ def get_user_badges(xp, user_id, role):
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
-
 def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-
 def verify_reset_token(token: str):
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -293,11 +293,19 @@ def startup_db_fix():
                     conn.commit()
         except Exception: pass
         
-        for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
+        queries = [
+            "ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", 
+            "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", 
+            "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'",
+            "ALTER TABLE communities ADD COLUMN banner_url VARCHAR DEFAULT ''",
+            "ALTER TABLE community_channels ADD COLUMN banner_url VARCHAR DEFAULT ''"
+        ]
+        
+        for q in queries:
             try:
                 with engine.connect() as conn:
                     if "postgres" in str(engine.url): conn.execute(text("SET statement_timeout = '3s'"))
-                    conn.execute(text(query))
+                    conn.execute(text(q))
                     conn.commit()
             except Exception: pass
     threading.Thread(target=upgrade_db).start()
@@ -318,6 +326,16 @@ html_content = r"""
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;scrollbar-width:thin;scrollbar-color:var(--primary) #111}
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
+
+/* SELETOR DE IDIOMA PREMIUM */
+.lang-dropdown { position:absolute; top:15px; right:15px; z-index:9999; }
+.lang-btn { background:rgba(11,12,16,0.6); color:white; border:1px solid var(--primary); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:bold; font-family:'Rajdhani'; backdrop-filter:blur(5px); display:flex; align-items:center; gap:5px; transition:0.3s; }
+.lang-btn:hover { background:rgba(102,252,241,0.2); box-shadow:0 0 15px rgba(102,252,241,0.3); }
+.lang-content { display:none; position:absolute; top:100%; right:0; background:rgba(20,25,35,0.95); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:8px; flex-direction:column; min-width:120px; box-shadow:0 10px 20px rgba(0,0,0,0.5); backdrop-filter:blur(10px); }
+.lang-dropdown:hover .lang-content { display:flex; animation:fadeIn 0.2s; }
+.lang-item { padding:10px 15px; color:white; cursor:pointer; font-size:14px; font-weight:bold; transition:0.2s; text-align:left; border-bottom:1px solid #333; }
+.lang-item:last-child { border:none; }
+.lang-item:hover { background:var(--primary); color:#0b0c10; }
 
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
@@ -388,22 +406,26 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
-.comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
+.comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; position:relative; z-index:2; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
-.comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; gap:10px; }
-#active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; background: linear-gradient(90deg, transparent, rgba(102,252,241,0.1), transparent); padding: 5px 10px; border-radius: 20px; text-shadow: 0 0 10px rgba(102,252,241,0.3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+/* HEADER COM BANNER DA BASE */
+.comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; gap:10px; position:relative; background-size: cover; background-position: center; }
+.comm-topbar::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.7); z-index: 1; }
+.comm-topbar > * { position: relative; z-index: 2; }
+#active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; padding: 5px 10px; text-shadow: 0 0 10px rgba(102,252,241,0.3), 0 2px 5px rgba(0,0,0,1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
 .comm-channels-bar { padding: 12px 15px; background: #0b0c10; display: flex; gap: 10px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; }
-.channel-btn:hover { background: rgba(102,252,241,0.1); color: white; }
-.channel-btn.active { background: var(--primary); color: #0b0c10; border-color: var(--primary); box-shadow: 0 0 12px rgba(102,252,241,0.4); }
+.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; background-size: cover; background-position: center; position: relative; overflow:hidden; text-shadow: 0 1px 3px rgba(0,0,0,0.8);}
+.channel-btn:hover { border-color: var(--primary); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
+.channel-btn.active { border-color: var(--primary); box-shadow: 0 0 12px rgba(102,252,241,0.6); transform:scale(1.05); color:var(--primary); }
 
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
 .profile-pic-lg { width:130px; height:130px; border-radius:50%; object-fit:cover; border:4px solid var(--dark-bg); box-shadow:0 0 25px rgba(102,252,241,0.3); cursor:pointer; background:#1f2833; display:block; }
 
-.glass-btn { background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary); padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif; transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1; }
+.glass-btn { background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary); padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif; transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1; text-align:center;}
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .danger-btn { color: #ff5555; border-color: rgba(255, 85, 85, 0.3); background: rgba(255, 85, 85, 0.08); width: 100%; margin-top: 20px; }
 .danger-btn:hover { background: rgba(255, 85, 85, 0.2); box-shadow: 0 0 10px rgba(255,85,85,0.2); }
@@ -432,17 +454,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
     #call-hud { bottom: 85px; width:95%; padding:10px; }
-    .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
 </style>
 </head>
 <body>
 <div id="toast">Notificação</div>
 
-<div id="lang-menu" style="position:absolute; top:15px; right:15px; z-index:9999;">
-    <select id="lang-selector" onchange="changeLanguage(this.value)" style="background:rgba(0,0,0,0.6); color:white; border:1px solid var(--primary); border-radius:8px; padding:6px; outline:none; cursor:pointer;">
-        <option value="pt">🇧🇷 PT</option><option value="en">🇺🇸 EN</option><option value="es">🇪🇸 ES</option>
-    </select>
+<div class="lang-dropdown">
+    <div class="lang-btn" id="lang-btn-current">🌍 Idioma</div>
+    <div class="lang-content">
+        <div class="lang-item" onclick="changeLanguage('pt')">🇧🇷 Português</div>
+        <div class="lang-item" onclick="changeLanguage('en')">🇺🇸 English</div>
+        <div class="lang-item" onclick="changeLanguage('es')">🇪🇸 Español</div>
+    </div>
 </div>
 
 <div id="emoji-picker" style="position:absolute;bottom:80px;right:10px;width:90%;max-width:320px;background:rgba(20,25,35,0.95);border:1px solid var(--border);border-radius:15px;display:none;flex-direction:column;z-index:10001;box-shadow:0 0 25px rgba(0,0,0,0.8);backdrop-filter:blur(10px)">
@@ -452,7 +476,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="call-hud">
     <div style="flex:1;">
-        <div style="color:#2ecc71; font-size:12px; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status">EM CHAMADA</span></div>
+        <div style="color:#2ecc71; font-size:12px; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></div>
         <div id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:18px;">00:00</div>
     </div>
     <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()">🎤</button>
@@ -494,9 +518,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="base_banner_opt">Banner da Base (Opcional):</p><input type="file" id="comm-banner-upload" class="inp" accept="image/*" title="Banner da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
-<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="ch_banner_opt">Banner do Canal (Opcional):</p><input type="file" id="new-ch-banner" class="inp" accept="image/*" title="Banner do Canal"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option><option value="voice" data-i18n="voice_channel">🎙️ Canal de Voz</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button id="btn-create-ch" onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
 <div id="modal-create-group" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_squad">NOVO ESQUADRÃO</h2><input id="new-group-name" class="inp" placeholder="Grupo" data-i18n="group_name"><p style="color:#888;font-size:12px;text-align:left;margin-bottom:5px;" data-i18n="select_allies">Selecione os aliados:</p><div id="group-friends-list" style="max-height:150px; overflow-y:auto; text-align:left; margin-bottom:15px; background:rgba(0,0,0,0.3); padding:10px; border-radius:10px;"></div><div style="display:flex; gap:10px;"><button onclick="submitCreateGroup()" class="btn-main" style="margin-top:0;" data-i18n="create">CRIAR</button><button onclick="document.getElementById('modal-create-group').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
@@ -599,7 +623,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
                     <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">⬅</button>
                     <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;flex:1;">Chat</div>
-                    <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
+                    <button onclick="initCall('dm', currentChatId)" class="glass-btn" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
                 </div>
                 <div id="dm-list"></div>
                 <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
@@ -612,14 +636,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 </form>
             </div>
         </div>
+        
         <div id="view-comm-dashboard" class="view comm-layout">
-            <div class="comm-topbar">
-                <button onclick="closeComm()" style="background:none;border:none;color:var(--primary);font-size:24px;cursor:pointer;">⬅</button>
+            <div class="comm-topbar" id="comm-header">
+                <button onclick="closeComm()" style="background:rgba(0,0,0,0.5); border:1px solid #444; border-radius:8px; padding:5px 10px; color:white; font-size:18px; cursor:pointer;">⬅</button>
                 <div id="active-comm-name">NOME DA BASE</div>
-                <button onclick="initCall()" class="glass-btn btn-call-header" style="flex:none; padding:8px 12px; border-color:#2ecc71; color:#2ecc71; margin-right:5px;">📞 CALL</button>
                 <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️</button>
             </div>
             <div class="comm-channels-bar" id="comm-channels-bar"></div>
+            
             <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
                 <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
                 <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
@@ -631,24 +656,33 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
                 </form>
             </div>
-            <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding:30px; align-items:center; flex-direction:column;">
-                <div style="background:var(--card-bg); border:1px solid #444; border-radius:20px; padding:30px; width:100%; max-width:500px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
-                    <img id="c-info-av" src="" style="width:120px;height:120px;border-radius:24px;object-fit:cover;border:3px solid var(--primary);margin-bottom:15px;">
-                    <h2 id="c-info-name" style="color:white;margin:0;font-family:'Rajdhani';font-size:32px;">...</h2>
-                    <p id="c-info-desc" style="color:#aaa;font-size:15px;margin:10px 0 25px 0;">...</p>
-                    <div id="c-info-admin-btn" style="margin-bottom:20px;"></div>
-                    <div style="background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
-                        <h3 style="color:var(--primary); margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;" data-i18n="base_members">Membros</h3>
-                        <div id="c-info-members" style="display:flex; flex-direction:column; gap:12px; max-height:300px; overflow-y:auto; padding-right:5px;"></div>
+            
+            <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding-bottom:30px; align-items:center; flex-direction:column;">
+                <div style="background:var(--card-bg); border:1px solid #444; border-radius:20px; width:90%; max-width:500px; margin-top:20px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                    <div id="c-info-banner" style="width:100%; height:120px; background-size:cover; background-position:center; background-color:#111;"></div>
+                    <div style="text-align:center; padding:0 20px 20px 20px;">
+                        <img id="c-info-av" src="" style="width:90px;height:90px;border-radius:24px;object-fit:cover;border:4px solid var(--card-bg); margin-top:-45px; position:relative; z-index:2; background:#0b0c10;">
+                        <h2 id="c-info-name" style="color:white;margin:5px 0 0 0;font-family:'Rajdhani';font-size:28px;">...</h2>
+                        <p id="c-info-desc" style="color:#aaa;font-size:14px;margin:5px 0 20px 0;">...</p>
+                        
+                        <div id="c-info-admin-btn" style="margin-bottom:20px;"></div>
+                        
+                        <div style="background:rgba(0,0,0,0.4); border-radius:16px; padding:15px; text-align:left;">
+                            <h3 style="color:var(--primary); margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; font-size:16px;" data-i18n="base_members">Membros</h3>
+                            <div id="c-info-members" style="display:flex; flex-direction:column; gap:10px; max-height:250px; overflow-y:auto; padding-right:5px;"></div>
+                        </div>
+                        
+                        <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.4); border-radius:16px; padding:15px; text-align:left;">
+                            <h3 style="color:orange; margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; font-size:16px;" data-i18n="entry_requests">Solicitações</h3>
+                            <div id="c-info-requests" style="display:flex; flex-direction:column; gap:10px;"></div>
+                        </div>
+                        
+                        <div id="c-info-destroy-btn" style="margin-top:20px;"></div>
                     </div>
-                    <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.4); border-radius:16px; padding:20px; text-align:left;">
-                        <h3 style="color:orange; margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;" data-i18n="entry_requests">Solicitações</h3>
-                        <div id="c-info-requests" style="display:flex; flex-direction:column; gap:12px;"></div>
-                    </div>
-                    <div id="c-info-destroy-btn" style="margin-top:20px;"></div>
                 </div>
             </div>
         </div>
+        
         <div id="view-public-profile" class="view">
             <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;" data-i18n="back">⬅ Voltar</button>
             <div class="profile-header-container">
@@ -678,7 +712,7 @@ const T = {
         'recover': 'RECUPERAR ACESSO', 'reg_email': 'SEU EMAIL CADASTRADO', 'send_link': 'ENVIAR LINK', 'new_pass_title': 'NOVA SENHA', 'new_pass': 'NOVA SENHA', 'save_pass': 'SALVAR SENHA',
         'confirm_action': 'CONFIRMAR AÇÃO', 'confirm_del': 'Tem certeza que deseja apagar isto?', 'delete': 'APAGAR', 'cancel': 'CANCELAR',
         'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
-        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
+        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome do Canal', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'voice_channel': '🎙️ Canal de Voz', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Admins)', 'create_channel': 'CRIAR CANAL',
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
@@ -688,21 +722,21 @@ const T = {
         'msg_placeholder': 'Mensagem secreta...', 'base_msg_placeholder': 'Mensagem para a base...',
         'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando...',
         'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic p/ enviar)',
-        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão DM',
+        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão',
         'no_bases': 'Você ainda não tem bases.', 'no_bases_found': 'Nenhuma base encontrada.', 'no_history': 'Nenhuma missão registrada no Feed.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
-        'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover',
+        'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
-        'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova mensagem!',
-        'progression': 'PROGRESSO (XP)', 'medals': '🏆 MEDALHAS'
+        'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova mensagem!', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL',
+        'progression': 'PROGRESSO (XP)', 'medals': '🏆 MEDALHAS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
         'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL (Real)', 'enlist': 'ENLIST', 'back': 'Back',
         'recover': 'RECOVER ACCESS', 'reg_email': 'REGISTERED EMAIL', 'send_link': 'SEND LINK', 'new_pass_title': 'NEW PASSWORD', 'new_pass': 'NEW PASSWORD', 'save_pass': 'SAVE PASSWORD',
         'confirm_action': 'CONFIRM ACTION', 'confirm_del': 'Are you sure you want to delete this?', 'delete': 'DELETE', 'cancel': 'CANCEL',
-        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
-        'new_channel': 'NEW CHANNEL', 'channel_name': 'Name', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private', 'create_channel': 'CREATE CHANNEL',
+        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name', 'base_desc': 'Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
+        'new_channel': 'NEW CHANNEL', 'channel_name': 'Channel Name', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'voice_channel': '🎙️ Voice Channel', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private', 'create_channel': 'CREATE CHANNEL',
         'new_squad': 'NEW SQUAD', 'group_name': 'Group Name', 'select_allies': 'Select allies:', 'create': 'CREATE',
         'new_post': 'NEW POST', 'caption_placeholder': 'Caption...', 'publish': 'PUBLISH (+50 XP)',
         'edit_profile': 'EDIT PROFILE', 'bio_placeholder': 'Write your Bio...', 'save': 'SAVE',
@@ -712,37 +746,37 @@ const T = {
         'msg_placeholder': 'Secret message...', 'base_msg_placeholder': 'Message to base...',
         'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing...',
         'recording': '🔴 Recording...', 'click_to_send': '(Click mic to send)',
-        'empty_box': 'Your inbox is empty. Recruit allies!', 'direct_msg': 'Direct Message', 'squad': '👥 DM Squad',
-        'no_bases': 'You have no bases yet.', 'no_bases_found': 'No bases found.', 'no_history': 'No missions recorded in Feed.',
+        'empty_box': 'Your inbox is empty. Recruit allies!', 'direct_msg': 'Direct Message', 'squad': '👥 Squad',
+        'no_bases': 'You have no bases yet.', 'no_bases_found': 'No bases found.', 'no_history': 'No missions recorded.',
         'request_join': '🔒 REQUEST', 'enter': '🌍 ENTER', 'ally': '✔ Ally', 'sent': 'Sent', 'accept_ally': 'Accept Ally', 'recruit_ally': 'Recruit Ally',
-        'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote',
-        'base_members': 'Base Members', 'entry_requests': 'Entry Requests', 'destroy_base': 'DESTROY BASE',
-        'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New message!',
-        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS'
+        'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote', 'demote': 'Demote',
+        'base_members': 'Members', 'entry_requests': 'Requests', 'destroy_base': 'DESTROY BASE',
+        'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New message!', 'in_call': 'IN CALL', 'join_call': 'JOIN CALL',
+        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner (Optional):', 'ch_banner_opt': 'Channel Banner (Optional):'
     },
     'es': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Crear Cuenta', 'forgot': 'Olvidé la Contraseña',
         'codename': 'NOMBRE EN CLAVE', 'password': 'CONTRASEÑA', 'new_user': 'NUEVO USUARIO', 'email_real': 'CORREO (Real)', 'enlist': 'ALISTARSE', 'back': 'Volver',
         'recover': 'RECUPERAR ACCESO', 'reg_email': 'CORREO REGISTRADO', 'send_link': 'ENVIAR ENLACE', 'new_pass_title': 'NUEVA CONTRASEÑA', 'new_pass': 'NUEVA CONTRASEÑA', 'save_pass': 'GUARDAR CONTRASEÑA',
         'confirm_action': 'CONFIRMAR ACCIÓN', 'confirm_del': '¿Seguro que quieres borrar esto?', 'delete': 'BORRAR', 'cancel': 'CANCELAR',
-        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
-        'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
+        'new_base': 'NUEVA BASE', 'base_name': 'Nombre de Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
+        'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre del Canal', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'voice_channel': '🎙️ Canal de Voz', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escribe tu Bio...', 'save': 'GUARDAR',
         'stealth_on': '🕵️ MODO FURTIVO: ON', 'stealth_off': '🟢 MODO FURTIVO: OFF', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitudes', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
-        'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
+        'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
-        'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
-        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
-        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!',
-        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
+        'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar',
+        'base_members': 'Miembros', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
+        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL',
+        'progression': 'PROGRESO (XP)', 'medals': '🏆 MEDALLAS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):'
     }
 };
 
@@ -759,7 +793,8 @@ function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; r
 function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById('lang-selector').value = window.currentLang;
+    let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
+    document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag} ▼`;
     document.querySelectorAll('[data-i18n]').forEach(el => {
         let k = el.getAttribute('data-i18n');
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
@@ -998,7 +1033,7 @@ function updateUI(){
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    document.getElementById('lang-menu').classList.add('hidden'); 
+    document.querySelector('.lang-dropdown').classList.add('hidden'); 
     updateUI(); fetchOnlineUsers(); fetchUnread(); 
     goView('profile', document.getElementById('nav-profile-btn'));
     
@@ -1036,25 +1071,21 @@ function goView(v, btnElem){
 }
 
 /* =========================================
-   SISTEMA DE CALL (AGORA.IO SFU) EM SEGUNDO PLANO
+   SISTEMA DE CALL (AGORA.IO SFU)
    ========================================= */
-async function initCall() {
+async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     
     let channelName = "";
-    if (document.getElementById('view-dm').classList.contains('active')) {
-        channelName = `call_${currentChatType}_${currentChatId}`;
-    } else if (document.getElementById('view-comm-dashboard').classList.contains('active')) {
-        channelName = `call_comm_${activeCommId}`;
-    } else {
-        return showToast("Entre em um chat para iniciar a Call.");
-    }
+    if (typeParam === 'dm') { channelName = `call_dm_${targetId}`; } 
+    else if (typeParam === 'channel') { channelName = `call_channel_${targetId}`; }
+    else { return showToast("Alvo da call inválido."); }
 
-    showToast("Conectando ao Satélite de Voz...");
+    showToast("Conectando ao Rádio...");
     try {
         let res = await fetch('/agora-config');
         let conf = await res.json();
-        if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado no Servidor.");
+        if (!conf.app_id) return showToast("Erro: Rádio offline.");
 
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         
@@ -1071,6 +1102,16 @@ async function initCall() {
         
         await rtc.client.publish([rtc.localAudioTrack]);
         showCallHUD();
+        
+        if (typeParam === 'channel') {
+            document.getElementById('comm-chat-list').innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;">
+                    <div style="font-size:50px;animation:pulse 2s infinite;">🎙️</div>
+                    <h3 style="color:var(--primary);">Você está na Call da Base</h3>
+                    <p style="color:#aaa; font-size:13px;">O áudio está rodando em segundo plano. Pode navegar por outras abas.</p>
+                </div>
+            `;
+        }
     } catch(e) {
         showToast("Erro ao iniciar Call. Verifique o Microfone.");
         leaveCall();
@@ -1079,6 +1120,7 @@ async function initCall() {
 
 function showCallHUD() {
     document.getElementById('call-hud').style.display = 'flex';
+    document.getElementById('call-hud-status').innerText = t('in_call');
     callDuration = 0;
     document.getElementById('call-hud-time').innerText = "00:00";
     callInterval = setInterval(() => {
@@ -1102,6 +1144,9 @@ async function leaveCall() {
     btn.classList.remove('muted');
     btn.innerHTML = '🎤';
     showToast("Chamada Encerrada.");
+    
+    // Refresh se estiver num canal de voz
+    if(activeChannelId) { joinChannel(activeChannelId, currentCommType, null); }
 }
 
 function toggleMuteCall() {
@@ -1233,8 +1278,6 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
             if(btn) btn.remove();
         } else if (res.status === 'timeout') {
             showToast(res.msg);
-            let btn = document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');
-            if(btn) btn.remove();
         }
     }
 };
@@ -1276,38 +1319,6 @@ async function sendComment(pid) {
     let inp = document.getElementById(`comment-inp-${pid}`); let text = inp.value.trim(); if(!text) return;
     let r = await fetch('/post/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id, text:text})});
     if(r.ok) { inp.value = ''; toggleEmoji(true); lastFeedHash=""; loadFeed(); }
-}
-
-async function loadInbox() {
-    let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let b = document.getElementById('inbox-list'); b.innerHTML = '';
-    if(d.groups.length === 0 && d.friends.length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
-    d.groups.forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
-    d.friends.forEach(f => {
-        let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
-        let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-        b.innerHTML += `
-        <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
-            <div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div>
-            <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div>
-            <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
-        </div>`;
-    });
-    updateStatusDots();
-}
-
-async function openCreateGroupModal() {
-    let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let list = document.getElementById('group-friends-list');
-    if(d.friends.length === 0) { list.innerHTML = `<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`; } 
-    else { list.innerHTML = d.friends.map(f => `<label style="display:flex; align-items:center; gap:10px; color:white; margin-bottom:10px; cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join(''); }
-    document.getElementById('new-group-name').value = ''; document.getElementById('modal-create-group').classList.remove('hidden');
-}
-
-async function submitCreateGroup() {
-    let name = document.getElementById('new-group-name').value.trim(); if(!name) return;
-    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
-    if(member_ids.length === 0) return;
-    let r = await fetch('/group/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids})});
-    if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); loadInbox(); }
 }
 
 async function fetchChatMessages(id, type) {
@@ -1374,59 +1385,22 @@ async function openChat(id, name, type) {
     if(changingChat || !dmWS || dmWS.readyState !== WebSocket.OPEN) { connectDmWS(id, name, type); }
 }
 
-function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
-async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro: " + e)} }
-
-async function loadMyComms() {
-    let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
-    if(d.my_comms.length === 0) mList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;
-    d.my_comms.forEach(c => { mList.innerHTML += `<div class="comm-card" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
-}
-
-async function loadPublicComms() {
-    let r = await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
-    let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
-    if(d.length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
-    d.forEach(c => { 
-        let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
-        pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
-    });
-}
-
-function clearCommSearch() { document.getElementById('search-comm-input').value = ''; loadPublicComms(); }
-async function searchComms() {
-    let q = document.getElementById('search-comm-input').value.trim();
-    let r = await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`); let d = await r.json();
-    let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
-    if(d.length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
-    d.forEach(c => { 
-        let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
-        pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
-    });
-}
-
 async function submitCreateComm(e) {
-    let n = document.getElementById('new-comm-name').value.trim(); let d = document.getElementById('new-comm-desc').value.trim(); let p = document.getElementById('new-comm-priv').value; let f = document.getElementById('comm-avatar-upload').files[0];
+    let n = document.getElementById('new-comm-name').value.trim(); let d = document.getElementById('new-comm-desc').value.trim(); let p = document.getElementById('new-comm-priv').value; 
+    let avFile = document.getElementById('comm-avatar-upload').files[0];
+    let banFile = document.getElementById('comm-banner-upload').files[0];
     if(!n) return;
     let btn = e.target; btn.disabled = true;
     try {
         let av = "https://ui-avatars.com/api/?name="+n+"&background=111&color=66fcf1";
-        if(f) { let c = await uploadToCloudinary(f); av = c.secure_url; }
-        let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av);
+        let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+n;
+        if(avFile) { let c = await uploadToCloudinary(avFile); av = c.secure_url; }
+        if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
+        
+        let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av); fd.append('banner_url', ban);
         let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); loadMyComms(); goView('mycomms', document.querySelectorAll('.nav-btn')[3]); }
+        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); loadMyComms(); goView('mycomms'); }
     } catch(e) { } finally { btn.disabled = false; }
-}
-
-async function joinCommunity(cid) {
-    let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
-    if(r.ok) { loadPublicComms(); openCommunity(cid); }
-}
-
-async function requestCommJoin(cid) {
-    let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
-    if(r.ok) { let d = await r.json(); }
 }
 
 async function openCommunity(cid) {
@@ -1436,14 +1410,19 @@ async function openCommunity(cid) {
     document.getElementById('comm-chat-area').style.display = 'flex';
     
     let r = await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    document.getElementById('active-comm-name').innerText = "🛡️ " + d.name;
-    document.getElementById('c-info-av').src = d.avatar_url; document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
+    document.getElementById('active-comm-name').innerText = d.name;
+    document.getElementById('comm-header').style.backgroundImage = `url('${d.banner_url || ''}')`;
+    
+    document.getElementById('c-info-av').src = d.avatar_url; 
+    document.getElementById('c-info-banner').style.backgroundImage = `url('${d.banner_url || ''}')`;
+    document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
     
     let mHtml = "";
     d.members.forEach(m => { 
         let roleBadge = m.id === d.creator_id ? t('creator') : (m.role === 'admin' ? t('admin') : t('member'));
         let promoteBtn = (d.is_admin && m.id !== d.creator_id && m.role !== 'admin') ? `<button class="glass-btn" style="padding:2px 8px; font-size:10px; flex:none; margin-left:5px;" onclick="promoteMember(${cid}, ${m.id})">${t('promote')}</button>` : '';
-        mHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${promoteBtn}</div>`; 
+        let demoteBtn = (d.creator_id === user.id && m.id !== d.creator_id && m.role === 'admin') ? `<button class="glass-btn" style="padding:2px 8px; font-size:10px; flex:none; margin-left:5px; color:#ff5555; border-color:#ff5555;" onclick="demoteMember(${cid}, ${m.id})">${t('demote')}</button>` : '';
+        mHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px;"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge">${roleBadge}</span>${promoteBtn}${demoteBtn}</div>`; 
     });
     document.getElementById('c-info-members').innerHTML = mHtml;
     
@@ -1465,29 +1444,64 @@ async function openCommunity(cid) {
 
     let cb = document.getElementById('comm-channels-bar'); cb.innerHTML = '';
     if(d.channels.length > 0) {
-        d.channels.forEach(ch => { cb.innerHTML += `<button class="channel-btn" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${ch.name}</button>`; });
+        d.channels.forEach(ch => { 
+            let bgStyle = ch.banner_url ? `background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('${ch.banner_url}'); border:none;` : '';
+            let icon = ch.type === 'voice' ? '🎙️ ' : '';
+            cb.innerHTML += `<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name}</button>`; 
+        });
         joinChannel(d.channels[0].id, d.channels[0].type, cb.children[0]); 
     } else { document.getElementById('comm-chat-list').innerHTML = ""; }
 }
 
-async function handleCommReq(rid, act) {
-    let r = await fetch('/community/request/handle', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({req_id:rid, action:act, admin_id:user.id})});
-    if(r.ok) { openCommunity(activeCommId); }
-}
-
-async function promoteMember(cid, tid) {
-    let r = await fetch('/community/member/promote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, admin_id:user.id, target_id:tid})});
-    if(r.ok) { openCommunity(cid); }
-}
-
-function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
-function closeComm() { goView('mycomms', document.querySelectorAll('.nav-btn')[3]); if(commWS) commWS.close(); }
+async function promoteMember(cid, tid) { let r = await fetch('/community/member/promote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, admin_id:user.id, target_id:tid})}); if(r.ok) { openCommunity(cid); } }
+async function demoteMember(cid, tid) { let r = await fetch('/community/member/demote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, creator_id:user.id, target_id:tid})}); if(r.ok) { openCommunity(cid); } }
 
 async function submitCreateChannel() {
-    let n = document.getElementById('new-ch-name').value.trim(); let t = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value;
+    let n = document.getElementById('new-ch-name').value.trim(); let tType = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value;
+    let banFile = document.getElementById('new-ch-banner').files[0];
     if(!n) return;
-    let r = await fetch('/community/channel/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:activeCommId, user_id:user.id, name:n, type:t, is_private:parseInt(p)})});
-    if(r.ok) { document.getElementById('modal-create-channel').classList.add('hidden'); openCommunity(activeCommId); }
+    let btn = document.getElementById('btn-create-ch'); btn.disabled = true;
+    try {
+        let ban = "";
+        if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
+        let fd = new FormData(); fd.append('comm_id', activeCommId); fd.append('user_id', user.id); fd.append('name', n); fd.append('type', tType); fd.append('is_private', p); fd.append('banner_url', ban);
+        let r = await fetch('/community/channel/create', {method:'POST', body:fd});
+        if(r.ok) { document.getElementById('modal-create-channel').classList.add('hidden'); openCommunity(activeCommId); }
+    } catch(e) { } finally { btn.disabled = false; }
+}
+
+window.currentCommType = null;
+async function joinChannel(chid, type, btnElem) {
+    let changingChannel = (activeChannelId !== chid);
+    activeChannelId = chid; window.currentCommType = type;
+    document.getElementById('comm-info-area').style.display='none'; document.getElementById('comm-chat-area').style.display='flex';
+    if(btnElem) { document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active')); btnElem.classList.add('active'); }
+    
+    let inpForm = document.getElementById('comm-input-form');
+    let inp = document.getElementById('comm-msg'); let clip = document.getElementById('btn-comm-clip'); let emj = document.getElementById('btn-comm-emoji'); let mic = document.getElementById('btn-comm-mic');
+    
+    inp.disabled = false; clip.style.display = 'flex'; emj.style.display = 'flex'; mic.style.display = 'flex'; inpForm.style.display = 'flex';
+    
+    if (changingChannel && commWS) { commWS.close(); commWS = null; }
+    
+    if(type === 'voice') {
+        inpForm.style.display = 'none';
+        document.getElementById('comm-chat-list').innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;">
+                <div style="font-size:50px; margin-bottom:20px; text-shadow:0 0 20px var(--primary);">🎙️</div>
+                <h3 style="color:white; font-family:'Rajdhani'; font-size:28px; margin:0;">CANAL DE VOZ</h3>
+                <p style="color:#aaa; font-size:14px; margin-bottom:30px;">Entre para conversar com os membros deste canal.</p>
+                <button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto; padding:15px 40px; font-size:18px; box-shadow:0 10px 20px rgba(102,252,241,0.3); border-radius:30px;">${t('join_call')}</button>
+            </div>
+        `;
+    } else {
+        if(type === 'media') { inp.disabled = true; inp.placeholder = t('media_only'); emj.style.display = 'none'; mic.style.display = 'none'; } 
+        else if(type === 'text') { inp.placeholder = t('base_msg_placeholder'); clip.style.display = 'none'; mic.style.display = 'flex'; }
+        else { inp.placeholder = t('base_msg_placeholder'); }
+        if(changingChannel) { document.getElementById('comm-chat-list').innerHTML = ''; }
+        await fetchCommMessages(chid);
+        if(!commWS || commWS.readyState !== WebSocket.OPEN) { connectCommWS(chid); }
+    }
 }
 
 async function fetchCommMessages(chid) {
@@ -1519,7 +1533,7 @@ function connectCommWS(chid) {
     if(commWS) commWS.close();
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
     commWS = new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);
-    commWS.onclose = () => { setTimeout(() => { if(activeChannelId === chid && document.getElementById('comm-chat-area').style.display==='flex') { fetchCommMessages(chid); connectCommWS(chid); } }, 2000); };
+    commWS.onclose = () => { setTimeout(() => { if(activeChannelId === chid && document.getElementById('comm-chat-area').style.display==='flex' && window.currentCommType !== 'voice') { fetchCommMessages(chid); connectCommWS(chid); } }, 2000); };
     commWS.onmessage = e => {
         let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content;
         if(d.type === 'ping') return;
@@ -1537,69 +1551,6 @@ function connectCommWS(chid) {
         }
     };
 }
-
-async function joinChannel(chid, type, btnElem) {
-    let changingChannel = (activeChannelId !== chid);
-    activeChannelId = chid;
-    document.getElementById('comm-info-area').style.display='none'; document.getElementById('comm-chat-area').style.display='flex';
-    if(btnElem) { document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active')); btnElem.classList.add('active'); }
-    
-    let inp = document.getElementById('comm-msg'); let clip = document.getElementById('btn-comm-clip'); let emj = document.getElementById('btn-comm-emoji'); let mic = document.getElementById('btn-comm-mic');
-    inp.disabled = false; clip.style.display = 'flex'; emj.style.display = 'flex'; mic.style.display = 'flex';
-    if(type === 'media') { inp.disabled = true; inp.placeholder = t('media_only'); emj.style.display = 'none'; mic.style.display = 'none'; } 
-    else if(type === 'text') { inp.placeholder = t('base_msg_placeholder'); clip.style.display = 'none'; mic.style.display = 'flex'; }
-    else { inp.placeholder = t('base_msg_placeholder'); }
-
-    if(changingChannel) { document.getElementById('comm-chat-list').innerHTML = ''; }
-    await fetchCommMessages(chid);
-    if(changingChannel || !commWS || commWS.readyState !== WebSocket.OPEN) { connectCommWS(chid); }
-}
-
-function sendCommMsg() { let i = document.getElementById('comm-msg'); let msg = i.value.trim(); if(msg && commWS && commWS.readyState === WebSocket.OPEN) { commWS.send(msg); i.value = ''; toggleEmoji(true); } }
-async function uploadCommImage(){ let f=document.getElementById('comm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(commWS) commWS.send(c.secure_url); } catch(e){} }
-
-async function openPublicProfile(uid){
-    let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json();
-    document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
-    document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio;
-    
-    document.getElementById('pub-emblems').innerHTML = formatRankInfo(d.rank, d.special_emblem, d.color);
-    renderMedals('pub-medals-box', d.medals);
-
-    let ab=document.getElementById('pub-actions'); ab.innerHTML='';
-    document.getElementById('pub-status-dot').setAttribute('data-uid', uid); updateStatusDots();
-    
-    if(d.friend_status==='friends') {
-        ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:10px 15px; border-radius:12px; font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px; border-color:var(--primary); font-size:14px; max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;
-    } else if(d.friend_status==='pending_sent') { ab.innerHTML=`<span style="color:orange; border:1px solid orange; padding:10px 15px; border-radius:12px;">${t('sent')}</span>`; } 
-    else if(d.friend_status==='pending_received') { ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`; } 
-    else { ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`; }
-    
-    let g=document.getElementById('pub-grid'); g.innerHTML='';
-    d.posts.forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`});
-    goView('public-profile')
-}
-
-async function uploadToCloudinary(file){
-    let limiteMB = 100; if(file.size > (limiteMB * 1024 * 1024)) return Promise.reject();
-    let resType = (file.type.startsWith('video') || file.type.startsWith('audio')) ? 'video' : 'image'; 
-    let url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
-    let fd=new FormData(); fd.append('file',file); fd.append('upload_preset',UPLOAD_PRESET);
-    return new Promise((res,rej)=>{
-        let x=new XMLHttpRequest(); x.open('POST', url, true);
-        x.upload.onprogress = (e) => { if (e.lengthComputable && document.getElementById('progress-bar')) { let p = Math.round((e.loaded / e.total) * 100); document.getElementById('progress-bar').style.width = p + '%'; document.getElementById('progress-text').innerText = p + '%'; } };
-        x.onload=()=>{ if(x.status===200) res(JSON.parse(x.responseText)); else { rej(); } };
-        x.onerror=()=>rej(); x.send(fd)
-    });
-}
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){}finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){}finally{btn.disabled=false;}}
-
-function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`}); updateStatusDots();}
-async function toggleRequests(type){let b=document.getElementById('requests-list');if(b.style.display==='block'){b.style.display='none';return}b.style.display='block';let d=await (await fetch(`/friend/requests?uid=${user.id}&nocache=${new Date().getTime()}`)).json();b.innerHTML=type==='requests'?(d.requests.length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`):(d.friends.length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`); updateStatusDots();}
-async function sendRequest(tid){if((await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})})).ok){openPublicProfile(tid)}}
-async function handleReq(rid,act){if((await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})})).ok){toggleRequests('requests')}}
 </script>
 </body>
 </html>
@@ -1799,8 +1750,8 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     return res
 
 @app.post("/community/create")
-async def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""), is_priv: int=Form(0), avatar_url: str=Form(...), db: Session=Depends(get_db)):
-    c = Community(name=name, description=desc, avatar_url=avatar_url, is_private=is_priv, creator_id=user_id)
+async def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""), is_priv: int=Form(0), avatar_url: str=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
+    c = Community(name=name, description=desc, avatar_url=avatar_url, banner_url=banner_url, is_private=is_priv, creator_id=user_id)
     db.add(c); db.commit(); db.refresh(c)
     db.add(CommunityMember(comm_id=c.id, user_id=user_id, role="admin"))
     db.add(CommunityChannel(comm_id=c.id, name="geral", channel_type="livre", is_private=0))
@@ -1826,6 +1777,14 @@ async def promote_member(d: dict, db: Session=Depends(get_db)):
     if not admin or (admin.role != 'admin' and c.creator_id != admin.user_id): return {"status": "error"}
     target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
     if target: target.role = 'admin'; db.commit()
+    return {"status": "ok"}
+
+@app.post("/community/member/demote")
+async def demote_member(d: dict, db: Session=Depends(get_db)):
+    c = db.query(Community).get(d['comm_id'])
+    if c.creator_id != d['creator_id']: return {"status": "error"}
+    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
+    if target and target.role == 'admin': target.role = 'member'; db.commit()
     return {"status": "ok"}
 
 @app.get("/communities/list/{uid}")
@@ -1880,16 +1839,16 @@ async def get_comm_details(cid: int, uid: int, db: Session=Depends(get_db)):
     my_role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
     is_admin = my_role and my_role.role == "admin"
     channels = db.query(CommunityChannel).filter_by(comm_id=cid).all()
-    visible_channels = [{"id": ch.id, "name": ch.name, "type": ch.channel_type} for ch in channels if ch.is_private == 0 or is_admin]
+    visible_channels = [{"id": ch.id, "name": ch.name, "type": ch.channel_type, "banner_url": ch.banner_url} for ch in channels if ch.is_private == 0 or is_admin]
     members = db.query(CommunityMember).filter_by(comm_id=cid).all()
     members_data = [{"id": m.user.id, "name": m.user.username, "avatar": m.user.avatar_url, "role": m.role} for m in members]
-    return {"name": c.name, "description": c.description, "avatar_url": c.avatar_url, "is_admin": is_admin, "creator_id": c.creator_id, "channels": visible_channels, "members": members_data}
+    return {"name": c.name, "description": c.description, "avatar_url": c.avatar_url, "banner_url": c.banner_url, "is_admin": is_admin, "creator_id": c.creator_id, "channels": visible_channels, "members": members_data}
 
 @app.post("/community/channel/create")
-async def create_channel(d: dict, db: Session=Depends(get_db)):
-    role = db.query(CommunityMember).filter_by(comm_id=d['comm_id'], user_id=d['user_id']).first()
+async def create_channel(comm_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
+    role = db.query(CommunityMember).filter_by(comm_id=comm_id, user_id=user_id).first()
     if not role or role.role != "admin": return {"status": "error"}
-    db.add(CommunityChannel(comm_id=d['comm_id'], name=d['name'], channel_type=d['type'], is_private=d['is_private'])); db.commit()
+    db.add(CommunityChannel(comm_id=comm_id, name=name, channel_type=type, is_private=is_private, banner_url=banner_url)); db.commit()
     return {"status": "ok"}
 
 @app.get("/community/channel/{chid}/messages")
