@@ -188,8 +188,6 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD inicial: {e}")
 
-
-# --- APP FASTAPI E GERENCIADORES ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -220,7 +218,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- INSPETOR DE BANCO DE DADOS (AUTO-REPARO) ---
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
@@ -232,14 +229,12 @@ def startup_db_fix():
                         conn.execute(text("PRAGMA journal_mode=WAL;"))
                         conn.commit()
                 except: pass
-
             tables_to_check = {
                 "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
                 "private_messages": [("is_read", "INTEGER DEFAULT 0")],
                 "communities": [("banner_url", "VARCHAR DEFAULT ''")],
                 "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
             }
-            
             for table_name, cols in tables_to_check.items():
                 if insp.has_table(table_name):
                     existing_cols = [c['name'] for c in insp.get_columns(table_name)]
@@ -253,47 +248,24 @@ def startup_db_fix():
         except Exception as e: pass
     threading.Thread(target=upgrade_db).start()
 
-
-# --- SISTEMA DE CARREIRA MILITAR E MEDALHAS ---
 def get_user_badges(xp, user_id, role):
-    tiers = [
-        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"),
-        (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"),
-        (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"),
-        (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"),
-        (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"),
-        (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"),
-        (50000, "General ⭐", 50000, "#FFD700")
-    ]
+    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
-    
     for i, t in enumerate(tiers):
         if xp >= t[0]:
-            rank = t[1]; color = t[3]; next_xp = t[2]
-            next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
-            
+            rank = t[1]; color = t[3]; next_xp = t[2]; next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
     percent = int((xp / next_xp) * 100) if next_xp > xp else 100
     if percent > 100: percent = 100
-
     special_emblem = ""
     if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
     elif role == "admin": special_emblem = "🛡️ Admin"
     elif role == "vip": special_emblem = "🌟 VIP"
-
     medals = []
-    all_medals = [
-        {"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50},
-        {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500},
-        {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000},
-        {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
-        {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
-    ]
+    all_medals = [{"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50}, {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500}, {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000}, {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000}, {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}]
     if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
     for m in all_medals:
-        earned = xp >= m['req']
-        missing = m['req'] - xp if not earned else 0
+        earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
-
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
@@ -326,8 +298,307 @@ def get_db():
     finally: db.close()
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-    # --- FRONTEND (HTML/CSS/JS) ---
-html_content = r"""
+    import uvicorn
+import json
+import hashlib
+import random
+import os
+import logging
+import threading
+from typing import List
+from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text, inspect
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
+from datetime import datetime, timedelta
+from pydantic import BaseModel, EmailStr
+from fastapi.middleware.cors import CORSMiddleware
+import cloudinary
+import cloudinary.uploader
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from jose import jwt, JWTError
+from collections import Counter
+
+# --- CONFIGURAÇÕES GERAIS E CHAVES ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ForGlory")
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
+AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "") 
+ALGORITHM = "HS256"
+
+mail_conf = ConnectionConfig(
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "seu_email@gmail.com"),
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_app"),
+    MAIL_FROM = os.environ.get("MAIL_FROM", "seu_email@gmail.com"),
+    MAIL_PORT = 465,  
+    MAIL_SERVER = "smtp.gmail.com",
+    MAIL_STARTTLS = False, 
+    MAIL_SSL_TLS = True,   
+    USE_CREDENTIALS = True,
+    VALIDATE_CERTS = True
+)
+
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_NAME'), 
+    api_key=os.environ.get('CLOUDINARY_KEY'), 
+    api_secret=os.environ.get('CLOUDINARY_SECRET'), 
+    secure=True
+)
+
+# --- BANCO DE DADOS BLINDADO ---
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v6.db")
+
+if "sqlite" in DATABASE_URL:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 20}, pool_size=15, max_overflow=30)
+else:
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    engine = create_engine(DATABASE_URL, pool_size=30, max_overflow=50, pool_pre_ping=True)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+friendship = Table('friendships', Base.metadata, 
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True), 
+    Column('friend_id', Integer, ForeignKey('users.id'), primary_key=True)
+)
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    xp = Column(Integer, default=0)
+    avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
+    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
+    bio = Column(String, default="Recruta do For Glory")
+    is_invisible = Column(Integer, default=0) 
+    role = Column(String, default="membro") 
+    friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
+
+class FriendRequest(Base):
+    __tablename__ = "friend_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    receiver_id = Column(Integer, ForeignKey("users.id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    sender = relationship("User", foreign_keys=[sender_id])
+
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content_url = Column(String)
+    media_type = Column(String)
+    caption = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    author = relationship("User")
+
+class Like(Base):
+    __tablename__ = "likes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("posts.id"))
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("posts.id"))
+    text = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    author = relationship("User")
+
+class PrivateMessage(Base):
+    __tablename__ = "private_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    receiver_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    is_read = Column(Integer, default=0) 
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    sender = relationship("User", foreign_keys=[sender_id])
+
+class ChatGroup(Base):
+    __tablename__ = "chat_groups"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("chat_groups.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+
+class GroupMessage(Base):
+    __tablename__ = "group_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("chat_groups.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    sender = relationship("User", foreign_keys=[sender_id])
+
+class Community(Base):
+    __tablename__ = "communities"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    avatar_url = Column(String)
+    banner_url = Column(String, default="")
+    is_private = Column(Integer, default=0) 
+    creator_id = Column(Integer, ForeignKey("users.id"))
+
+class CommunityMember(Base):
+    __tablename__ = "community_members"
+    id = Column(Integer, primary_key=True, index=True)
+    comm_id = Column(Integer, ForeignKey("communities.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    role = Column(String, default="member") 
+    user = relationship("User")
+
+class CommunityChannel(Base):
+    __tablename__ = "community_channels"
+    id = Column(Integer, primary_key=True, index=True)
+    comm_id = Column(Integer, ForeignKey("communities.id"))
+    name = Column(String)
+    channel_type = Column(String, default="livre") 
+    banner_url = Column(String, default="") 
+    is_private = Column(Integer, default=0) 
+
+class CommunityMessage(Base):
+    __tablename__ = "community_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    channel_id = Column(Integer, ForeignKey("community_channels.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    sender = relationship("User", foreign_keys=[sender_id])
+
+class CommunityRequest(Base):
+    __tablename__ = "community_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    comm_id = Column(Integer, ForeignKey("communities.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    user = relationship("User", foreign_keys=[user_id])
+
+try: Base.metadata.create_all(bind=engine)
+except Exception as e: logger.error(f"Erro BD inicial: {e}")
+
+app = FastAPI(title="For Glory Cloud")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+if not os.path.exists("static"): os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+class ConnectionManager:
+    def __init__(self):
+        self.active = {}
+        self.user_ws = {} 
+    async def connect(self, ws: WebSocket, chan: str, uid: int):
+        await ws.accept()
+        if chan not in self.active: self.active[chan] = []
+        self.active[chan].append(ws)
+        if chan == "Geral": self.user_ws[uid] = ws
+    def disconnect(self, ws: WebSocket, chan: str, uid: int):
+        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
+        if chan == "Geral" and uid in self.user_ws: del self.user_ws[uid]
+    async def broadcast(self, msg: dict, chan: str):
+        for conn in self.active.get(chan, []):
+            try: await conn.send_text(json.dumps(msg))
+            except: pass
+    async def send_personal(self, msg: dict, uid: int):
+        ws = self.user_ws.get(uid)
+        if ws:
+            try: await ws.send_text(json.dumps(msg))
+            except: pass
+
+manager = ConnectionManager()
+
+@app.on_event("startup")
+def startup_db_fix():
+    def upgrade_db():
+        try:
+            insp = inspect(engine)
+            if "sqlite" in str(engine.url):
+                try: 
+                    with engine.connect() as conn:
+                        conn.execute(text("PRAGMA journal_mode=WAL;"))
+                        conn.commit()
+                except: pass
+            tables_to_check = {
+                "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
+                "private_messages": [("is_read", "INTEGER DEFAULT 0")],
+                "communities": [("banner_url", "VARCHAR DEFAULT ''")],
+                "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
+            }
+            for table_name, cols in tables_to_check.items():
+                if insp.has_table(table_name):
+                    existing_cols = [c['name'] for c in insp.get_columns(table_name)]
+                    for col_name, col_type in cols:
+                        if col_name not in existing_cols:
+                            try:
+                                with engine.connect() as conn:
+                                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                                    conn.commit()
+                            except Exception as e: pass
+        except Exception as e: pass
+    threading.Thread(target=upgrade_db).start()
+
+def get_user_badges(xp, user_id, role):
+    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
+    rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
+    for i, t in enumerate(tiers):
+        if xp >= t[0]:
+            rank = t[1]; color = t[3]; next_xp = t[2]; next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
+    percent = int((xp / next_xp) * 100) if next_xp > xp else 100
+    if percent > 100: percent = 100
+    special_emblem = ""
+    if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
+    elif role == "admin": special_emblem = "🛡️ Admin"
+    elif role == "vip": special_emblem = "🌟 VIP"
+    medals = []
+    all_medals = [{"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50}, {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500}, {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000}, {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000}, {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}]
+    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
+    for m in all_medals:
+        earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
+        medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
+    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
+
+def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
+def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+def verify_reset_token(token: str):
+    try:
+        p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return p.get("sub") if p.get("type") == "reset" else None
+    except JWTError: return None
+
+class LoginData(BaseModel): username: str; password: str
+class RegisterData(BaseModel): username: str; email: str; password: str
+class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
+class RequestActionData(BaseModel): request_id: int; action: str
+class DeletePostData(BaseModel): post_id: int; user_id: int
+class ForgotPasswordData(BaseModel): email: EmailStr
+class ResetPasswordData(BaseModel): token: str; new_password: str
+class CommentData(BaseModel): user_id: int; post_id: int; text: str
+class DelCommentData(BaseModel): comment_id: int; user_id: int
+class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
+class ReadData(BaseModel): uid: int 
+class JoinCommData(BaseModel): user_id: int; comm_id: int
+class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
+class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
+class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
+
+def get_db():
+    db = SessionLocal()
+    try: yield db
+    finally: db.close()
+
+def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+    html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -366,10 +637,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-/* HUD DA CALL FLUTUANTE */
-#floating-call-btn { position:fixed; bottom:30px; right:30px; width:65px; height:65px; border-radius:50%; background:#2ecc71; color:white; font-size:30px; cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; box-shadow:0 5px 20px rgba(46,204,113,0.6); animation:pulse 2s infinite; border:3px solid var(--dark-bg); transition:0.3s; }
+/* HUD DA CALL FLUTUANTE PREMIUM */
+#floating-call-btn { 
+    position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
+    background: linear-gradient(135deg, #2ecc71, #27ae60); color:white; font-size:35px; 
+    cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; 
+    box-shadow: 0 10px 25px rgba(46,204,113,0.6), inset 0 -3px 5px rgba(0,0,0,0.2); 
+    border: 2px solid rgba(255,255,255,0.2); 
+    animation: pulse-glow 2s infinite; transition: 0.3s transform; 
+}
 #floating-call-btn:hover { transform:scale(1.1); }
-#expanded-call-panel { display:none; position:fixed; bottom:110px; right:30px; width:320px; background:rgba(15,20,25,0.98); border:1px solid var(--primary); border-radius:16px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8); backdrop-filter:blur(10px); animation:scaleUp 0.2s ease-out; }
+@keyframes pulse-glow { 0% { box-shadow: 0 0 0 0 rgba(46,204,113,0.7); } 70% { box-shadow: 0 0 0 20px rgba(46,204,113,0); } 100% { box-shadow: 0 0 0 0 rgba(46,204,113,0); } }
+
+#expanded-call-panel { display:none; position:fixed; bottom:120px; right:40px; width:320px; background:rgba(15,20,25,0.98); border:1px solid var(--primary); border-radius:16px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8); backdrop-filter:blur(10px); animation:scaleUp 0.2s ease-out; }
 .remote-user-row { display:flex; align-items:center; gap:10px; margin-bottom:15px; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid #333;}
 .vol-slider { flex:1; accent-color: var(--primary); height:4px; }
 .call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
@@ -438,7 +718,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; position:relative; z-index:2; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
 
-/* HEADER DA BASE E BANNER */
 .comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; gap:10px; position:relative; background-size: cover; background-position: center; }
 .comm-topbar::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.7); z-index: 1; }
 .comm-topbar > * { position: relative; z-index: 2; }
@@ -469,9 +748,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
-/* TOAST FIXO E SEGURO */
-#toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
-#toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
 
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
@@ -484,14 +760,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     #sidebar::-webkit-scrollbar { display:none; }
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
-    #floating-call-btn { bottom: 80px; right: 20px; width:55px; height:55px; font-size:24px; }
+    #floating-call-btn { bottom: 80px; right: 20px; width:60px; height:60px; font-size:30px; }
     #expanded-call-panel { bottom: 150px; right: 20px; width: 90%; max-width: 320px; }
     .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
 </style>
 </head>
 <body>
-<div id="toast">Notificação</div>
 
 <div id="modal-incoming-call" class="modal hidden">
     <div class="modal-box" style="border-color: #2ecc71;">
@@ -917,7 +1192,8 @@ const T = {
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar', 'kick': 'Expulsar',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova notificação!', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL', 'incoming_call': 'CHAMADA RECEBIDA',
-        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):'
+        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):',
+        'no_trophies': 'Soldado sem troféus'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
@@ -942,7 +1218,8 @@ const T = {
         'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote', 'demote': 'Demote', 'kick': 'Kick',
         'base_members': 'Members', 'entry_requests': 'Requests', 'destroy_base': 'DESTROY BASE',
         'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New notification!', 'in_call': 'IN CALL', 'join_call': 'JOIN CALL', 'incoming_call': 'INCOMING CALL',
-        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner (Optional):', 'ch_banner_opt': 'Channel Banner (Optional):'
+        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner (Optional):', 'ch_banner_opt': 'Channel Banner (Optional):',
+        'no_trophies': 'Soldier without trophies'
     },
     'es': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Crear Cuenta', 'forgot': 'Olvidé la Contraseña',
@@ -967,7 +1244,8 @@ const T = {
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar', 'kick': 'Expulsar',
         'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nueva notificación!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL', 'incoming_call': 'LLAMADA ENTRANTE',
-        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):'
+        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):',
+        'no_trophies': 'Soldado sin trofeos'
     }
 };
 
@@ -999,7 +1277,12 @@ window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
 let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
-let callDuration = 0, callInterval = null; window.pendingCallChannel = null; window.pendingCallType = null; window.ringtone = null;
+let callDuration = 0, callInterval = null; window.pendingCallChannel = null; window.pendingCallType = null; 
+
+// SONS TÁTICOS
+window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
+window.outgoingRingTone = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'); window.outgoingRingTone.loop = true;
+window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
 
 const CLOUD_NAME = "dqa0q3qlx"; const UPLOAD_PRESET = "for_glory_preset"; 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
@@ -1071,7 +1354,7 @@ function updateStatusDots() {
     document.querySelectorAll('.status-dot').forEach(dot => { let uid = parseInt(dot.getAttribute('data-uid')); if(!uid) return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); });
 }
 
-// --- NOTIFICAÇÕES GLOBAIS BLINDADAS ---
+// --- NOTIFICAÇÕES GLOBAIS BLINDADAS (SÓ BOLINHA, SEM TOAST PISCANTE) ---
 async function fetchUnread() {
     if(!user) return;
     try {
@@ -1083,6 +1366,8 @@ async function fetchUnread() {
         
         let badgeBases = document.getElementById('bases-badge');
         if(d.comms.total > 0) { badgeBases.innerText = d.comms.total; badgeBases.style.display = 'block'; } else { badgeBases.style.display = 'none'; }
+        
+        window.lastTotalUnread = d.dms.total;
 
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => { let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge'); if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; } });
@@ -1139,7 +1424,7 @@ async function handleCommReq(rid, act) {
     try {
         let r = await fetch('/community/request/handle', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({req_id:rid, action:act, admin_id:user.id}) });
         if(r.ok) { showToast("Membro atualizado!"); fetchUnread(); await openCommunity(activeCommId); showCommInfo(); }
-    } catch(e) { console.error(e); }
+    } catch(e) {}
 }
 
 async function submitCreateComm(e) {
@@ -1152,7 +1437,7 @@ async function submitCreateComm(e) {
         if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av); fd.append('banner_url', ban);
         let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Criada!"); loadMyComms(); goView('mycomms', document.querySelectorAll('.nav-btn')[3]); }
+        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Criada!"); loadMyComms(); goView('mycomms'); }
     } catch(err) { showToast("Erro ao criar a base."); } finally { btn.disabled = false; btn.innerText = t('establish'); }
 }
 
@@ -1191,12 +1476,22 @@ function updateStealthUI() {
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Erro!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("Enviado!"); toggleAuth('login'); } catch(e) { showToast("Erro"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Erro!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Alterada!"); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
 
-function renderMedals(boxId, medalsData) {
-    let box = document.getElementById(boxId); if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
-    let mHtml = medalsData.map(m => {
-        let isEarned = m.earned; let op = isEarned ? '1' : '0.4'; let filter = isEarned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
-        let statusText = isEarned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
-        return `<div style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${isEarned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}"><div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div><div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>${statusText}</div>`;
+function renderMedals(boxId, medalsData, isPublic = false) {
+    let box = document.getElementById(boxId); 
+    if(!medalsData) { box.innerHTML = ''; return; }
+    
+    let medalsToShow = isPublic ? medalsData.filter(m => m.earned) : medalsData;
+    
+    if (isPublic && medalsToShow.length === 0) {
+        box.innerHTML = `<div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:12px; border:1px dashed #444; color:#888; font-style:italic;">🎖️ ${t('no_trophies')}</div>`;
+        return;
+    }
+    if(!isPublic && medalsToShow.length === 0) { box.innerHTML = ''; return; }
+    
+    let mHtml = medalsToShow.map(m => {
+        let op = m.earned ? '1' : '0.4'; let filter = m.earned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
+        let statusText = m.earned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
+        return `<div style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${m.earned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}"><div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div><div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>${statusText}</div>`;
     }).join('');
     box.innerHTML = `<h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
 }
@@ -1210,7 +1505,7 @@ function updateUI(){
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     let missingXP = user.next_xp - user.xp;
     document.getElementById('p-progression-box').innerHTML = `<div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:'Rajdhani'; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
-    renderMedals('p-medals-box', user.medals); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
+    renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
 function startApp(){
@@ -1223,10 +1518,15 @@ function startApp(){
         let d = JSON.parse(e.data);
         if(d.type === 'pong') return; 
         if(d.type === 'ping') { fetchUnread(); }
-        // NOTIFICAÇÃO ISOLADA NA TELA (SÓ DM)
+        // NOTIFICAÇÃO SONORA E VISUAL ISOLADA (NÃO PISCA MAIS)
         if(d.type === 'new_dm') {
-            if(document.getElementById('view-dm').classList.contains('active') && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
-            else { showToast("Mensagem de " + d.sender_name); fetchUnread(); }
+            if(document.getElementById('view-dm').classList.contains('active') && currentChatType === '1v1' && currentChatId === d.sender_id) {
+                // Já estou lendo
+            } else { 
+                try { window.msgSound.play(); } catch(err){}
+                showToast("📩 Mensagem de " + d.sender_name); 
+                fetchUnread(); 
+            }
         }
         // ALERTA DE CALL RECEBIDA NA TELA (TOQUE DE CELULAR)
         if(d.type === 'incoming_call') {
@@ -1235,14 +1535,14 @@ function startApp(){
             window.pendingCallChannel = d.channel_name;
             window.pendingCallType = d.call_type;
             document.getElementById('modal-incoming-call').classList.remove('hidden');
-            try { window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true; window.ringtone.play(); } catch(err){}
+            try { window.ringtone.play(); } catch(err){}
         }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
 
     // HEARTBEAT (PULSO PARA MANTER ONLINE SEMPRE!)
     setInterval(()=>{ if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } }, 20000);
-    syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); fetchUnread(); },4000);
+    syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
 
 function logout(){location.reload()}
@@ -1262,22 +1562,27 @@ function goView(v, btnElem){
 }
 
 /* =========================================
-   SISTEMA DE CALL (AGORA.IO SFU) TOTALMENTE BLINDADO
+   SISTEMA DE CALL (AGORA.IO SFU) - AUTO HANGUP + SOM + ID UNICO
    ========================================= */
+window.callHasConnected = false;
+
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     let channelName = "";
     if (typeParam === 'dm' || typeParam === '1v1') { 
         channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
         showToast("Chamando...");
+        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'group') { 
         channelName = `call_group_${targetId}`; 
         showToast("Chamando o Esquadrão...");
+        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'channel' || typeParam === 'voice') { 
         channelName = `call_channel_${targetId}`; 
     } else { return showToast("Alvo da call inválido."); }
+    window.callHasConnected = false;
     connectToAgora(channelName, typeParam);
 }
 
@@ -1286,13 +1591,14 @@ function declineCall() { document.getElementById('modal-incoming-call').classLis
 async function acceptCall() { 
     document.getElementById('modal-incoming-call').classList.add('hidden'); 
     if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } 
+    window.callHasConnected = false;
     await connectToAgora(window.pendingCallChannel, window.pendingCallType); 
 }
 
 async function connectToAgora(channelName, typeParam) {
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
-        if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado.");
+        if (!conf.app_id) { showToast("Erro: APP ID do Rádio não configurado."); return; }
         
         if (rtc.client) { await rtc.client.leave(); }
         
@@ -1300,19 +1606,33 @@ async function connectToAgora(channelName, typeParam) {
         rtc.remoteUsers = {};
         
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
+            window.callHasConnected = true; // ALGUÉM ENTROU!
+            try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){} // PARA DE TOCAR
+            
             await rtc.client.subscribe(remoteUser, mediaType);
             if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
         });
-        rtc.client.on("user-unpublished", (remoteUser) => { delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); });
         
-        // NULL UID (GERA ID ÚNICO PARA NÃO DERRUBAR A LIGAÇÃO!)
-        await rtc.client.join(conf.app_id, channelName, null, null);
+        rtc.client.on("user-unpublished", (remoteUser) => { 
+            delete rtc.remoteUsers[remoteUser.uid]; 
+            renderCallPanel(); 
+            // SE FICAR SOZINHO, DESLIGA AUTOMÁTICO!
+            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) {
+                showToast("A ligação terminou.");
+                leaveCall();
+            }
+        });
+        
+        // GERA ID ÚNICO BASEADO NO TEMPO PARA NÃO DERRUBAR A LIGAÇÃO (BUG DO CLONE)
+        let uniqueUid = user.id + Math.floor(Math.random() * 10000); 
+        await rtc.client.join(conf.app_id, channelName, null, uniqueUid);
         
         try {
             rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: "high_quality", AEC: true, ANS: true, AGC: false });
         } catch(micErr) {
-            showToast("Erro: Microfone bloqueado ou ausente!");
-            throw micErr; 
+            showToast("⚠️ Microfone bloqueado! Autorize no navegador.");
+            try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){}
+            await rtc.client.leave(); return;
         }
         
         await rtc.client.publish([rtc.localAudioTrack]);
@@ -1322,7 +1642,12 @@ async function connectToAgora(channelName, typeParam) {
         if (typeParam === 'channel' || typeParam === 'voice') {
             document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;animation:pulse 2s infinite; text-shadow: 0 0 20px #2ecc71;">🎙️</div><h3 style="color:var(--primary); font-family:'Rajdhani'; font-size:28px;">VOCÊ ESTÁ NA CALL</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p></div>`;
         }
-    } catch(e) { console.error(e); leaveCall(); }
+    } catch(e) { 
+        console.error(e); 
+        showToast("Erro ao conectar à central de Rádio."); 
+        try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(err){}
+        leaveCall(); 
+    }
 }
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
@@ -1340,16 +1665,17 @@ function renderCallPanel() {
     for(let uid in rtc.remoteUsers) {
         count++; list.innerHTML += `<div class="remote-user-row"><div style="width:30px;height:30px;border-radius:50%;background:#444;display:flex;align-items:center;justify-content:center;font-size:14px;">👤</div><input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
     }
-    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center;">Aguardando aliados...</p>`;
+    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
 }
 
 function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
 
 async function leaveCall() {
+    try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){}
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } if (rtc.client) { await rtc.client.leave(); }
-    rtc.localAudioTrack = null; rtc.client = null; clearInterval(callInterval);
+    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; clearInterval(callInterval);
     document.getElementById('expanded-call-panel').style.display = 'none'; document.getElementById('floating-call-btn').style.display = 'none';
-    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤'; showToast("Chamada Encerrada.");
+    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤';
     if(activeChannelId && window.currentCommType === 'voice') { joinChannel(activeChannelId, 'voice', null); }
 }
 
@@ -1461,11 +1787,7 @@ async function fetchChatMessages(id, type) {
                 if(!document.getElementById(msgId)) {
                     let m = (d.user_id === user.id); let c = d.content; let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                     if(c === '[DELETED]') { c = `<span class="msg-deleted">${t('deleted_msg')}</span>`; } 
-                    else {
-                        if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
-                        else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
-                        delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
-                    }
+                    else { if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; } else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } } delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : ''; }
                     let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                     list.insertAdjacentHTML('beforeend',h);
                 }
@@ -1559,11 +1881,12 @@ async function openCommunity(cid) {
 
         let cb = document.getElementById('comm-channels-bar'); cb.innerHTML = '';
         if((d.channels || []).length > 0) {
-            d.channels.forEach(ch => { 
+            let sortedChannels = d.channels.sort((a,b) => { if(a.name.toLowerCase() === 'geral') return -1; if(b.name.toLowerCase() === 'geral') return 1; return 0; });
+            sortedChannels.forEach(ch => { 
                 let bgStyle = ch.banner_url ? `background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('${ch.banner_url}'); border:none;` : ''; let icon = ch.type === 'voice' ? '🎙️ ' : '';
                 let editBtn = (d.is_admin || d.creator_id === user.id) ? `<span style="margin-left:5px; font-size:11px; cursor:pointer; opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>` : '';
                 cb.innerHTML += `<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`; 
-            }); joinChannel(d.channels[0].id, d.channels[0].type, cb.children[0]); 
+            }); joinChannel(sortedChannels[0].id, sortedChannels[0].type, cb.children[0]); 
         } else { document.getElementById('comm-chat-list').innerHTML = ""; }
     } catch(e) {}
 }
@@ -1642,7 +1965,7 @@ function sendCommMsg() { let i = document.getElementById('comm-msg'); let msg = 
 async function uploadCommImage(){ let f=document.getElementById('comm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(commWS) commWS.send(c.secure_url); } catch(e){} }
 
 async function openPublicProfile(uid){
-    try { let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block'; document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-emblems').innerHTML = formatRankInfo(d.rank, d.special_emblem, d.color); renderMedals('pub-medals-box', d.medals); let ab=document.getElementById('pub-actions'); ab.innerHTML=''; document.getElementById('pub-status-dot').setAttribute('data-uid', uid); updateStatusDots();
+    try { let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block'; document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio; document.getElementById('pub-emblems').innerHTML = formatRankInfo(d.rank, d.special_emblem, d.color); renderMedals('pub-medals-box', d.medals, true); let ab=document.getElementById('pub-actions'); ab.innerHTML=''; document.getElementById('pub-status-dot').setAttribute('data-uid', uid); updateStatusDots();
         if(d.friend_status==='friends') { ab.innerHTML=`<span style="color:#66fcf1; border:1px solid #66fcf1; padding:10px 15px; border-radius:12px; font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px; border-color:var(--primary); font-size:14px; max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`; } else if(d.friend_status==='pending_sent') { ab.innerHTML=`<span style="color:orange; border:1px solid orange; padding:10px 15px; border-radius:12px;">${t('sent')}</span>`; } else if(d.friend_status==='pending_received') { ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`; } else { ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`; }
         let g=document.getElementById('pub-grid'); g.innerHTML=''; (d.posts || []).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer;" onclick="window.open(this.src)">`}); goView('public-profile')
     } catch(e) {}
@@ -1693,7 +2016,7 @@ async function searchUsers(){
 </body>
 </html>
 """
-# --- ROTAS DA API ---
+    # --- ROTAS DA API ---
 @app.get("/", response_class=HTMLResponse)
 async def get(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
