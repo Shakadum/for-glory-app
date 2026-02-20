@@ -186,55 +186,30 @@ class CommunityRequest(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 try: Base.metadata.create_all(bind=engine)
-except Exception as e: logger.error(f"Erro BD: {e}")
+except Exception as e: logger.error(f"Erro BD inicial: {e}")
 
-
-# --- CRIAÇÃO DO APLICATIVO FASTAPI E MANAGERS (ESTA ORDEM É VITAL) ---
+# --- APP FASTAPI ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 if not os.path.exists("static"): os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class ConnectionManager:
-    def __init__(self):
-        self.active = {}
-        self.user_ws = {} 
-    async def connect(self, ws: WebSocket, chan: str, uid: int):
-        await ws.accept()
-        if chan not in self.active: self.active[chan] = []
-        self.active[chan].append(ws)
-        if chan == "Geral": self.user_ws[uid] = ws
-    def disconnect(self, ws: WebSocket, chan: str, uid: int):
-        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
-        if chan == "Geral" and uid in self.user_ws: del self.user_ws[uid]
-    async def broadcast(self, msg: dict, chan: str):
-        for conn in self.active.get(chan, []):
-            try: await conn.send_text(json.dumps(msg))
-            except: pass
-    async def send_personal(self, msg: dict, uid: int):
-        ws = self.user_ws.get(uid)
-        if ws:
-            try: await ws.send_text(json.dumps(msg))
-            except: pass
-
-manager = ConnectionManager()
-
-# --- INSPETOR DE BANCO DE DADOS (AUTO-REPARO) AGORA NA ORDEM CORRETA ---
+# --- INSPETOR DE BANCO DE DADOS (AUTO-REPARO SEGURO) ---
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
         try:
             insp = inspect(engine)
             if "sqlite" in str(engine.url):
-                try:
+                try: 
                     with engine.connect() as conn:
                         conn.execute(text("PRAGMA journal_mode=WAL;"))
                         conn.commit()
                 except: pass
-            
+
             tables_to_check = {
-                "users": [("is_invisible", "INTEGER DEFAULT 0"), ("role", "VARCHAR DEFAULT 'membro'")],
+                "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
                 "private_messages": [("is_read", "INTEGER DEFAULT 0")],
                 "communities": [("banner_url", "VARCHAR DEFAULT ''")],
                 "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
@@ -249,8 +224,8 @@ def startup_db_fix():
                                 with engine.connect() as conn:
                                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
                                     conn.commit()
-                            except Exception: pass
-        except Exception: pass
+                            except Exception as e: pass
+        except Exception as e: pass
     threading.Thread(target=upgrade_db).start()
 
 
@@ -288,21 +263,56 @@ def get_user_badges(xp, user_id, role):
         {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
         {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
     ]
-    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
+    
+    if user_id == 1 or role == "fundador": 
+        medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
+        
     for m in all_medals:
         earned = xp >= m['req']
         missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
 
-    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
+    return {
+        "rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, 
+        "percent": percent, "special_emblem": special_emblem, "medals": medals
+    }
 
-def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
-def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+def get_utc_iso(dt): 
+    return dt.isoformat() + "Z" if dt else ""
+
+def create_reset_token(email: str): 
+    return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+
 def verify_reset_token(token: str):
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return p.get("sub") if p.get("type") == "reset" else None
-    except JWTError: return None
+    except JWTError: 
+        return None
+
+class ConnectionManager:
+    def __init__(self):
+        self.active = {}
+        self.user_ws = {} 
+    async def connect(self, ws: WebSocket, chan: str, uid: int):
+        await ws.accept()
+        if chan not in self.active: self.active[chan] = []
+        self.active[chan].append(ws)
+        if chan == "Geral": self.user_ws[uid] = ws
+    def disconnect(self, ws: WebSocket, chan: str, uid: int):
+        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
+        if chan == "Geral" and uid in self.user_ws: del self.user_ws[uid]
+    async def broadcast(self, msg: dict, chan: str):
+        for conn in self.active.get(chan, []):
+            try: await conn.send_text(json.dumps(msg))
+            except: pass
+    async def send_personal(self, msg: dict, uid: int):
+        ws = self.user_ws.get(uid)
+        if ws:
+            try: await ws.send_text(json.dumps(msg))
+            except: pass
+
+manager = ConnectionManager()
 
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
@@ -325,7 +335,8 @@ def get_db():
     try: yield db
     finally: db.close()
 
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+def criptografar(s): 
+    return hashlib.sha256(s.encode()).hexdigest()
 
 # --- FRONTEND (HTML/CSS/JS) ---
 html_content = r"""
@@ -344,7 +355,6 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SELETOR DE IDIOMA PREMIUM */
 .lang-dropdown { position:absolute; top:15px; right:15px; z-index:9999; }
 .lang-btn { background:rgba(11,12,16,0.6); color:white; border:1px solid var(--primary); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:bold; font-family:'Rajdhani'; backdrop-filter:blur(5px); display:flex; align-items:center; gap:5px; transition:0.3s; }
 .lang-btn:hover { background:rgba(102,252,241,0.2); box-shadow:0 0 15px rgba(102,252,241,0.3); }
@@ -597,7 +607,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="edit_base">EDITAR BASE</h2>
         <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_avatar">Novo Avatar</label>
         <input type="file" id="edit-comm-avatar" class="inp" accept="image/*">
-        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_banner">Novo Banner (Base e Geral)</label>
+        <label style="color:#aaa;display:block;margin-top:10px;font-size:12px;" data-i18n="base_banner">Novo Banner</label>
         <input type="file" id="edit-comm-banner" class="inp" accept="image/*">
         <button id="btn-save-comm" onclick="submitEditComm()" class="btn-main" data-i18n="save">SALVAR</button>
         <button onclick="document.getElementById('modal-edit-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button>
@@ -608,7 +618,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div class="modal-box">
         <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2>
         <input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name">
-        <p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="ch_banner_opt">Banner do Canal (Opcional):</p>
+        <p style="color:#aaa;font-size:11px;text-align:left;margin:0 0 5px 5px;" data-i18n="ch_banner_opt">Banner do Canal:</p>
         <input type="file" id="new-ch-banner" class="inp" accept="image/*" title="Banner do Canal">
         <select id="new-ch-type" class="styled-select">
             <option value="livre" data-i18n="ch_free">💬 Livre</option>
@@ -875,6 +885,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
+// --- DICIONÁRIO DE TRADUÇÃO BLINDADO ---
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -887,7 +898,7 @@ const T = {
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
         'edit_base': 'EDITAR BASE', 'base_avatar': 'Novo Avatar', 'base_banner': 'Novo Banner',
-        'stealth_on': '🕵️ MODO FURTIVO: ON', 'stealth_off': '🟢 MODO FURTIVO: OFF', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitações', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
+        'stealth_on': '🕵️ MODO FURTIVO: ATIVADO', 'stealth_off': '🟢 MODO FURTIVO: DESATIVADO', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitações', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
         'msg_placeholder': 'Mensagem...', 'base_msg_placeholder': 'Mensagem para a base...',
@@ -998,23 +1009,12 @@ const RANK_TIERS = [
 
 function showRanksModal() {
     let list = document.getElementById('ranks-list');
-    list.innerHTML = RANK_TIERS.map(r => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:10px; border-left:4px solid ${r.color};">
-            <span style="color:white; font-weight:bold; font-size:15px;">${r.name}</span>
-            <span style="color:${r.color}; font-family:'Rajdhani'; font-weight:bold;">${r.xp} XP</span>
-        </div>
-    `).join('');
+    list.innerHTML = RANK_TIERS.map(r => `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:10px; border-left:4px solid ${r.color};"><span style="color:white; font-weight:bold; font-size:15px;">${r.name}</span><span style="color:${r.color}; font-family:'Rajdhani'; font-weight:bold;">${r.xp} XP</span></div>`).join('');
     document.getElementById('modal-ranks').classList.remove('hidden');
 }
 
-function showToast(m){
-    let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},3000);
-}
-
-function toggleAuth(m){
-    ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));
-    document.getElementById(m+'-form').classList.remove('hidden');
-}
+function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},3000); }
+function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
 
 async function doLogin() {
     let btn = document.querySelector('#login-form .btn-main'); let oldText = btn.innerText; btn.innerText = "⏳ CONECTANDO..."; btn.disabled = true;
@@ -1035,45 +1035,23 @@ async function doRegister() {
 }
 
 function formatMsgTime(iso) {
-    if(!iso) return ""; let d = new Date(iso); 
-    let dia = String(d.getDate()).padStart(2, '0'); let mes = String(d.getMonth()+1).padStart(2, '0');
-    let h = String(d.getHours()).padStart(2, '0'); let m = String(d.getMinutes()).padStart(2, '0');
-    return `${dia}/${mes} ${t('at')} ${h}:${m}`;
+    if(!iso) return ""; let d = new Date(iso); let dia = String(d.getDate()).padStart(2, '0'); let mes = String(d.getMonth()+1).padStart(2, '0'); let h = String(d.getHours()).padStart(2, '0'); let m = String(d.getMinutes()).padStart(2, '0'); return `${dia}/${mes} ${t('at')} ${h}:${m}`;
 }
-
 function formatRankInfo(rank, special, color) {
-    let h = '';
-    if(special) h += `<span class="special-badge">${special}</span>`;
-    if(rank) h += `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>`;
-    return h;
+    let h = ''; if(special) h += `<span class="special-badge">${special}</span>`; if(rank) h += `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>`; return h;
 }
-
 function initEmojis() {
     let g = document.getElementById('emoji-grid'); if(!g) return; g.innerHTML = '';
-    EMOJIS.forEach(e => {
-        let s = document.createElement('div'); s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText = e;
-        s.onclick = () => { if(currentEmojiTarget){ let inp = document.getElementById(currentEmojiTarget); inp.value += e; inp.focus(); } };
-        s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)"; s.onmouseout = () => s.style.background = "transparent"; g.appendChild(s);
-    });
-}
-initEmojis();
+    EMOJIS.forEach(e => { let s = document.createElement('div'); s.style.cssText = "font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText = e; s.onclick = () => { if(currentEmojiTarget){ let inp = document.getElementById(currentEmojiTarget); inp.value += e; inp.focus(); } }; s.onmouseover = () => s.style.background = "rgba(102,252,241,0.2)"; s.onmouseout = () => s.style.background = "transparent"; g.appendChild(s); });
+} initEmojis();
 
-function checkToken() {
-    const urlParams = new URLSearchParams(window.location.search); const token = urlParams.get('token');
-    if (token) { toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken = token; }
-}
-checkToken();
-
+function checkToken() { const urlParams = new URLSearchParams(window.location.search); const token = urlParams.get('token'); if (token) { toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken = token; } } checkToken();
 function closeUpload() { document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value = ''; document.getElementById('caption-upload').value = ''; }
 function openEmoji(id){ currentEmojiTarget = id; document.getElementById('emoji-picker').style.display='flex'; }
 function toggleEmoji(forceClose){ let e = document.getElementById('emoji-picker'); if(forceClose === true) e.style.display='none'; else e.style.display = e.style.display === 'flex' ? 'none' : 'flex'; }
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && user) {
-        fetchUnread(); fetchOnlineUsers();
-        if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        if(activeChannelId && commWS && commWS.readyState !== WebSocket.OPEN) connectCommWS(activeChannelId); 
-    }
+    if (document.visibilityState === "visible" && user) { fetchUnread(); fetchOnlineUsers(); if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); if(activeChannelId && commWS && commWS.readyState !== WebSocket.OPEN) connectCommWS(activeChannelId); }
 });
 
 async function fetchOnlineUsers() {
@@ -1081,20 +1059,15 @@ async function fetchOnlineUsers() {
     try { let r = await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers = await r.json(); updateStatusDots(); } catch(e){}
 }
 function updateStatusDots() {
-    document.querySelectorAll('.status-dot').forEach(dot => {
-        let uid = parseInt(dot.getAttribute('data-uid')); if(!uid) return;
-        if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online');
-    });
+    document.querySelectorAll('.status-dot').forEach(dot => { let uid = parseInt(dot.getAttribute('data-uid')); if(!uid) return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); });
 }
 
 // --- NOTIFICAÇÕES GLOBAIS (DM E BASES) ---
 async function fetchUnread() {
     if(!user) return;
     try {
-        let r = await fetch(`/notifications/${user.id}?nocache=${new Date().getTime()}`); 
-        let d = await r.json(); 
+        let r = await fetch(`/notifications/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); 
         window.unreadData = d.dms.by_sender || {};
-        
         let badgeInbox = document.getElementById('inbox-badge');
         if(d.dms.total > 0) { badgeInbox.innerText = d.dms.total; badgeInbox.style.display = 'block'; } else { badgeInbox.style.display = 'none'; }
         
@@ -1105,18 +1078,11 @@ async function fetchUnread() {
         window.lastTotalUnread = d.dms.total;
 
         if(document.getElementById('view-inbox').classList.contains('active')) {
-            document.querySelectorAll('.inbox-item').forEach(item => {
-                let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge');
-                if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; }
-            });
+            document.querySelectorAll('.inbox-item').forEach(item => { let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge'); if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; } });
         }
         
-        // Atualiza bolinhas dentro da aba de Comunidades, se estiver aberta
         if(document.getElementById('view-mycomms').classList.contains('active')) {
-            document.querySelectorAll('.comm-card').forEach(card => {
-                let cid = card.getAttribute('data-id'); let dot = card.querySelector('.req-dot');
-                if(d.comms.by_comm[cid]) { if(dot) dot.style.display='block'; } else { if(dot) dot.style.display='none'; }
-            });
+            document.querySelectorAll('.comm-card').forEach(card => { let cid = card.getAttribute('data-id'); let dot = card.querySelector('.req-dot'); if(d.comms.by_comm[cid]) { if(dot) dot.style.display='block'; } else { if(dot) dot.style.display='none'; } });
         }
     } catch(e) {}
 }
@@ -1125,18 +1091,10 @@ async function loadInbox() {
     try {
         let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let b = document.getElementById('inbox-list'); b.innerHTML = '';
         if((d.groups || []).length === 0 && (d.friends || []).length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
-        (d.groups || []).forEach(g => { 
-            b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; 
-        });
+        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
         (d.friends || []).forEach(f => {
-            let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
-            let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-            b.innerHTML += `
-            <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
-                <div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div>
-                <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div>
-                <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
-            </div>`;
+            let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
+            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
         });
         updateStatusDots();
     } catch(e) {}
@@ -1153,25 +1111,16 @@ async function openCreateGroupModal() {
 
 async function submitCreateGroup() {
     let name = document.getElementById('new-group-name').value.trim(); if(!name) return;
-    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
-    if(member_ids.length === 0) return;
-    try {
-        let r = await fetch('/group/create', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids}) });
-        if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); loadInbox(); }
-    } catch(e) {}
+    let cbs = document.querySelectorAll('.grp-friend-cb:checked'); let member_ids = Array.from(cbs).map(cb => parseInt(cb.value)); if(member_ids.length === 0) return;
+    try { let r = await fetch('/group/create', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, creator_id:user.id, member_ids:member_ids}) }); if(r.ok) { document.getElementById('modal-create-group').classList.add('hidden'); loadInbox(); } } catch(e) {}
 }
 
 async function toggleRequests(type) {
-    let b = document.getElementById('requests-list');
-    if(b.style.display === 'block') { b.style.display = 'none'; return; }
-    b.style.display = 'block';
+    let b = document.getElementById('requests-list'); if(b.style.display === 'block') { b.style.display = 'none'; return; } b.style.display = 'block';
     try {
         let r = await fetch(`/friend/requests?uid=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
-        if (type === 'requests') {
-            b.innerHTML = (d.requests || []).length ? d.requests.map(r => `<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`;
-        } else {
-            b.innerHTML = (d.friends || []).length ? d.friends.map(f => `<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`;
-        }
+        if (type === 'requests') { b.innerHTML = (d.requests || []).length ? d.requests.map(r => `<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px; flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`; } 
+        else { b.innerHTML = (d.friends || []).length ? d.friends.map(f => `<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join('') : `<p style="padding:10px;color:#888;">Vazio.</p>`; }
         updateStatusDots();
     } catch (e) {}
 }
@@ -1180,26 +1129,22 @@ async function sendRequest(tid) { try { let r = await fetch('/friend/request', {
 async function handleReq(rid, act) { try { let r = await fetch('/friend/handle', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request_id:rid, action:act}) }); if (r.ok) { toggleRequests('requests'); } } catch(e) {} }
 
 async function submitCreateComm(e) {
-    e.preventDefault();
-    let n = document.getElementById('new-comm-name').value.trim(); let d = document.getElementById('new-comm-desc').value.trim(); let p = document.getElementById('new-comm-priv').value; 
+    e.preventDefault(); let n = document.getElementById('new-comm-name').value.trim(); let d = document.getElementById('new-comm-desc').value.trim(); let p = document.getElementById('new-comm-priv').value; 
     let avFile = document.getElementById('comm-avatar-upload').files[0]; let banFile = document.getElementById('comm-banner-upload').files[0];
-    if(!n) return showToast("Digite um nome!");
-    let btn = e.target; btn.disabled = true; btn.innerText = "CRIANDO...";
+    if(!n) return showToast("Digite um nome!"); let btn = e.target; btn.disabled = true; btn.innerText = "CRIANDO...";
     try {
-        let safeName = encodeURIComponent(n);
-        let av = "https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1"; let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
+        let safeName = encodeURIComponent(n); let av = "https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1"; let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
         if(avFile) { let c = await uploadToCloudinary(avFile); av = c.secure_url; }
         if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av); fd.append('banner_url', ban);
         let r = await fetch('/community/create', {method:'POST', body:fd});
         if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Criada!"); loadMyComms(); goView('mycomms', document.querySelectorAll('.nav-btn')[3]); }
-    } catch(err) { showToast("Erro."); } finally { btn.disabled = false; btn.innerText = t('establish'); }
+    } catch(err) { showToast("Erro ao criar a base."); } finally { btn.disabled = false; btn.innerText = t('establish'); }
 }
 
 async function submitEditComm() {
     let avFile = document.getElementById('edit-comm-avatar').files[0]; let banFile = document.getElementById('edit-comm-banner').files[0];
-    if(!avFile && !banFile) return showToast("Selecione alguma imagem.");
-    let btn = document.getElementById('btn-save-comm'); btn.disabled = true; btn.innerText = "ENVIANDO...";
+    if(!avFile && !banFile) return showToast("Selecione alguma imagem."); let btn = document.getElementById('btn-save-comm'); btn.disabled = true; btn.innerText = "ENVIANDO...";
     try {
         let fd = new FormData(); fd.append('comm_id', activeCommId); fd.append('user_id', user.id);
         if(avFile) { let c = await uploadToCloudinary(avFile); fd.append('avatar_url', c.secure_url); }
@@ -1211,8 +1156,7 @@ async function submitEditComm() {
 
 async function submitCreateChannel() {
     let n = document.getElementById('new-ch-name').value.trim(); let tType = document.getElementById('new-ch-type').value; let p = document.getElementById('new-ch-priv').value; let banFile = document.getElementById('new-ch-banner').files[0];
-    if(!n) return showToast("Digite o nome do canal!");
-    let btn = document.getElementById('btn-create-ch'); btn.disabled = true; btn.innerText = "CRIANDO...";
+    if(!n) return showToast("Digite o nome do canal!"); let btn = document.getElementById('btn-create-ch'); btn.disabled = true; btn.innerText = "CRIANDO...";
     try {
         let safeName = encodeURIComponent(n); let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
         if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
@@ -1222,12 +1166,7 @@ async function submitCreateChannel() {
     } catch(err) { showToast("Erro ao criar canal."); } finally { btn.disabled = false; btn.innerText = t('create_channel'); }
 }
 
-async function toggleStealth() {
-    try {
-        let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
-        if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
-    } catch(e) {}
-}
+async function toggleStealth() { try { let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}); if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); } } catch(e) {} }
 
 function updateStealthUI() {
     let btn = document.getElementById('btn-stealth'); let myDot = document.getElementById('my-status-dot');
@@ -1239,8 +1178,7 @@ async function requestReset() { let email = document.getElementById('f-email').v
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Erro!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Alterada!"); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
 
 function renderMedals(boxId, medalsData) {
-    let box = document.getElementById(boxId);
-    if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
+    let box = document.getElementById(boxId); if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
     let mHtml = medalsData.map(m => {
         let isEarned = m.earned; let op = isEarned ? '1' : '0.4'; let filter = isEarned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
         let statusText = isEarned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
@@ -1269,6 +1207,7 @@ function startApp(){
     globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
     globalWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
+        if(d.type === 'pong') return; // Resposta do Ping
         if(d.type === 'ping') { fetchUnread(); }
         // ALERTA DE CALL RECEBIDA
         if(d.type === 'incoming_call') {
@@ -1276,13 +1215,16 @@ function startApp(){
             document.getElementById('incoming-call-av').src = d.caller_avatar;
             window.pendingCallChannel = d.channel_name;
             document.getElementById('modal-incoming-call').classList.remove('hidden');
-            try {
-                window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg');
-                window.ringtone.loop = true; window.ringtone.play();
-            } catch(err){}
+            try { window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true; window.ringtone.play(); } catch(err){}
         }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
+
+    // HEARTBEAT (IMPEDE O SERVIDOR DE DESCONECTAR OS WEBSOCKETS)
+    setInterval(()=>{ 
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); }
+    }, 20000);
+
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); fetchUnread(); },4000);
 }
 
@@ -1308,7 +1250,7 @@ function goView(v, btnElem){
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     let channelName = "";
-    if (typeParam === 'dm') { 
+    if (typeParam === 'dm' || typeParam === '1v1') { 
         channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
         showToast("Chamando...");
         await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
@@ -1316,7 +1258,7 @@ async function initCall(typeParam, targetId) {
         channelName = `call_group_${targetId}`; 
         showToast("Chamando o Esquadrão...");
         await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
-    } else if (typeParam === 'channel') { 
+    } else if (typeParam === 'channel' || typeParam === 'voice') { 
         channelName = `call_channel_${targetId}`; 
     } else { return showToast("Alvo da call inválido."); }
     connectToAgora(channelName, typeParam);
@@ -1343,7 +1285,7 @@ async function connectToAgora(channelName, typeParam) {
         
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
-        if (typeParam === 'channel') {
+        if (typeParam === 'channel' || typeParam === 'voice') {
             document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;animation:pulse 2s infinite; text-shadow: 0 0 20px #2ecc71;">🎙️</div><h3 style="color:var(--primary); font-family:'Rajdhani'; font-size:28px;">VOCÊ ESTÁ NA CALL</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p></div>`;
         }
     } catch(e) { showToast("Erro ao iniciar Call. Verifique o Microfone."); leaveCall(); }
@@ -1498,7 +1440,7 @@ function connectDmWS(id, name, type) {
     if(dmWS) dmWS.close(); let p = location.protocol === 'https:' ? 'wss:' : 'ws:'; let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);
     dmWS.onclose = () => { setTimeout(() => { if(currentChatId === id && document.getElementById('view-dm').classList.contains('active')) { fetchChatMessages(id, type); connectDmWS(id, name, type); } }, 2000); };
-    dmWS.onmessage = e => { let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content; if(d.type === 'ping') return;
+    dmWS.onmessage = e => { let d = JSON.parse(e.data); let b = document.getElementById('dm-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content; if(d.type === 'ping' || d.type === 'pong') return;
         let prefix = type === 'group' ? 'group_msg' : 'dm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
             let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
@@ -1523,8 +1465,8 @@ async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0
 async function loadMyComms() {
     try { let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
         if((d.my_comms || []).length === 0) mList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;
-        (d.my_comms || []).forEach(c => { mList.innerHTML += `<div class="comm-card" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none; position:absolute; top:10px; right:10px; width:15px; height:15px; border-radius:50%; background:#ffaa00; box-shadow:0 0 10px #ffaa00;"></div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
-        fetchUnread(); // Força update das bolinhas após renderizar
+        (d.my_comms || []).forEach(c => { mList.innerHTML += `<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none; position:absolute; top:10px; right:10px; width:15px; height:15px; border-radius:50%; background:#ffaa00; box-shadow:0 0 10px #ffaa00;"></div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
+        fetchUnread(); 
     } catch(e) {}
 }
 
@@ -1622,7 +1564,7 @@ async function fetchCommMessages(chid) {
 function connectCommWS(chid) {
     if(commWS) commWS.close(); let p = location.protocol === 'https:' ? 'wss:' : 'ws:'; commWS = new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);
     commWS.onclose = () => { setTimeout(() => { if(activeChannelId === chid && document.getElementById('comm-chat-area').style.display==='flex' && window.currentCommType !== 'voice') { fetchCommMessages(chid); connectCommWS(chid); } }, 2000); };
-    commWS.onmessage = e => { let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content; if(d.type === 'ping') return;
+    commWS.onmessage = e => { let d = JSON.parse(e.data); let b = document.getElementById('comm-chat-list'); let m = parseInt(d.user_id) === parseInt(user.id); let c = d.content; if(d.type === 'ping' || d.type === 'pong') return;
         let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
             let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
@@ -1642,7 +1584,7 @@ async function joinChannel(chid, type, btnElem) {
     inp.disabled = false; clip.style.display = 'flex'; emj.style.display = 'flex'; mic.style.display = 'flex'; inpForm.style.display = 'flex';
     if (changingChannel && commWS) { commWS.close(); commWS = null; }
     if(type === 'voice') {
-        inpForm.style.display = 'none'; document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px; margin-bottom:20px; text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white; font-family:'Rajdhani'; font-size:28px; margin:0;">CANAL DE VOZ</h3><p style="color:#aaa; font-size:14px; margin-bottom:30px;">Entre para conversar com os membros deste canal.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto; padding:15px 40px; font-size:18px; box-shadow:0 10px 20px rgba(102,252,241,0.3); border-radius:30px;">${t('join_call')}</button></div>`;
+        inpForm.style.display = 'none'; document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px; margin-bottom:20px; text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white; font-family:'Rajdhani'; font-size:28px; margin:0;">CANAL DE VOZ</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto; padding:15px 40px; font-size:18px; box-shadow:0 10px 20px rgba(102,252,241,0.3); border-radius:30px;">${t('join_call')}</button></div>`;
     } else {
         if(type === 'media') { inp.disabled = true; inp.placeholder = t('media_only'); emj.style.display = 'none'; mic.style.display = 'none'; } else if(type === 'text') { inp.placeholder = t('base_msg_placeholder'); clip.style.display = 'none'; mic.style.display = 'flex'; } else { inp.placeholder = t('base_msg_placeholder'); }
         if(changingChannel) { document.getElementById('comm-chat-list').innerHTML = ''; } await fetchCommMessages(chid); if(!commWS || commWS.readyState !== WebSocket.OPEN) { connectCommWS(chid); }
@@ -1882,6 +1824,7 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
         res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
+# SISTEMA DE LIGAÇÃO PRIVADA (RINGING)
 @app.post("/call/ring/dm")
 async def ring_dm(d: CallRingDMData, db: Session=Depends(get_db)):
     caller = db.query(User).get(d.caller_id)
@@ -1919,6 +1862,16 @@ async def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=For
     db.add(CommunityMember(comm_id=c.id, user_id=user_id, role="admin"))
     db.add(CommunityChannel(comm_id=c.id, name="geral", channel_type="livre", is_private=0, banner_url=banner_url))
     db.commit()
+    return {"status": "ok"}
+
+@app.post("/community/join")
+async def join_comm(d: JoinCommData, db: Session=Depends(get_db)):
+    c = db.query(Community).get(d.comm_id)
+    if not c or c.is_private: return {"status": "error"}
+    ext = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.user_id).first()
+    if not ext:
+        db.add(CommunityMember(comm_id=c.id, user_id=d.user_id, role="member"))
+        db.commit()
     return {"status": "ok"}
 
 @app.post("/community/edit")
@@ -2062,6 +2015,10 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
     try:
         while True:
             txt = await ws.receive_text()
+            if txt == "ping":
+                await ws.send_text(json.dumps({"type": "pong"}))
+                continue
+                
             db = SessionLocal()
             msg_id = None
             now_iso = datetime.utcnow().isoformat() + "Z"
