@@ -741,12 +741,23 @@ const T = {
     }
 };
 
-let sysLang = navigator.language.substring(0,2);
+// --- TRADUTOR BLINDADO ---
+let sysLang = navigator.language ? navigator.language.substring(0,2) : 'en';
 let validLangs = ['pt', 'en', 'es'];
 window.currentLang = localStorage.getItem('lang');
-if(!window.currentLang) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; localStorage.setItem('lang', window.currentLang); }
 
-function t(key) { return T[window.currentLang][key] || key; }
+// Se tiver lixo na memória do navegador ou um idioma não suportado, força o inglês!
+if(!validLangs.includes(window.currentLang)) { 
+    window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; 
+    localStorage.setItem('lang', window.currentLang); 
+}
+
+// Função de tradução imune a curto-circuitos
+function t(key) { 
+    let dict = T[window.currentLang];
+    if (!dict) dict = T['en']; // Prevenção de falha máxima
+    return dict[key] || "Erro_Txt"; 
+}
 function changeLanguage(lang) { localStorage.setItem('lang', lang); location.reload(); }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -912,9 +923,10 @@ async function doLogin(){
         if(!r.ok) throw 1;
         user=await r.json();
         startApp();
+        btn.innerText = oldText; // Restaura o botão após o login
     } catch(e) {
-        btn.innerText = oldText;
-        showToast("Erro de Conexão. Tente novamente.");
+        btn.innerText = oldText; // Restaura o botão se der erro
+        showToast("Erro: Credenciais erradas ou servidor ocupado.");
     }
 }
 
@@ -2033,4 +2045,5 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
