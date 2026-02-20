@@ -4,6 +4,7 @@ import hashlib
 import random
 import os
 import logging
+import threading
 from typing import List
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -185,7 +186,8 @@ class CommunityRequest(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 try: Base.metadata.create_all(bind=engine)
-except Exception as e: logger.error(f"Erro BD inicial: {e}")
+except Exception as e: logger.error(f"Erro BD: {e}")
+
 
 # --- APP FASTAPI ---
 app = FastAPI(title="For Glory Cloud")
@@ -194,44 +196,54 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 if not os.path.exists("static"): os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- NOVO: INSPETOR DE BANCO DE DADOS (AUTO-REPARO SEGURO) ---
+# --- NOVO: INSPETOR DE BANCO DE DADOS (AUTO-REPARO DE 100% EFICIÊNCIA) ---
 @app.on_event("startup")
 def startup_db_fix():
-    try:
-        inspector = inspect(engine)
-        with engine.begin() as conn:
+    def upgrade_db():
+        try:
+            insp = inspect(engine)
+            
             if "sqlite" in str(engine.url):
-                try: conn.execute(text("PRAGMA journal_mode=WAL;"))
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(text("PRAGMA journal_mode=WAL;"))
+                        conn.commit()
                 except: pass
-
-            # Reparo da Tabela Users
-            if inspector.has_table("users"):
-                user_cols = [c['name'] for c in inspector.get_columns('users')]
-                if 'is_invisible' not in user_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0"))
-                if 'role' not in user_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"))
             
-            # Reparo da Tabela de Mensagens
-            if inspector.has_table("private_messages"):
-                pm_cols = [c['name'] for c in inspector.get_columns('private_messages')]
-                if 'is_read' not in pm_cols:
-                    conn.execute(text("ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0"))
-
-            # Reparo da Tabela de Comunidades (O Bug dos Banners estava aqui!)
-            if inspector.has_table("communities"):
-                comm_cols = [c['name'] for c in inspector.get_columns('communities')]
-                if 'banner_url' not in comm_cols:
-                    conn.execute(text("ALTER TABLE communities ADD COLUMN banner_url VARCHAR DEFAULT ''"))
+            # Mapeamento do que falta no banco de dados antigo
+            tables_to_check = {
+                "users": [
+                    ("is_invisible", "INTEGER DEFAULT 0"),
+                    ("role", "VARCHAR DEFAULT 'membro'")
+                ],
+                "private_messages": [
+                    ("is_read", "INTEGER DEFAULT 0")
+                ],
+                "communities": [
+                    ("banner_url", "VARCHAR DEFAULT ''")
+                ],
+                "community_channels": [
+                    ("banner_url", "VARCHAR DEFAULT ''")
+                ]
+            }
             
-            # Reparo da Tabela de Canais
-            if inspector.has_table("community_channels"):
-                ch_cols = [c['name'] for c in inspector.get_columns('community_channels')]
-                if 'banner_url' not in ch_cols:
-                    conn.execute(text("ALTER TABLE community_channels ADD COLUMN banner_url VARCHAR DEFAULT ''"))
-        logger.info("Auto-reparo do Banco de Dados concluído com sucesso!")
-    except Exception as e:
-        logger.error(f"Erro no Auto-Reparo (Ignorado para não travar o app): {e}")
+            # Adiciona apenas as colunas que estão faltando sem usar timeout
+            for table_name, cols in tables_to_check.items():
+                if insp.has_table(table_name):
+                    existing_cols = [c['name'] for c in insp.get_columns(table_name)]
+                    for col_name, col_type in cols:
+                        if col_name not in existing_cols:
+                            try:
+                                with engine.connect() as conn:
+                                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                                    conn.commit()
+                            except Exception as e:
+                                logger.error(f"Erro ao atualizar {table_name}: {e}")
+        except Exception as e:
+            logger.error(f"Erro no Inspector Geral: {e}")
+
+    # Roda em segundo plano para o seu site ligar de imediato
+    threading.Thread(target=upgrade_db).start()
 
 
 # --- SISTEMA DE CARREIRA MILITAR E MEDALHAS ---
@@ -330,6 +342,7 @@ class ReadData(BaseModel): uid: int
 class JoinCommData(BaseModel): user_id: int; comm_id: int
 class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
 
+# --- FUNÇÕES DE BD E CRIPTOGRAFIA ---
 def get_db():
     db = SessionLocal()
     try: yield db
@@ -338,8 +351,7 @@ def get_db():
 def criptografar(s): 
     return hashlib.sha256(s.encode()).hexdigest()
 
-
-# --- FRONTEND (HTML/CSS/JS) ---
+# --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO (À PROVA DE FALHAS) ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -483,6 +495,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
     #call-hud { bottom: 85px; width:95%; padding:10px; }
+    .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
 </style>
 </head>
@@ -576,6 +589,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
     </div>
+
     <div id="content-area">
         <div id="view-profile" class="view">
             <div class="profile-header-container">
@@ -590,8 +604,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="p-emblems" style="margin-bottom:10px;"></div>
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
+            
             <div id="p-progression-box"></div>
             <div id="p-medals-box" style="text-align:center;"></div>
+            
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
                 <div class="search-glass">
@@ -608,6 +624,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;" data-i18n="disconnect">DESCONECTAR</button>
             </div>
         </div>
+        
         <div id="view-inbox" class="view">
             <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;font-size:20px;" data-i18n="private_msgs">MENSAGENS PRIVADAS</div>
@@ -615,10 +632,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
         </div>
+        
         <div id="view-feed" class="view active">
             <div id="feed-container"></div>
             <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
         </div>
+        
         <div id="view-mycomms" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
                 <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="my_bases">🛡️ MINHAS BASES</span>
@@ -628,6 +647,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
             </div>
         </div>
+        
         <div id="view-explore" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
                 <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="explore_bases">🌐 EXPLORAR BASES</span>
@@ -641,6 +661,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
             </div>
         </div>
+        
         <div id="view-history" class="view">
             <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
                 <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="my_history">🕒 MEU HISTÓRICO</span>
@@ -649,6 +670,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="my-posts-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin:0 auto; max-width:800px;"></div>
             </div>
         </div>
+        
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
@@ -667,13 +689,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 </form>
             </div>
         </div>
+        
         <div id="view-comm-dashboard" class="view comm-layout">
             <div class="comm-topbar" id="comm-header">
                 <button onclick="closeComm()" style="background:rgba(0,0,0,0.5); border:1px solid #444; border-radius:8px; padding:5px 10px; color:white; font-size:18px; cursor:pointer;">⬅</button>
                 <div id="active-comm-name">NOME DA BASE</div>
-                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️</button>
+                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
             </div>
             <div class="comm-channels-bar" id="comm-channels-bar"></div>
+            
             <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
                 <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
                 <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
@@ -685,6 +709,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                     <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
                 </form>
             </div>
+            
             <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding-bottom:30px; align-items:flex-start; justify-content:center; flex-direction:row; background: var(--dark-bg);">
                 <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:16px; width:100%; max-width:600px; margin-top:20px; overflow:hidden; box-shadow:0 15px 35px rgba(0,0,0,0.5);">
                     <div id="c-info-banner" style="width:100%; height:160px; background-size:cover; background-position:center; position:relative; background-color:#111; border-bottom:1px solid #333;">
@@ -713,6 +738,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 </div>
             </div>
         </div>
+        
         <div id="view-public-profile" class="view">
             <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;" data-i18n="back">⬅ Voltar</button>
             <div class="profile-header-container">
@@ -804,12 +830,12 @@ const T = {
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar',
-        'base_members': 'Miembros', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
-        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL',
+        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
+        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL',
         'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):'
     }
 };
@@ -842,7 +868,7 @@ function changeLanguage(lang) {
 
 document.addEventListener("DOMContentLoaded", () => {
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
-    document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag} ▼`;
+    document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag}`;
     
     document.querySelectorAll('[data-i18n]').forEach(el => {
         let k = el.getAttribute('data-i18n');
@@ -896,7 +922,6 @@ function toggleAuth(m){
     document.getElementById(m+'-form').classList.remove('hidden');
 }
 
-// --- LOGIN SEGURO DESCOMPRIMIDO ---
 async function doLogin() {
     let btn = document.querySelector('#login-form .btn-main');
     let oldText = btn.innerText;
@@ -1042,7 +1067,6 @@ function updateStatusDots() {
     });
 }
 
-// --- INBOX E SOLICITAÇÕES DESCOMPRIMIDOS ---
 async function fetchUnread() {
     if(!user) return;
     try {
@@ -1201,7 +1225,7 @@ async function handleReq(rid, act) {
     } catch(e) { console.error(e); }
 }
 
-// --- CRIAÇÃO DE BASES E CANAIS COM FALLBACK (BLINDADO) ---
+// --- CRIAÇÃO DE BASES E CANAIS BLINDADA ---
 async function submitCreateComm(e) {
     e.preventDefault();
     let n = document.getElementById('new-comm-name').value.trim(); 
@@ -1218,7 +1242,7 @@ async function submitCreateComm(e) {
     try {
         let safeName = encodeURIComponent(n);
         let av = "https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";
-        // SE NÃO MANDAR BANNER, GERA UM PLACEHOLDER PARA NÃO QUEBRAR O LAYOUT!
+        // PREVENÇÃO DE ERRO: SE NÃO MANDAR BANNER, GERA IMAGEM VAZIA PARA NÃO BUGAR O LAYOUT INFO
         let ban = "https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;
         
         if(avFile) { let c = await uploadToCloudinary(avFile); av = c.secure_url; }
@@ -1774,6 +1798,56 @@ async function openChat(id, name, type) {
 function sendDM() { let i = document.getElementById('dm-msg'); let msg = i.value.trim(); if(msg && dmWS && dmWS.readyState === WebSocket.OPEN) { dmWS.send(msg); i.value = ''; toggleEmoji(true); } }
 async function uploadDMImage(){ let f=document.getElementById('dm-file').files[0]; if(!f)return; try{ let c=await uploadToCloudinary(f); if(dmWS) dmWS.send(c.secure_url); } catch(e){alert("Erro: " + e)} }
 
+async function loadMyComms() {
+    try {
+        let r = await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
+        let mList = document.getElementById('my-comms-grid'); mList.innerHTML = '';
+        if((d.my_comms || []).length === 0) mList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;
+        (d.my_comms || []).forEach(c => { mList.innerHTML += `<div class="comm-card" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`; });
+    } catch(e) {}
+}
+
+async function loadPublicComms() {
+    try {
+        let r = await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json();
+        let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
+        if((d || []).length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
+        (d || []).forEach(c => { 
+            let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
+            pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
+        });
+    } catch(e) {}
+}
+
+function clearCommSearch() { document.getElementById('search-comm-input').value = ''; loadPublicComms(); }
+
+async function searchComms() {
+    try {
+        let q = document.getElementById('search-comm-input').value.trim();
+        let r = await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`); let d = await r.json();
+        let pList = document.getElementById('public-comms-grid'); pList.innerHTML = '';
+        if((d || []).length === 0) pList.innerHTML = `<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;
+        (d || []).forEach(c => { 
+            let btnStr = c.is_private ? `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:orange; color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>` : `<button class="glass-btn" style="padding:5px 10px; width:100%; border-color:#2ecc71; color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;
+            pList.innerHTML += `<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`; 
+        });
+    } catch(e) {}
+}
+
+async function joinCommunity(cid) {
+    try {
+        let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
+        if(r.ok) { loadPublicComms(); openCommunity(cid); }
+    } catch(e) {}
+}
+
+async function requestCommJoin(cid) {
+    try {
+        let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})});
+        if(r.ok) { let d = await r.json(); }
+    } catch(e) {}
+}
+
 async function openCommunity(cid) {
     activeCommId = cid;
     goView('comm-dashboard'); 
@@ -1835,7 +1909,12 @@ async function openCommunity(cid) {
     } catch(e) { console.error(e); }
 }
 
-// RESTANTE DAS FUNÇÕES DO CHAT E UPLOAD
+async function promoteMember(cid, tid) { try { let r = await fetch('/community/member/promote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, admin_id:user.id, target_id:tid})}); if(r.ok) { openCommunity(cid); } } catch(e){} }
+async function demoteMember(cid, tid) { try { let r = await fetch('/community/member/demote', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comm_id:cid, creator_id:user.id, target_id:tid})}); if(r.ok) { openCommunity(cid); } } catch(e){} }
+
+function showCommInfo() { document.getElementById('comm-chat-area').style.display='none'; document.getElementById('comm-info-area').style.display='flex'; }
+function closeComm() { goView('mycomms', document.querySelectorAll('.nav-btn')[3]); if(commWS) commWS.close(); }
+
 async function fetchCommMessages(chid) {
     let list = document.getElementById('comm-chat-list');
     try {
@@ -1843,7 +1922,7 @@ async function fetchCommMessages(chid) {
         if(r.ok) {
             let msgs = await r.json();
             let isAtBottom = (list.scrollHeight - list.scrollTop <= list.clientHeight + 50);
-            msgs.forEach(d => {
+            (msgs || []).forEach(d => {
                 let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
                 if(!document.getElementById(msgId)) {
                     let m = (d.user_id === user.id); let c = d.content; let delBtn = '';
