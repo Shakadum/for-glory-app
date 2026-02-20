@@ -285,14 +285,26 @@ def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
 @app.on_event("startup")
 def startup():
+    import threading # Tática de escape
+    
     if "sqlite" in str(engine.url):
         with engine.connect() as conn:
             try: conn.execute(text("PRAGMA journal_mode=WAL;")); conn.commit()
             except: pass
-    for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
-        try:
-            with engine.connect() as conn: conn.execute(text(query)); conn.commit()
-        except Exception: pass
+            
+    def upgrade_db():
+        for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
+            try:
+                with engine.connect() as conn:
+                    # Se o banco demorar mais de 3 segundos, ele desiste e liga o servidor mesmo assim!
+                    if "postgres" in str(engine.url):
+                        conn.execute(text("SET statement_timeout = '3s'"))
+                    conn.execute(text(query))
+                    conn.commit()
+            except Exception: pass
+            
+    # Joga a atualização do banco para o Segundo Plano para NÃO TRAVAR o Login
+    threading.Thread(target=upgrade_db).start()
 
 # --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM CALL SFU ---
 html_content = r"""
@@ -891,9 +903,36 @@ function updateStealthUI() {
 
 async function requestReset() { let email = document.getElementById('f-email').value; if(!email) return showToast("Erro!"); try { let r = await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email: email}) }); showToast("Enviado!"); toggleAuth('login'); } catch(e) { showToast("Erro"); } }
 async function doResetPassword() { let newPass = document.getElementById('new-pass').value; if(!newPass) return showToast("Erro!"); try { let r = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: window.resetToken, new_password: newPass}) }); if(r.ok) { showToast("Alterada!"); toggleAuth('login'); } else { showToast("Link expirado."); } } catch(e) { showToast("Erro"); } }
-async function doLogin(){try{let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});if(!r.ok)throw 1;user=await r.json();startApp()}catch(e){showToast("Erro Login")}}
-async function doRegister(){try{let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});if(!r.ok)throw 1;showToast("Registrado!");toggleAuth('login')}catch(e){showToast("Erro Registro")}}
+async function doLogin(){
+    let btn = document.querySelector('#login-form .btn-main');
+    let oldText = btn.innerText;
+    btn.innerText = "CARREGANDO...";
+    try {
+        let r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('l-user').value,password:document.getElementById('l-pass').value})});
+        if(!r.ok) throw 1;
+        user=await r.json();
+        startApp();
+    } catch(e) {
+        btn.innerText = oldText;
+        showToast("Erro de Conexão. Tente novamente.");
+    }
+}
 
+async function doRegister(){
+    let btn = document.querySelector('#register-form .btn-main');
+    let oldText = btn.innerText;
+    btn.innerText = "CRIANDO REGISTRO...";
+    try {
+        let r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('r-user').value,email:document.getElementById('r-email').value,password:document.getElementById('r-pass').value})});
+        if(!r.ok) throw 1;
+        showToast("Registrado!");
+        toggleAuth('login');
+        btn.innerText = oldText;
+    } catch(e) {
+        btn.innerText = oldText;
+        showToast("Erro ao Registrar. Já existe?");
+    }
+}
 function renderMedals(boxId, medalsData) {
     let box = document.getElementById(boxId);
     if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
@@ -1994,3 +2033,4 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
