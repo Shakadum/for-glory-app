@@ -237,7 +237,7 @@ def get_db():
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-# --- FRONTEND (HTML/CSS/JS) ---
+# --- FRONTEND COMPLETO ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -307,16 +307,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .msg-row{display:flex;gap:10px;max-width:85%; animation: fadeIn 0.2s ease-out;}
 .msg-row.mine{align-self:flex-end;flex-direction:row-reverse}
 .msg-av{width:36px;height:36px;border-radius:50%;object-fit:cover; background:#111; cursor:pointer;}
-.msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px; position:relative;}
+.msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px; position:relative; min-width:80px;}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .del-msg-btn { font-size:12px; cursor:pointer; color:#ff5555; opacity:0.6; position:absolute; bottom:-15px; right:5px; transition:0.2s; }
 .del-msg-btn:hover { opacity:1; transform:scale(1.2); }
+.msg-time { display:block; font-size:10px; color:rgba(255,255,255,0.5); text-align:right; margin-top:4px; font-family:'Inter', sans-serif;}
+
+/* MENSAGEM FANTASMA (DELETADA) */
 .msg-deleted { font-style: italic; color: #ffaa00; background: rgba(255,170,0,0.1); padding: 5px 10px; border-radius: 8px; font-size: 13px; display: inline-block; border: 1px dashed rgba(255,170,0,0.5); }
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
 /* COMUNIDADES E BASES */
-.comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); overflow:hidden;}
+.comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
 .comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
@@ -557,7 +560,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
-var user=null, dmWS=null, commWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
+var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
 var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
@@ -568,6 +571,17 @@ const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","�
 
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
+
+// FORMATADOR TÁTICO DE DATA/HORA
+function formatMsgTime(iso) {
+    if(!iso) return "";
+    let d = new Date(iso);
+    let dia = String(d.getDate()).padStart(2, '0');
+    let mes = String(d.getMonth()+1).padStart(2, '0');
+    let h = String(d.getHours()).padStart(2, '0');
+    let m = String(d.getMinutes()).padStart(2, '0');
+    return `${dia}/${mes} às ${h}:${m}`;
+}
 
 function initEmojis() {
     let g = document.getElementById('emoji-grid'); if(!g) return; g.innerHTML = '';
@@ -613,80 +627,41 @@ function updateStatusDots() {
     });
 }
 
-// 🔔 SISTEMA DE NOTIFICAÇÃO (TOAST E BADGE)
-// 1. O RADAR GERAL DE MENSAGENS E ALERTAS
+// 🔔 SISTEMA DE NOTIFICAÇÃO E RADAR DE MENSAGENS
 async function fetchUnread() {
     if(!user) return;
     try {
-        let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); 
-        let d = await r.json(); 
-        window.unreadData = d.by_sender || {};
-        
+        let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); window.unreadData = d.by_sender || {};
         let badge = document.getElementById('inbox-badge');
+        
         if(d.total > 0) { 
             badge.innerText = d.total; 
             badge.style.display = 'block'; 
-            badge.style.top = '0px'; // Ajuste para não cortar no celular
+            badge.style.top = '0px'; 
             badge.style.right = '0px';
-        } else { 
-            badge.style.display = 'none'; 
-        }
+        } else { badge.style.display = 'none'; }
         
         if (window.lastTotalUnread !== undefined && d.total > window.lastTotalUnread) {
             showToast("🔔 Nova mensagem privada!");
         }
         window.lastTotalUnread = d.total;
 
-        // Atualiza em tempo real as bolinhas dentro da aba Mensagens
-        document.querySelectorAll('.inbox-item').forEach(item => {
-            let sid = item.getAttribute('data-id'); 
-            let type = item.getAttribute('data-type'); 
-            let b = item.querySelector('.list-badge');
-            if(type === '1v1' && window.unreadData[sid]) { 
-                b.innerText = window.unreadData[sid]; 
-                b.style.display = 'block'; 
-            } else if(b) { 
-                b.style.display = 'none'; 
-            }
-        });
+        if(document.getElementById('view-inbox').classList.contains('active')) {
+            document.querySelectorAll('.inbox-item').forEach(item => {
+                let sid = item.getAttribute('data-id'); 
+                let type = item.getAttribute('data-type'); 
+                let b = item.querySelector('.list-badge');
+                if(type === '1v1' && window.unreadData[sid]) { 
+                    b.innerText = window.unreadData[sid]; b.style.display = 'block'; 
+                } else if(b) { b.style.display = 'none'; }
+            });
+        }
     } catch(e){}
 }
 
-// 2. A TELA DE MENSAGENS COM AS BOLINHAS PARA CADA SOLDADO
-async function loadInbox() {
-    let r = await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); 
-    let d = await r.json(); 
-    let b = document.getElementById('inbox-list'); 
-    b.innerHTML = '';
-    
-    if(d.groups.length === 0 && d.friends.length === 0) { 
-        b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; 
-        return; 
-    }
-    
-    d.groups.forEach(g => { 
-        b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">👥 Esquadrão DM</span></div></div>`; 
-    });
-    
-    d.friends.forEach(f => {
-        // Converte as IDs com precisão para puxar o número vermelho exato
-        let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
-        let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-        
-        b.innerHTML += `
-        <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
-            <div class="av-wrap">
-                <img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;">
-                <div class="status-dot" data-uid="${f.id}"></div>
-            </div>
-            <div style="flex:1;">
-                <b style="color:white;font-size:16px;">${f.name}</b><br>
-                <span style="font-size:12px;color:#888;">Mensagem Direta</span>
-            </div>
-            <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
-        </div>`;
-    });
-    updateStatusDots();
+async function toggleStealth() {
+    let r = await fetch('/profile/stealth', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})});
+    if(r.ok) { let d = await r.json(); user.is_invisible = d.is_invisible; updateStealthUI(); fetchOnlineUsers(); }
 }
 function updateStealthUI() {
     let btn = document.getElementById('btn-stealth'); let myDot = document.getElementById('my-status-dot');
@@ -701,9 +676,18 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    updateUI(); 
-    fetchOnlineUsers(); fetchUnread(); 
-    goView('profile', document.getElementById('nav-profile-btn')); // NASCE NO PERFIL
+    updateUI(); fetchOnlineUsers(); fetchUnread(); 
+    goView('profile', document.getElementById('nav-profile-btn'));
+    
+    // RADAR GLOBAL EM TEMPO REAL PARA NOTIFICAÇÕES
+    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
+    globalWS.onmessage = (e) => {
+        let d = JSON.parse(e.data);
+        if(d.type === 'ping') { fetchUnread(); }
+    };
+    globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
+
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
         fetchOnlineUsers(); fetchUnread(); 
@@ -738,7 +722,7 @@ function goView(v, btnElem){
     if(v === 'feed') loadFeed();
 }
 
-/* 🎤 RÁDIO DE VOZ HD COM CRONÔMETRO TÁTICO */
+/* 🎤 RÁDIO DE VOZ HD COM CRONÔMETRO */
 async function toggleRecord(type) {
     let btn = document.getElementById(`btn-mic-${type}`);
     let inpId = type === 'dm' ? 'dm-msg' : (type === 'comm' ? 'comm-msg' : `comment-inp-${type.split('-')[1]}`);
@@ -752,9 +736,7 @@ async function toggleRecord(type) {
         return; 
     }
     try {
-        let stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, sampleRate: 48000 } 
-        });
+        let stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, sampleRate: 48000 } });
         let options = {};
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) { options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 }; }
         
@@ -783,7 +765,6 @@ async function toggleRecord(type) {
         mediaRecorders[type].start();
         btn.classList.add('recording');
         
-        // HUD Cronômetro
         if(inp) {
             inp.disabled = true;
             recordSeconds[type] = 0;
@@ -854,8 +835,10 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
         let res = await r.json();
         if(res.status === 'ok') {
             let msgBubble = document.getElementById(`${t}-${id}`).querySelector('.msg-bubble');
-            msgBubble.innerHTML = `<span class="msg-deleted">🚫 Mensagem apagada</span>`;
-            let btn = document.getElementById(`${t}-${id}`).querySelector('.del-msg-btn');
+            let timeSpan = msgBubble.querySelector('.msg-time');
+            let timeStr = timeSpan ? timeSpan.outerHTML : '';
+            msgBubble.innerHTML = `<span class="msg-deleted">🚫 Mensagem apagada</span>${timeStr}`;
+            let btn = msgBubble.querySelector('.del-msg-btn');
             if(btn) btn.remove();
             showToast("Apagado dos registros.");
         } else if (res.status === 'timeout') {
@@ -903,8 +886,14 @@ async function loadInbox() {
     if(d.groups.length === 0 && d.friends.length === 0) { b.innerHTML = "<p style='text-align:center;color:#888;margin-top:20px;'>Sua caixa está vazia. Recrute aliados!</p>"; return; }
     d.groups.forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">👥 Esquadrão DM</span></div></div>`; });
     d.friends.forEach(f => {
-        let unreadCount = (window.unreadData && window.unreadData[f.id]) ? window.unreadData[f.id] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-        b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div><div class="list-badge" style="display:${badgeDisplay}">${unreadCount}</div></div>`;
+        let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; 
+        let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
+        b.innerHTML += `
+        <div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')">
+            <div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div>
+            <div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">Mensagem Direta</span></div>
+            <div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div>
+        </div>`;
     });
     updateStatusDots();
 }
@@ -935,13 +924,15 @@ async function fetchChatMessages(id, type) {
             let prefix = type === 'group' ? 'group_msg' : 'dm_msg'; let msgId = `${prefix}-${d.id}`;
             if(!document.getElementById(msgId)) {
                 let m = (d.user_id === user.id); let c = d.content; let delBtn = '';
+                let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
+                
                 if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
                 else {
                     if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
                     else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                     delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
                 }
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend',h);
             }
         });
@@ -961,14 +952,14 @@ function connectDmWS(id, name, type) {
         if(d.type === 'ping') return;
         let prefix = type === 'group' ? 'group_msg' : 'dm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
-            let delBtn = '';
+            let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
             if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
             else {
                 if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
                 else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
             }
-            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
         if(currentChatType === '1v1' && currentChatId === d.user_id) { fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); } else { fetchUnread(); }
@@ -1114,13 +1105,14 @@ async function fetchCommMessages(chid) {
             let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
             if(!document.getElementById(msgId)) {
                 let m = (d.user_id === user.id); let c = d.content; let delBtn = '';
+                let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                 if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
                 else {
                     if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
                     else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                     delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
                 }
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend', h);
             }
         });
@@ -1138,14 +1130,14 @@ function connectCommWS(chid) {
         if(d.type === 'ping') return;
         let prefix = 'comm_msg'; let msgId = `${prefix}-${d.id}`;
         if(!document.getElementById(msgId)) {
-            let delBtn = '';
+            let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
             if(c === '[DELETED]') { c = '<span class="msg-deleted">🚫 Mensagem apagada</span>'; } 
             else {
                 if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
                 else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
             }
-            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${delBtn}</div></div></div>`;
+            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
     };
@@ -1242,7 +1234,7 @@ async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
 @app.get("/inbox/unread/{uid}")
 async def get_unread(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
-    counts = Counter([u[0] for u in unread_pms])
+    counts = Counter([str(u[0]) for u in unread_pms]) # Converte ID pra string para o JS mapear corretamente
     return {"total": sum(counts.values()), "by_sender": dict(counts)}
 
 @app.post("/inbox/read/{sender_id}")
@@ -1326,7 +1318,7 @@ async def delete_msg(d: dict, db: Session=Depends(get_db)):
     
     if msg and msg.sender_id == uid:
         if (datetime.now() - msg.timestamp).total_seconds() > 300:
-            return {"status": "timeout", "msg": "Tempo limite de 5 minutos excedido. Essa mensagem entrou para a história."}
+            return {"status": "timeout", "msg": "Tempo limite de 5 minutos excedido."}
         msg.content = "[DELETED]"
         db.commit()
         return {"status": "ok"}
@@ -1484,7 +1476,7 @@ async def create_channel(d: dict, db: Session=Depends(get_db)):
 @app.get("/community/channel/{chid}/messages")
 async def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
     msgs = db.query(CommunityMessage).filter_by(channel_id=chid).order_by(CommunityMessage.timestamp.asc()).limit(100).all()
-    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.now() - m.timestamp).total_seconds() <= 300} for m in msgs]
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": m.timestamp.isoformat(), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.now() - m.timestamp).total_seconds() <= 300} for m in msgs]
 
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
@@ -1494,6 +1486,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             txt = await ws.receive_text()
             db = SessionLocal()
             msg_id = None
+            now_iso = datetime.now().isoformat()
             try:
                 u_fresh = db.query(User).filter(User.id == uid).first()
                 if ch.startswith("dm_"):
@@ -1502,15 +1495,33 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
                     db.add(new_msg); db.commit(); db.refresh(new_msg)
                     msg_id = new_msg.id
+                    now_iso = new_msg.timestamp.isoformat()
                 elif ch.startswith("comm_"):
                     chid = int(ch.split("_")[1])
                     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
                     db.add(new_msg); db.commit(); db.refresh(new_msg)
                     msg_id = new_msg.id
+                    now_iso = new_msg.timestamp.isoformat()
+                elif ch.startswith("group_"):
+                    grid = int(ch.split("_")[1])
+                    new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
+                    db.add(new_msg); db.commit(); db.refresh(new_msg)
+                    msg_id = new_msg.id
+                    now_iso = new_msg.timestamp.isoformat()
                 
                 if msg_id:
-                    user_data = {"id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt, "can_delete": True}
+                    user_data = {
+                        "id": msg_id, 
+                        "user_id": u_fresh.id, 
+                        "username": u_fresh.username, 
+                        "avatar": u_fresh.avatar_url, 
+                        "content": txt, 
+                        "can_delete": True, 
+                        "timestamp": now_iso
+                    }
                     await manager.broadcast(user_data, ch)
+                    if ch.startswith("dm_") or ch.startswith("group_"): 
+                        await manager.broadcast({"type": "ping"}, "Geral")
             except Exception as e: db.rollback()
             finally: db.close()
     except Exception:
@@ -1578,4 +1589,3 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
