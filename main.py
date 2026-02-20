@@ -298,306 +298,6 @@ def get_db():
     finally: db.close()
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-    import uvicorn
-import json
-import hashlib
-import random
-import os
-import logging
-import threading
-from typing import List
-from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text, inspect
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
-from datetime import datetime, timedelta
-from pydantic import BaseModel, EmailStr
-from fastapi.middleware.cors import CORSMiddleware
-import cloudinary
-import cloudinary.uploader
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from jose import jwt, JWTError
-from collections import Counter
-
-# --- CONFIGURAÇÕES GERAIS E CHAVES ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ForGlory")
-
-SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
-AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "") 
-ALGORITHM = "HS256"
-
-mail_conf = ConnectionConfig(
-    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "seu_email@gmail.com"),
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "sua_senha_app"),
-    MAIL_FROM = os.environ.get("MAIL_FROM", "seu_email@gmail.com"),
-    MAIL_PORT = 465,  
-    MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = False, 
-    MAIL_SSL_TLS = True,   
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
-)
-
-cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_NAME'), 
-    api_key=os.environ.get('CLOUDINARY_KEY'), 
-    api_secret=os.environ.get('CLOUDINARY_SECRET'), 
-    secure=True
-)
-
-# --- BANCO DE DADOS BLINDADO ---
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v6.db")
-
-if "sqlite" in DATABASE_URL:
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 20}, pool_size=15, max_overflow=30)
-else:
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    engine = create_engine(DATABASE_URL, pool_size=30, max_overflow=50, pool_pre_ping=True)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-friendship = Table('friendships', Base.metadata, 
-    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True), 
-    Column('friend_id', Integer, ForeignKey('users.id'), primary_key=True)
-)
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-    password_hash = Column(String)
-    xp = Column(Integer, default=0)
-    avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
-    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
-    bio = Column(String, default="Recruta do For Glory")
-    is_invisible = Column(Integer, default=0) 
-    role = Column(String, default="membro") 
-    friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
-
-class FriendRequest(Base):
-    __tablename__ = "friend_requests"
-    id = Column(Integer, primary_key=True, index=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    sender = relationship("User", foreign_keys=[sender_id])
-
-class Post(Base):
-    __tablename__ = "posts"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    content_url = Column(String)
-    media_type = Column(String)
-    caption = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    author = relationship("User")
-
-class Like(Base):
-    __tablename__ = "likes"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    post_id = Column(Integer, ForeignKey("posts.id"))
-
-class Comment(Base):
-    __tablename__ = "comments"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    post_id = Column(Integer, ForeignKey("posts.id"))
-    text = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    author = relationship("User")
-
-class PrivateMessage(Base):
-    __tablename__ = "private_messages"
-    id = Column(Integer, primary_key=True, index=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(String)
-    is_read = Column(Integer, default=0) 
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    sender = relationship("User", foreign_keys=[sender_id])
-
-class ChatGroup(Base):
-    __tablename__ = "chat_groups"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-
-class GroupMember(Base):
-    __tablename__ = "group_members"
-    id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("chat_groups.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
-
-class GroupMessage(Base):
-    __tablename__ = "group_messages"
-    id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("chat_groups.id"))
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    sender = relationship("User", foreign_keys=[sender_id])
-
-class Community(Base):
-    __tablename__ = "communities"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    description = Column(String)
-    avatar_url = Column(String)
-    banner_url = Column(String, default="")
-    is_private = Column(Integer, default=0) 
-    creator_id = Column(Integer, ForeignKey("users.id"))
-
-class CommunityMember(Base):
-    __tablename__ = "community_members"
-    id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey("communities.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
-    role = Column(String, default="member") 
-    user = relationship("User")
-
-class CommunityChannel(Base):
-    __tablename__ = "community_channels"
-    id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey("communities.id"))
-    name = Column(String)
-    channel_type = Column(String, default="livre") 
-    banner_url = Column(String, default="") 
-    is_private = Column(Integer, default=0) 
-
-class CommunityMessage(Base):
-    __tablename__ = "community_messages"
-    id = Column(Integer, primary_key=True, index=True)
-    channel_id = Column(Integer, ForeignKey("community_channels.id"))
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    sender = relationship("User", foreign_keys=[sender_id])
-
-class CommunityRequest(Base):
-    __tablename__ = "community_requests"
-    id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey("communities.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    user = relationship("User", foreign_keys=[user_id])
-
-try: Base.metadata.create_all(bind=engine)
-except Exception as e: logger.error(f"Erro BD inicial: {e}")
-
-app = FastAPI(title="For Glory Cloud")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
-if not os.path.exists("static"): os.makedirs("static")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-class ConnectionManager:
-    def __init__(self):
-        self.active = {}
-        self.user_ws = {} 
-    async def connect(self, ws: WebSocket, chan: str, uid: int):
-        await ws.accept()
-        if chan not in self.active: self.active[chan] = []
-        self.active[chan].append(ws)
-        if chan == "Geral": self.user_ws[uid] = ws
-    def disconnect(self, ws: WebSocket, chan: str, uid: int):
-        if chan in self.active and ws in self.active[chan]: self.active[chan].remove(ws)
-        if chan == "Geral" and uid in self.user_ws: del self.user_ws[uid]
-    async def broadcast(self, msg: dict, chan: str):
-        for conn in self.active.get(chan, []):
-            try: await conn.send_text(json.dumps(msg))
-            except: pass
-    async def send_personal(self, msg: dict, uid: int):
-        ws = self.user_ws.get(uid)
-        if ws:
-            try: await ws.send_text(json.dumps(msg))
-            except: pass
-
-manager = ConnectionManager()
-
-@app.on_event("startup")
-def startup_db_fix():
-    def upgrade_db():
-        try:
-            insp = inspect(engine)
-            if "sqlite" in str(engine.url):
-                try: 
-                    with engine.connect() as conn:
-                        conn.execute(text("PRAGMA journal_mode=WAL;"))
-                        conn.commit()
-                except: pass
-            tables_to_check = {
-                "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
-                "private_messages": [("is_read", "INTEGER DEFAULT 0")],
-                "communities": [("banner_url", "VARCHAR DEFAULT ''")],
-                "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
-            }
-            for table_name, cols in tables_to_check.items():
-                if insp.has_table(table_name):
-                    existing_cols = [c['name'] for c in insp.get_columns(table_name)]
-                    for col_name, col_type in cols:
-                        if col_name not in existing_cols:
-                            try:
-                                with engine.connect() as conn:
-                                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
-                                    conn.commit()
-                            except Exception as e: pass
-        except Exception as e: pass
-    threading.Thread(target=upgrade_db).start()
-
-def get_user_badges(xp, user_id, role):
-    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
-    rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
-    for i, t in enumerate(tiers):
-        if xp >= t[0]:
-            rank = t[1]; color = t[3]; next_xp = t[2]; next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
-    percent = int((xp / next_xp) * 100) if next_xp > xp else 100
-    if percent > 100: percent = 100
-    special_emblem = ""
-    if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
-    elif role == "admin": special_emblem = "🛡️ Admin"
-    elif role == "vip": special_emblem = "🌟 VIP"
-    medals = []
-    all_medals = [{"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50}, {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500}, {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000}, {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000}, {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}]
-    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
-    for m in all_medals:
-        earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
-        medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
-    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
-
-def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
-def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-def verify_reset_token(token: str):
-    try:
-        p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return p.get("sub") if p.get("type") == "reset" else None
-    except JWTError: return None
-
-class LoginData(BaseModel): username: str; password: str
-class RegisterData(BaseModel): username: str; email: str; password: str
-class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
-class RequestActionData(BaseModel): request_id: int; action: str
-class DeletePostData(BaseModel): post_id: int; user_id: int
-class ForgotPasswordData(BaseModel): email: EmailStr
-class ResetPasswordData(BaseModel): token: str; new_password: str
-class CommentData(BaseModel): user_id: int; post_id: int; text: str
-class DelCommentData(BaseModel): comment_id: int; user_id: int
-class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
-class ReadData(BaseModel): uid: int 
-class JoinCommData(BaseModel): user_id: int; comm_id: int
-class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
-class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
-class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
-
-def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
-
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
     html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -614,7 +314,6 @@ def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
-/* SELETOR DE IDIOMA PREMIUM */
 .lang-dropdown { position:absolute; top:15px; right:15px; z-index:9999; }
 .lang-btn { background:rgba(11,12,16,0.6); color:white; border:1px solid var(--primary); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:bold; font-family:'Rajdhani'; backdrop-filter:blur(5px); display:flex; align-items:center; gap:5px; transition:0.3s; }
 .lang-btn:hover { background:rgba(102,252,241,0.2); box-shadow:0 0 15px rgba(102,252,241,0.3); }
@@ -718,6 +417,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; position:relative; z-index:2; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
 
+/* HEADER DA BASE E BANNER */
 .comm-topbar { padding: 15px 20px; background: rgba(11,12,16,0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10; gap:10px; position:relative; background-size: cover; background-position: center; }
 .comm-topbar::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.7); z-index: 1; }
 .comm-topbar > * { position: relative; z-index: 2; }
@@ -760,7 +460,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     #sidebar::-webkit-scrollbar { display:none; }
     .nav-btn { margin-bottom: 0; margin-top: 7px; flex-shrink: 0;}
     .btn-float{bottom:80px}
-    #floating-call-btn { bottom: 80px; right: 20px; width:60px; height:60px; font-size:30px; }
+    #floating-call-btn { bottom: 80px; right: 20px; width:55px; height:55px; font-size:24px; }
     #expanded-call-panel { bottom: 150px; right: 20px; width: 90%; max-width: 320px; }
     .glass-btn.btn-call-header { padding:6px 10px; font-size:11px; }
 }
@@ -1174,8 +874,8 @@ const T = {
         'codename': 'CODINOME', 'password': 'SENHA', 'new_user': 'NOVO USUÁRIO', 'email_real': 'EMAIL (Real)', 'enlist': 'ALISTAR-SE', 'back': 'Voltar',
         'recover': 'RECUPERAR ACESSO', 'reg_email': 'SEU EMAIL CADASTRADO', 'send_link': 'ENVIAR LINK', 'new_pass_title': 'NOVA SENHA', 'new_pass': 'NOVA SENHA', 'save_pass': 'SALVAR SENHA',
         'confirm_action': 'CONFIRMAR AÇÃO', 'confirm_del': 'Tem certeza que deseja apagar isto?', 'delete': 'APAGAR', 'cancel': 'CANCELAR',
-        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
-        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome do Canal', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'voice_channel': '🎙️ Canal de Voz', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
+        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa de Elite)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
+        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'voice_channel': '🎙️ Canal de Voz', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
@@ -1186,7 +886,7 @@ const T = {
         'msg_placeholder': 'Mensagem secreta...', 'base_msg_placeholder': 'Mensagem para a base...',
         'at': 'às', 'deleted_msg': '🚫 Apagada', 'audio_proc': 'Processando...',
         'recording': '🔴 Gravando...', 'click_to_send': '(Clique p/ enviar)',
-        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão',
+        'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão DM',
         'no_bases': 'Você ainda não tem bases.', 'no_bases_found': 'Nenhuma base encontrada.', 'no_history': 'Nenhuma missão registrada no Feed.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar', 'kick': 'Expulsar',
@@ -1238,7 +938,7 @@ const T = {
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar', 'kick': 'Expulsar',
@@ -1424,7 +1124,7 @@ async function handleCommReq(rid, act) {
     try {
         let r = await fetch('/community/request/handle', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({req_id:rid, action:act, admin_id:user.id}) });
         if(r.ok) { showToast("Membro atualizado!"); fetchUnread(); await openCommunity(activeCommId); showCommInfo(); }
-    } catch(e) {}
+    } catch(e) { console.error(e); }
 }
 
 async function submitCreateComm(e) {
@@ -1437,7 +1137,7 @@ async function submitCreateComm(e) {
         if(banFile) { let c = await uploadToCloudinary(banFile); ban = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av); fd.append('banner_url', ban);
         let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Criada!"); loadMyComms(); goView('mycomms'); }
+        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Criada!"); loadMyComms(); goView('mycomms', document.querySelectorAll('.nav-btn')[3]); }
     } catch(err) { showToast("Erro ao criar a base."); } finally { btn.disabled = false; btn.innerText = t('establish'); }
 }
 
@@ -1754,7 +1454,7 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
             if(res.status === 'ok') {
                 let msgBubble = document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble'); let timeSpan = msgBubble.querySelector('.msg-time'); let timeStr = timeSpan ? timeSpan.outerHTML : '';
                 msgBubble.innerHTML = `<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`; let btn = document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn'); if(btn) btn.remove();
-            }
+            } else if (res.status === 'timeout') { showToast(res.msg); }
         }
     } catch(e) {}
 };
@@ -1787,7 +1487,11 @@ async function fetchChatMessages(id, type) {
                 if(!document.getElementById(msgId)) {
                     let m = (d.user_id === user.id); let c = d.content; let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                     if(c === '[DELETED]') { c = `<span class="msg-deleted">${t('deleted_msg')}</span>`; } 
-                    else { if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; } else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } } delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : ''; }
+                    else {
+                        if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                        else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                        delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+                    }
                     let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                     list.insertAdjacentHTML('beforeend',h);
                 }
@@ -2016,7 +1720,7 @@ async function searchUsers(){
 </body>
 </html>
 """
-    # --- ROTAS DA API ---
+# --- ROTAS DA API ---
 @app.get("/", response_class=HTMLResponse)
 async def get(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
