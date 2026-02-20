@@ -188,107 +188,11 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD inicial: {e}")
 
-# --- APP FASTAPI ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 if not os.path.exists("static"): os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --- INSPETOR DE BANCO DE DADOS (AUTO-REPARO SEGURO) ---
-@app.on_event("startup")
-def startup_db_fix():
-    def upgrade_db():
-        try:
-            insp = inspect(engine)
-            if "sqlite" in str(engine.url):
-                try: 
-                    with engine.connect() as conn:
-                        conn.execute(text("PRAGMA journal_mode=WAL;"))
-                        conn.commit()
-                except: pass
-
-            tables_to_check = {
-                "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
-                "private_messages": [("is_read", "INTEGER DEFAULT 0")],
-                "communities": [("banner_url", "VARCHAR DEFAULT ''")],
-                "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
-            }
-            
-            for table_name, cols in tables_to_check.items():
-                if insp.has_table(table_name):
-                    existing_cols = [c['name'] for c in insp.get_columns(table_name)]
-                    for col_name, col_type in cols:
-                        if col_name not in existing_cols:
-                            try:
-                                with engine.connect() as conn:
-                                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
-                                    conn.commit()
-                            except Exception as e: pass
-        except Exception as e: pass
-    threading.Thread(target=upgrade_db).start()
-
-
-# --- SISTEMA DE CARREIRA MILITAR E MEDALHAS ---
-def get_user_badges(xp, user_id, role):
-    tiers = [
-        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"),
-        (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"),
-        (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"),
-        (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"),
-        (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"),
-        (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"),
-        (50000, "General ⭐", 50000, "#FFD700")
-    ]
-    rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
-    
-    for i, t in enumerate(tiers):
-        if xp >= t[0]:
-            rank = t[1]; color = t[3]; next_xp = t[2]
-            next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
-            
-    percent = int((xp / next_xp) * 100) if next_xp > xp else 100
-    if percent > 100: percent = 100
-
-    special_emblem = ""
-    if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
-    elif role == "admin": special_emblem = "🛡️ Admin"
-    elif role == "vip": special_emblem = "🌟 VIP"
-
-    medals = []
-    all_medals = [
-        {"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50},
-        {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500},
-        {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000},
-        {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
-        {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
-    ]
-    
-    if user_id == 1 or role == "fundador": 
-        medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
-        
-    for m in all_medals:
-        earned = xp >= m['req']
-        missing = m['req'] - xp if not earned else 0
-        medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
-
-    return {
-        "rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, 
-        "percent": percent, "special_emblem": special_emblem, "medals": medals
-    }
-
-def get_utc_iso(dt): 
-    return dt.isoformat() + "Z" if dt else ""
-
-def create_reset_token(email: str): 
-    return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-
-def verify_reset_token(token: str):
-    try:
-        p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return p.get("sub") if p.get("type") == "reset" else None
-    except JWTError: 
-        return None
 
 class ConnectionManager:
     def __init__(self):
@@ -314,6 +218,64 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@app.on_event("startup")
+def startup_db_fix():
+    def upgrade_db():
+        try:
+            insp = inspect(engine)
+            if "sqlite" in str(engine.url):
+                try: 
+                    with engine.connect() as conn:
+                        conn.execute(text("PRAGMA journal_mode=WAL;"))
+                        conn.commit()
+                except: pass
+            tables_to_check = {
+                "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
+                "private_messages": [("is_read", "INTEGER DEFAULT 0")],
+                "communities": [("banner_url", "VARCHAR DEFAULT ''")],
+                "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
+            }
+            for table_name, cols in tables_to_check.items():
+                if insp.has_table(table_name):
+                    existing_cols = [c['name'] for c in insp.get_columns(table_name)]
+                    for col_name, col_type in cols:
+                        if col_name not in existing_cols:
+                            try:
+                                with engine.connect() as conn:
+                                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                                    conn.commit()
+                            except Exception as e: pass
+        except Exception as e: pass
+    threading.Thread(target=upgrade_db).start()
+
+def get_user_badges(xp, user_id, role):
+    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
+    rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
+    for i, t in enumerate(tiers):
+        if xp >= t[0]:
+            rank = t[1]; color = t[3]; next_xp = t[2]; next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
+    percent = int((xp / next_xp) * 100) if next_xp > xp else 100
+    if percent > 100: percent = 100
+    special_emblem = ""
+    if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
+    elif role == "admin": special_emblem = "🛡️ Admin"
+    elif role == "vip": special_emblem = "🌟 VIP"
+    medals = []
+    all_medals = [{"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50}, {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500}, {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000}, {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000}, {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}]
+    if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
+    for m in all_medals:
+        earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
+        medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
+    return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
+
+def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
+def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+def verify_reset_token(token: str):
+    try:
+        p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return p.get("sub") if p.get("type") == "reset" else None
+    except JWTError: return None
+
 class LoginData(BaseModel): username: str; password: str
 class RegisterData(BaseModel): username: str; email: str; password: str
 class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
@@ -335,9 +297,8 @@ def get_db():
     try: yield db
     finally: db.close()
 
-def criptografar(s): 
-    return hashlib.sha256(s.encode()).hexdigest()
-    # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO (À PROVA DE FALHAS E ALERTAS) ---
+def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+    # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO E BLINDADO ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -388,6 +349,14 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .call-btn-circle.muted { background:#ffaa00; color:#000; box-shadow:0 0 10px rgba(255,170,0,0.5); }
 .call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:30px; width:100%; padding:12px; font-size:16px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.3); margin-top:10px;}
 .call-btn-hangup:hover { background:#cc0000; }
+
+/* LAYOUT DE BOTÕES COMPACTOS NAS CONFIGS DA BASE */
+.admin-action-wrap { display:flex; gap:5px; margin-left:auto; }
+.admin-action-btn { background:rgba(255,255,255,0.1); border:1px solid #555; color:white; padding:4px 8px; border-radius:8px; cursor:pointer; transition:0.2s; font-size:12px; }
+.admin-action-btn:hover { transform:scale(1.1); box-shadow:0 0 10px rgba(255,255,255,0.2); }
+.admin-action-btn.danger { color:#ff5555; border-color:rgba(255,85,85,0.5); }
+.admin-action-btn.danger:hover { box-shadow:0 0 10px rgba(255,85,85,0.4); background:rgba(255,85,85,0.1); }
+.admin-action-btn.success { color:#2ecc71; border-color:rgba(46,204,113,0.5); }
 
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
@@ -472,7 +441,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
-/* TOAST FIXO E SEGURO */
+/* TOAST FIXO (Não some com o tempo errado) */
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
 #toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
@@ -920,7 +889,7 @@ const T = {
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar', 'kick': 'Expulsar',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova notificação!', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL', 'incoming_call': 'CHAMADA RECEBIDA',
-        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):'
+        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base:', 'ch_banner_opt': 'Banner do Canal:'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
@@ -945,7 +914,7 @@ const T = {
         'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote', 'demote': 'Demote', 'kick': 'Kick',
         'base_members': 'Members', 'entry_requests': 'Requests', 'destroy_base': 'DESTROY BASE',
         'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New notification!', 'in_call': 'IN CALL', 'join_call': 'JOIN CALL', 'incoming_call': 'INCOMING CALL',
-        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner:', 'ch_banner_opt': 'Channel Banner:'
+        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner (Optional):', 'ch_banner_opt': 'Channel Banner (Optional):'
     },
     'es': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Crear Cuenta', 'forgot': 'Olvidé la Contraseña',
@@ -1074,6 +1043,7 @@ function updateStatusDots() {
     document.querySelectorAll('.status-dot').forEach(dot => { let uid = parseInt(dot.getAttribute('data-uid')); if(!uid) return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); });
 }
 
+// --- NOTIFICAÇÕES GLOBAIS BLINDADAS ---
 async function fetchUnread() {
     if(!user) return;
     try {
@@ -1085,7 +1055,7 @@ async function fetchUnread() {
         
         let badgeBases = document.getElementById('bases-badge');
         if(d.comms.total > 0) { badgeBases.innerText = d.comms.total; badgeBases.style.display = 'block'; } else { badgeBases.style.display = 'none'; }
-
+        
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => { let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge'); if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; } });
         }
@@ -1225,18 +1195,24 @@ function startApp(){
         let d = JSON.parse(e.data);
         if(d.type === 'pong') return; 
         if(d.type === 'ping') { fetchUnread(); }
+        // NOTIFICAÇÃO ISOLADA NA TELA (SÓ DM)
         if(d.type === 'new_dm') {
             if(document.getElementById('view-dm').classList.contains('active') && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
-            else { showToast(t('new_msg_alert')); fetchUnread(); }
+            else { showToast("Mensagem de " + d.sender_name); fetchUnread(); }
         }
+        // ALERTA DE CALL RECEBIDA NA TELA (TOQUE DE CELULAR)
         if(d.type === 'incoming_call') {
-            document.getElementById('incoming-call-name').innerText = d.caller_name; document.getElementById('incoming-call-av').src = d.caller_avatar;
-            window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
+            document.getElementById('incoming-call-name').innerText = d.caller_name;
+            document.getElementById('incoming-call-av').src = d.caller_avatar;
+            window.pendingCallChannel = d.channel_name;
+            window.pendingCallType = d.call_type;
             document.getElementById('modal-incoming-call').classList.remove('hidden');
             try { window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true; window.ringtone.play(); } catch(err){}
         }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
+
+    // HEARTBEAT (PULSO PARA MANTER ONLINE SEMPRE!)
     setInterval(()=>{ if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } }, 20000);
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); fetchUnread(); },4000);
 }
@@ -1258,7 +1234,7 @@ function goView(v, btnElem){
 }
 
 /* =========================================
-   SISTEMA DE CALL (AGORA.IO SFU) BLINDADO E SILENCIOSO
+   SISTEMA DE CALL (AGORA.IO SFU) TOTALMENTE BLINDADO
    ========================================= */
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
@@ -1289,6 +1265,7 @@ async function connectToAgora(channelName, typeParam) {
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
         if (!conf.app_id) return showToast("Erro: APP ID do Rádio não configurado.");
+        
         if (rtc.client) { await rtc.client.leave(); }
         
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
@@ -1300,22 +1277,24 @@ async function connectToAgora(channelName, typeParam) {
         });
         rtc.client.on("user-unpublished", (remoteUser) => { delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); });
         
+        // NULL UID (GERA ID ÚNICO PARA NÃO DERRUBAR A LIGAÇÃO!)
         await rtc.client.join(conf.app_id, channelName, null, null);
         
         try {
             rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: "high_quality", AEC: true, ANS: true, AGC: false });
         } catch(micErr) {
-            showToast("Microfone bloqueado! Dê permissão ao navegador.");
-            await rtc.client.leave(); return;
+            showToast("Erro: Microfone bloqueado ou ausente!");
+            throw micErr; 
         }
         
         await rtc.client.publish([rtc.localAudioTrack]);
+        
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
         if (typeParam === 'channel' || typeParam === 'voice') {
             document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;animation:pulse 2s infinite; text-shadow: 0 0 20px #2ecc71;">🎙️</div><h3 style="color:var(--primary); font-family:'Rajdhani'; font-size:28px;">VOCÊ ESTÁ NA CALL</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p></div>`;
         }
-    } catch(e) { console.error(e); showToast("Erro ao conectar à central de Rádio."); leaveCall(); }
+    } catch(e) { console.error(e); leaveCall(); }
 }
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
@@ -1427,7 +1406,9 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
 };
 
 async function updateProfileState() { try { let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) {} }
+
 async function toggleLike(pid, btn) { try { let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})}); if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; } } catch(e) {} }
+
 async function toggleComments(pid) { let sec = document.getElementById(`comments-${pid}`); if(sec.style.display === 'block') { sec.style.display = 'none'; } else { sec.style.display = 'block'; loadComments(pid); } }
 
 async function loadComments(pid) {
@@ -1510,7 +1491,11 @@ async function searchComms() {
     } catch(e) {}
 }
 
-async function joinCommunity(cid) { try { let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})}); if(r.ok) { loadPublicComms(); openCommunity(cid); } } catch(e) {} }
+async function joinCommunity(cid) { 
+    try { let r = await fetch('/community/join', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})}); 
+        if(r.ok) { showToast("Entrou na Base com sucesso!"); loadPublicComms(); openCommunity(cid); } 
+    } catch(e) {} 
+}
 async function requestCommJoin(cid) { try { let r = await fetch('/community/request/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:user.id, comm_id:cid})}); if(r.ok) { showToast("Enviado."); } } catch(e) {} }
 
 async function openCommunity(cid) {
@@ -1523,11 +1508,17 @@ async function openCommunity(cid) {
         let mHtml = "";
         (d.members || []).forEach(m => { 
             let roleBadge = m.id === d.creator_id ? t('creator') : (m.role === 'admin' ? t('admin') : t('member'));
-            let promoteBtn = (d.is_admin && m.id !== d.creator_id && m.role !== 'admin') ? `<button class="glass-btn" style="padding:2px 8px; font-size:10px; flex:none; margin-left:5px;" onclick="promoteMember(${cid}, ${m.id})">${t('promote')}</button>` : '';
-            let demoteBtn = (d.creator_id === user.id && m.id !== d.creator_id && m.role === 'admin') ? `<button class="glass-btn" style="padding:2px 8px; font-size:10px; flex:none; margin-left:5px; color:#ff5555; border-color:#ff5555;" onclick="demoteMember(${cid}, ${m.id})">${t('demote')}</button>` : '';
-            let kickBtn = (d.is_admin && m.id !== d.creator_id && (d.creator_id === user.id || m.role !== 'admin')) ? `<button class="glass-btn danger-btn" style="padding:2px 8px; font-size:10px; flex:none; margin:0 0 0 5px;" onclick="kickMember(${cid}, ${m.id})">🚫</button>` : '';
-            mHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px; transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${promoteBtn}${demoteBtn}${kickBtn}</div>`; 
-        }); document.getElementById('c-info-members').innerHTML = mHtml;
+            
+            // BOTÕES COMPACTOS NOVO LAYOUT
+            let actions = '<div class="admin-action-wrap">';
+            if (d.is_admin && m.id !== d.creator_id && m.role !== 'admin') { actions += `<button title="${t('promote')}" class="admin-action-btn success" onclick="promoteMember(${cid}, ${m.id})">🔼</button>`; }
+            if (d.creator_id === user.id && m.id !== d.creator_id && m.role === 'admin') { actions += `<button title="${t('demote')}" class="admin-action-btn danger" onclick="demoteMember(${cid}, ${m.id})">🔽</button>`; }
+            if ((d.is_admin || d.creator_id === user.id) && m.id !== d.creator_id && (d.creator_id === user.id || m.role !== 'admin')) { actions += `<button title="${t('kick')}" class="admin-action-btn danger" onclick="kickMember(${cid}, ${m.id})">❌</button>`; }
+            actions += '</div>';
+
+            mHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px; transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${actions}</div>`; 
+        }); 
+        document.getElementById('c-info-members').innerHTML = mHtml;
         
         let addBtn = document.getElementById('c-info-admin-btn'); let reqCont = document.getElementById('c-info-requests-container'); let reqList = document.getElementById('c-info-requests'); let delCont = document.getElementById('c-info-destroy-btn');
         if(d.creator_id === user.id) { delCont.innerHTML = `<button class="glass-btn" style="width:100%; margin-bottom:10px; color:#2ecc71; border-color:#2ecc71;" onclick="document.getElementById('modal-edit-comm').classList.remove('hidden')">✏️ EDITAR BASE</button><button class="glass-btn danger-btn" onclick="confirmDelete('base', ${cid})">${t('destroy_base')}</button>`; } else { delCont.innerHTML = ''; }
@@ -2120,8 +2111,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     db.add(new_msg); db.commit(); db.refresh(new_msg)
                     msg_id = new_msg.id
                     now_iso = get_utc_iso(new_msg.timestamp)
-                    # Envia a notificação direto para o celular da pessoa, se ela não estiver na mesma tela!
-                    await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id}, rec_id)
+                    await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
                 elif ch.startswith("comm_"):
                     chid = int(ch.split("_")[1])
                     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
@@ -2197,6 +2187,7 @@ async def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
         u1.friends.append(u2); u2.friends.append(u1)
     db.delete(req); db.commit()
     return {"status": "ok"}
+
 @app.get("/user/{target_id}")
 async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
     target = db.query(User).filter(User.id == target_id).first()
