@@ -178,28 +178,6 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
-# --- AUTO-REPARADOR DE BANCO DE DADOS ---
-@app.on_event("startup")
-def startup_db_fix():
-    def fix_columns():
-        queries = [
-            "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'",
-            "ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0",
-            "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0"
-        ]
-        try:
-            with engine.connect() as conn:
-                if "postgres" in str(engine.url):
-                    conn.execute(text("SET statement_timeout = '5s'"))
-                for q in queries:
-                    try:
-                        conn.execute(text(q))
-                        conn.commit()
-                    except Exception: pass
-        except Exception: pass
-    # Roda em segundo plano para o app iniciar imediatamente e não travar o Login!
-    threading.Thread(target=fix_columns).start()
-
 # --- SISTEMA DE CARREIRA MILITAR ---
 def get_user_badges(xp, user_id, role):
     tiers = [
@@ -271,6 +249,8 @@ class ConnectionManager:
             except: pass
 
 manager = ConnectionManager()
+
+# --- INSTANCIAÇÃO DO APP (MUITO IMPORTANTE FICAR AQUI) ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -296,7 +276,25 @@ def get_db():
     try: yield db
     finally: db.close()
 
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+# --- TÁTICA DE REPARO EM SEGUNDO PLANO (AGORA O APP EXISTE!) ---
+@app.on_event("startup")
+def startup_db_fix():
+    def upgrade_db():
+        try:
+            if "sqlite" in str(engine.url):
+                with engine.connect() as conn:
+                    conn.execute(text("PRAGMA journal_mode=WAL;"))
+                    conn.commit()
+        except Exception: pass
+        
+        for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
+            try:
+                with engine.connect() as conn:
+                    if "postgres" in str(engine.url): conn.execute(text("SET statement_timeout = '3s'"))
+                    conn.execute(text(query))
+                    conn.commit()
+            except Exception: pass
+    threading.Thread(target=upgrade_db).start()
 
 # --- FRONTEND (HTML/CSS/JS) ---
 html_content = r"""
@@ -469,7 +467,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
         <div id="register-form" class="hidden">
             <input id="r-user" class="inp" placeholder="NOVO USUÁRIO" data-i18n="new_user">
-            <input id="r-email" class="inp" placeholder="EMAIL (Real)" data-i18n="email_real">
+            <input id="r-email" class="inp" placeholder="EMAIL" data-i18n="email_real">
             <input id="r-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password">
             <button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button>
             <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
@@ -490,7 +488,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*"><input id="new-comm-name" class="inp" placeholder="Nome da Base" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Descrição" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" placeholder="Nome" data-i18n="base_name"><input id="new-comm-desc" class="inp" placeholder="Desc" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
 <div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" placeholder="Nome" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
@@ -673,8 +671,8 @@ const T = {
         'codename': 'CODINOME', 'password': 'SENHA', 'new_user': 'NOVO USUÁRIO', 'email_real': 'EMAIL (Real)', 'enlist': 'ALISTAR-SE', 'back': 'Voltar',
         'recover': 'RECUPERAR ACESSO', 'reg_email': 'SEU EMAIL CADASTRADO', 'send_link': 'ENVIAR LINK', 'new_pass_title': 'NOVA SENHA', 'new_pass': 'NOVA SENHA', 'save_pass': 'SALVAR SENHA',
         'confirm_action': 'CONFIRMAR AÇÃO', 'confirm_del': 'Tem certeza que deseja apagar isto?', 'delete': 'APAGAR', 'cancel': 'CANCELAR',
-        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base (Ex: Tropa)', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública (Livre)', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
-        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CRIAR CANAL',
+        'new_base': 'NOVA BASE OFICIAL', 'base_name': 'Nome da Base', 'base_desc': 'Descrição da Base', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABELECER',
+        'new_channel': 'NOVO CANAL', 'channel_name': 'Nome (Ex: avisos)', 'ch_free': '💬 Livre', 'ch_text': '📝 Só Texto', 'ch_media': '🎬 Só Mídia', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado (Só Admins)', 'create_channel': 'CRIAR CANAL',
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
@@ -682,23 +680,23 @@ const T = {
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
         'msg_placeholder': 'Mensagem secreta...', 'base_msg_placeholder': 'Mensagem para a base...',
-        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando áudio...',
-        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic para enviar)',
+        'at': 'às', 'deleted_msg': '🚫 Mensagem apagada', 'audio_proc': 'Processando...',
+        'recording': '🔴 Gravando...', 'click_to_send': '(Clique no mic p/ enviar)',
         'empty_box': 'Sua caixa está vazia. Recrute aliados!', 'direct_msg': 'Mensagem Direta', 'squad': '👥 Esquadrão DM',
         'no_bases': 'Você ainda não tem bases.', 'no_bases_found': 'Nenhuma base encontrada.', 'no_history': 'Nenhuma missão registrada no Feed.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover',
-        'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
-        'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova mensagem privada!',
-        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS'
+        'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
+        'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova mensagem!',
+        'progression': 'PROGRESSO (XP)', 'medals': '🏆 MEDALHAS'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
         'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL (Real)', 'enlist': 'ENLIST', 'back': 'Back',
         'recover': 'RECOVER ACCESS', 'reg_email': 'REGISTERED EMAIL', 'send_link': 'SEND LINK', 'new_pass_title': 'NEW PASSWORD', 'new_pass': 'NEW PASSWORD', 'save_pass': 'SAVE PASSWORD',
         'confirm_action': 'CONFIRM ACTION', 'confirm_del': 'Are you sure you want to delete this?', 'delete': 'DELETE', 'cancel': 'CANCEL',
-        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name (Ex: Squad)', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
-        'new_channel': 'NEW CHANNEL', 'channel_name': 'Name (Ex: alerts)', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private', 'create_channel': 'CREATE CHANNEL',
+        'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name', 'base_desc': 'Base Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
+        'new_channel': 'NEW CHANNEL', 'channel_name': 'Name', 'ch_free': '💬 Free', 'ch_text': '📝 Text Only', 'ch_media': '🎬 Media Only', 'ch_pub': '🌍 Public', 'ch_priv': '🔒 Private', 'create_channel': 'CREATE CHANNEL',
         'new_squad': 'NEW SQUAD', 'group_name': 'Group Name', 'select_allies': 'Select allies:', 'create': 'CREATE',
         'new_post': 'NEW POST', 'caption_placeholder': 'Caption...', 'publish': 'PUBLISH (+50 XP)',
         'edit_profile': 'EDIT PROFILE', 'bio_placeholder': 'Write your Bio...', 'save': 'SAVE',
@@ -706,22 +704,22 @@ const T = {
         'private_msgs': 'PRIVATE MESSAGES', 'group_x1': '+ DM SQUAD', 'my_bases': '🛡️ MY BASES', 'create_base': '+ CREATE BASE',
         'explore_bases': '🌐 EXPLORE BASES', 'search_base': 'Search Base...', 'my_history': '🕒 MY HISTORY',
         'msg_placeholder': 'Secret message...', 'base_msg_placeholder': 'Message to base...',
-        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing audio...',
+        'at': 'at', 'deleted_msg': '🚫 Message deleted', 'audio_proc': 'Processing...',
         'recording': '🔴 Recording...', 'click_to_send': '(Click mic to send)',
         'empty_box': 'Your inbox is empty. Recruit allies!', 'direct_msg': 'Direct Message', 'squad': '👥 DM Squad',
         'no_bases': 'You have no bases yet.', 'no_bases_found': 'No bases found.', 'no_history': 'No missions recorded in Feed.',
         'request_join': '🔒 REQUEST', 'enter': '🌍 ENTER', 'ally': '✔ Ally', 'sent': 'Sent', 'accept_ally': 'Accept Ally', 'recruit_ally': 'Recruit Ally',
         'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote',
-        'base_members': 'Base Members', 'entry_requests': 'Entry Requests', 'destroy_base': 'DESTROY OFFICIAL BASE',
-        'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New private message!',
-        'progression': 'MILITARY PROGRESS (XP)', 'medals': '🏆 TROPHY ROOM'
+        'base_members': 'Base Members', 'entry_requests': 'Entry Requests', 'destroy_base': 'DESTROY BASE',
+        'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New message!',
+        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS'
     },
     'es': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Crear Cuenta', 'forgot': 'Olvidé la Contraseña',
         'codename': 'NOMBRE EN CLAVE', 'password': 'CONTRASEÑA', 'new_user': 'NUEVO USUARIO', 'email_real': 'CORREO (Real)', 'enlist': 'ALISTARSE', 'back': 'Volver',
         'recover': 'RECUPERAR ACCESO', 'reg_email': 'CORREO REGISTRADO', 'send_link': 'ENVIAR ENLACE', 'new_pass_title': 'NUEVA CONTRASEÑA', 'new_pass': 'NUEVA CONTRASEÑA', 'save_pass': 'GUARDAR CONTRASEÑA',
         'confirm_action': 'CONFIRMAR ACCIÓN', 'confirm_del': '¿Seguro que quieres borrar esto?', 'delete': 'BORRAR', 'cancel': 'CANCELAR',
-        'new_base': 'NUEVA BASE OFICIAL', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
+        'new_base': 'NUEVA BASE', 'base_name': 'Nombre de la Base', 'base_desc': 'Descripción', 'pub_base': '🌍 Pública', 'priv_base': '🔒 Privada', 'establish': 'ESTABLECER',
         'new_channel': 'NUEVO CANAL', 'channel_name': 'Nombre', 'ch_free': '💬 Libre', 'ch_text': '📝 Solo Texto', 'ch_media': '🎬 Solo Medios', 'ch_pub': '🌍 Público', 'ch_priv': '🔒 Privado', 'create_channel': 'CREAR CANAL',
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
@@ -730,15 +728,15 @@ const T = {
         'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
-        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando audio...',
-        'recording': '🔴 Grabando...', 'click_to_send': '(Click en mic para enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
-        'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones registradas.',
+        'at': 'a las', 'deleted_msg': '🚫 Mensaje borrado', 'audio_proc': 'Procesando...',
+        'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
+        'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
-        'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
-        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!',
-        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
+        'base_members': 'Miembros', 'entry_requests': 'Solicitudes', 'destroy_base': 'DESTRUIR BASE',
+        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje!',
+        'progression': 'PROGRESO (XP)', 'medals': '🏆 MEDALLAS'
     }
 };
 
@@ -812,7 +810,7 @@ async function doLogin() {
         if (!r.ok) throw new Error("Erro no login");
         user = await r.json();
         startApp();
-    } catch(e) { showToast("❌ Codinome/Senha incorretos ou Servidor Ocupado.");
+    } catch(e) { showToast("❌ Codinome/Senha incorretos.");
     } finally { btn.innerText = oldText; btn.disabled = false; }
 }
 
