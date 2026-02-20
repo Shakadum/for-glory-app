@@ -40,7 +40,7 @@ mail_conf = ConnectionConfig(
 
 cloudinary.config(cloud_name=os.environ.get('CLOUDINARY_NAME'), api_key=os.environ.get('CLOUDINARY_KEY'), api_secret=os.environ.get('CLOUDINARY_SECRET'), secure=True)
 
-# --- BANCO DE DADOS ---
+# --- BANCO DE DADOS BLINDADO ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v6.db")
 
 if "sqlite" in DATABASE_URL:
@@ -65,7 +65,7 @@ class User(Base):
     cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
     is_invisible = Column(Integer, default=0) 
-    role = Column(String, default="membro") # NOVO: Cargos do Sistema
+    role = Column(String, default="membro") 
     friends = relationship("User", secondary=friendship, primaryjoin=id==friendship.c.user_id, secondaryjoin=id==friendship.c.friend_id, backref="friended_by")
 
 class FriendRequest(Base):
@@ -176,45 +176,63 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD: {e}")
 
-# --- NOVO SISTEMA DE HONRA E GLÓRIA (MEDALHAS E EMBLEMAS) ---
+# --- SISTEMA DE CARREIRA MILITAR (PATENTES E MEDALHAS EXPANDIDAS) ---
 def get_user_badges(xp, user_id, role):
     tiers = [
-        (0, "Recruta 🔰", 100),
-        (100, "Soldado ⚔️", 500),
-        (500, "Cabo 🎖️", 1000),
-        (1000, "3º Sargento 🎗️", 2000),
-        (2000, "Capitão 👑", 5000),
-        (5000, "Lenda 🐲", 5000)
+        (0, "Recruta", 100, "#888888"),
+        (100, "Soldado", 300, "#2ecc71"),
+        (300, "Cabo", 600, "#27ae60"),
+        (600, "3º Sargento", 1000, "#3498db"),
+        (1000, "2º Sargento", 1500, "#2980b9"),
+        (1500, "1º Sargento", 2500, "#9b59b6"),
+        (2500, "Subtenente", 4000, "#8e44ad"),
+        (4000, "Tenente", 6000, "#f1c40f"),
+        (6000, "Capitão", 10000, "#f39c12"),
+        (10000, "Major", 15000, "#e67e22"),
+        (15000, "Tenente-Coronel", 25000, "#e74c3c"),
+        (25000, "Coronel", 50000, "#c0392b"),
+        (50000, "General ⭐", 50000, "#FFD700")
     ]
+    
     rank = tiers[0][1]
+    color = tiers[0][3]
     next_xp = tiers[0][2]
     next_rank = tiers[1][1]
     
     for i, t in enumerate(tiers):
         if xp >= t[0]:
             rank = t[1]
+            color = t[3]
             next_xp = t[2]
             next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
             
     percent = int((xp / next_xp) * 100) if next_xp > xp else 100
     if percent > 100: percent = 100
 
-    # Emblemas Especiais
     special_emblem = ""
     if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
     elif role == "admin": special_emblem = "🛡️ Admin"
     elif role == "vip": special_emblem = "🌟 VIP"
 
-    # Medalhas Dinâmicas de Perfil
     medals = []
-    if user_id == 1: medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador do For Glory"})
-    if xp >= 50: medals.append({"icon": "🩸", "name": "Primeiro Sangue", "desc": "Completou a 1ª Missão"})
-    if xp >= 500: medals.append({"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP"})
-    if xp >= 2000: medals.append({"icon": "🥇", "name": "Elite Tática", "desc": "Alcançou 2.000 XP"})
-    if xp >= 5000: medals.append({"icon": "🏆", "name": "Deus da Guerra", "desc": "Alcançou 5.000 XP"})
+    all_medals = [
+        {"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50},
+        {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500},
+        {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000},
+        {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
+        {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
+    ]
+    
+    if user_id == 1 or role == "fundador":
+        medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
+    
+    for m in all_medals:
+        earned = xp >= m['req']
+        missing = m['req'] - xp if not earned else 0
+        medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
 
     return {
-        "rank": rank, "next_xp": next_xp, "next_rank": next_rank, "percent": percent,
+        "rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent,
         "special_emblem": special_emblem, "medals": medals
     }
 
@@ -274,18 +292,7 @@ def get_db():
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
 
-@app.on_event("startup")
-def startup():
-    if "sqlite" in str(engine.url):
-        with engine.connect() as conn:
-            try: conn.execute(text("PRAGMA journal_mode=WAL;")); conn.commit()
-            except: pass
-    for query in ["ALTER TABLE users ADD COLUMN is_invisible INTEGER DEFAULT 0", "ALTER TABLE private_messages ADD COLUMN is_read INTEGER DEFAULT 0", "ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'membro'"]:
-        try:
-            with engine.connect() as conn: conn.execute(text(query)); conn.commit()
-        except Exception: pass
-
-# --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM EMBLEMAS ---
+# --- FRONTEND COMPLETAMENTE GLOBALIZADO E COM CARREIRA MILITAR ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -301,6 +308,7 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
+/* SIDEBAR REORGANIZADA DE 6 ABAS */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -311,9 +319,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* SISTEMA DE EMBLEMAS E BADGES */
-.rank-badge{font-size:10px;color:var(--primary);font-weight:bold;text-transform:uppercase;background:rgba(102,252,241,0.1);padding:3px 8px;border-radius:6px;border:1px solid rgba(102,252,241,0.3); display:inline-block;}
-.special-badge{font-size:10px;color:#0b0c10;font-weight:bold;text-transform:uppercase;background:gold;padding:3px 8px;border-radius:6px;border:1px solid orange; display:inline-block; margin-right:5px;}
+/* DESIGN MINIMALISTA PARA PATENTES NO CHAT E FEED */
+.rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
+.special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
 /* POSTS FEED */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
@@ -342,7 +350,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
-/* CHAT E INPUTS BLINDADOS */
+/* CHAT E INPUT BLINDADO MOBILE */
 .chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
@@ -392,11 +400,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
-.modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s;max-height:90vh;overflow-y:auto;}
+.modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s;max-height:90vh;overflow-y:auto; scrollbar-width:thin;}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
+/* TOAST SUPERIOR E CENTRALIZADO */
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
 #toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
@@ -433,7 +442,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="modal-delete" class="modal hidden"><div class="modal-box" style="border-color: rgba(255, 85, 85, 0.3);"><h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2><p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p><div style="display:flex; gap:10px; margin-top:20px;"><button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button><button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button></div></div></div>
 
-<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*"><input id="new-comm-name" class="inp" data-i18n="base_name"><input id="new-comm-desc" class="inp" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
+<div id="modal-create-comm" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_base">NOVA BASE OFICIAL</h2><input type="file" id="comm-avatar-upload" class="inp" accept="image/*" title="Avatar da Base"><input id="new-comm-name" class="inp" data-i18n="base_name"><input id="new-comm-desc" class="inp" data-i18n="base_desc"><select id="new-comm-priv" class="styled-select"><option value="0" data-i18n="pub_base">🌍 Pública</option><option value="1" data-i18n="priv_base">🔒 Privada</option></select><button onclick="submitCreateComm(event)" class="btn-main" data-i18n="establish">ESTABELECER</button><button onclick="document.getElementById('modal-create-comm').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
 <div id="modal-create-channel" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;" data-i18n="new_channel">NOVO CANAL</h2><input id="new-ch-name" class="inp" data-i18n="channel_name"><select id="new-ch-type" class="styled-select"><option value="livre" data-i18n="ch_free">💬 Livre</option><option value="text" data-i18n="ch_text">📝 Só Texto</option><option value="media" data-i18n="ch_media">🎬 Só Mídia</option></select><select id="new-ch-priv" class="styled-select"><option value="0" data-i18n="ch_pub">🌍 Público</option><option value="1" data-i18n="ch_priv">🔒 Privado</option></select><button onclick="submitCreateChannel()" class="btn-main" data-i18n="create_channel">CRIAR CANAL</button><button onclick="document.getElementById('modal-create-channel').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
@@ -442,6 +451,14 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="modal-upload" class="modal hidden"><div class="modal-box"><h2 style="color:white" data-i18n="new_post">NOVO POST</h2><input type="file" id="file-upload" class="inp" accept="image/*,video/*" style="margin-bottom: 5px;"><span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span><div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px"><input type="text" id="caption-upload" class="inp" data-i18n="caption_placeholder" style="margin:0"><button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button></div><div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden"><div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div></div><div id="progress-text" style="color:var(--primary);font-size:12px;margin-top:5px;display:none;font-weight:bold">0%</div><button id="btn-pub" onclick="submitPost()" class="btn-main" data-i18n="publish">PUBLICAR (+50 XP)</button><button onclick="closeUpload()" class="btn-link" style="color:#888;display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">CANCELAR</button></div></div>
 
 <div id="modal-profile" class="modal hidden"><div class="modal-box"><h2 style="color:var(--primary)" data-i18n="edit_profile">EDITAR PERFIL</h2><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Avatar</label><input type="file" id="avatar-upload" class="inp" accept="image/*"><label style="color:#aaa;display:block;margin-top:10px;font-size:12px;">Cover</label><input type="file" id="cover-upload" class="inp" accept="image/*"><input id="bio-update" class="inp" data-i18n="bio_placeholder"><button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button><button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button></div></div>
+
+<div id="modal-ranks" class="modal hidden">
+    <div class="modal-box" style="max-height: 80vh; overflow-y: auto;">
+        <h2 style="color:var(--primary); font-family:'Rajdhani';">📋 TODAS AS PATENTES</h2>
+        <div id="ranks-list" style="display:flex; flex-direction:column; gap:10px; text-align:left; margin-top:15px;"></div>
+        <button onclick="document.getElementById('modal-ranks').classList.add('hidden')" class="btn-main" style="margin-top:20px;" data-i18n="cancel">FECHAR</button>
+    </div>
+</div>
 
 <div id="app">
     <div id="sidebar">
@@ -469,7 +486,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             
             <div id="p-progression-box"></div>
-            <div id="p-medals-box"></div>
+            <div id="p-medals-box" style="text-align:center;"></div>
 
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
@@ -604,10 +621,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin:5px 0;">...</h2>
                 <div id="pub-emblems" style="margin-bottom:10px;"></div>
                 <p id="pub-bio" style="color:#888;margin:10px 0 20px 0;">...</p>
-                
-                <div id="pub-medals-box"></div>
-                
-                <div id="pub-actions" style="margin-bottom:20px; margin-top:20px; display:flex; justify-content:center; gap:10px;"></div>
+                <div id="pub-medals-box" style="text-align:center;"></div>
+                <div id="pub-actions" style="margin-bottom:20px; display:flex; justify-content:center; gap:10px;"></div>
                 <div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;max-width:500px;margin:0 auto;"></div>
             </div>
         </div>
@@ -615,6 +630,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
+// --- DICIONÁRIO DE TRADUÇÃO ---
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -638,7 +654,7 @@ const T = {
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
         'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova mensagem privada!',
-        'progression': 'PROGRESSO (XP)', 'medals': '🏆 MEDALHAS'
+        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
@@ -662,7 +678,7 @@ const T = {
         'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote',
         'base_members': 'Base Members', 'entry_requests': 'Entry Requests', 'destroy_base': 'DESTROY OFFICIAL BASE',
         'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New private message!',
-        'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS'
+        'progression': 'MILITARY PROGRESS (XP)', 'medals': '🏆 TROPHY ROOM'
     },
     'es': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Crear Cuenta', 'forgot': 'Olvidé la Contraseña',
@@ -686,7 +702,7 @@ const T = {
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover',
         'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE OFICIAL',
         'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nuevo mensaje privado!',
-        'progression': 'PROGRESO (XP)', 'medals': '🏆 MEDALLAS'
+        'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS'
     }
 };
 
@@ -696,11 +712,7 @@ window.currentLang = localStorage.getItem('lang');
 if(!window.currentLang) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; localStorage.setItem('lang', window.currentLang); }
 
 function t(key) { return T[window.currentLang][key] || key; }
-
-function changeLanguage(lang) {
-    localStorage.setItem('lang', lang);
-    location.reload();
-}
+function changeLanguage(lang) { localStorage.setItem('lang', lang); location.reload(); }
 
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('lang-selector').value = window.currentLang;
@@ -720,6 +732,34 @@ const CLOUD_NAME = "dqa0q3qlx";
 const UPLOAD_PRESET = "for_glory_preset"; 
 const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
 
+// --- TABELA DE TODAS AS PATENTES ---
+const RANK_TIERS = [
+    { xp: 0, name: "Recruta", color: "#888888" },
+    { xp: 100, name: "Soldado", color: "#2ecc71" },
+    { xp: 300, name: "Cabo", color: "#27ae60" },
+    { xp: 600, name: "3º Sargento", color: "#3498db" },
+    { xp: 1000, name: "2º Sargento", color: "#2980b9" },
+    { xp: 1500, name: "1º Sargento", color: "#9b59b6" },
+    { xp: 2500, name: "Subtenente", color: "#8e44ad" },
+    { xp: 4000, name: "Tenente", color: "#f1c40f" },
+    { xp: 6000, name: "Capitão", color: "#f39c12" },
+    { xp: 10000, name: "Major", color: "#e67e22" },
+    { xp: 15000, name: "Tenente-Coronel", color: "#e74c3c" },
+    { xp: 25000, name: "Coronel", color: "#c0392b" },
+    { xp: 50000, name: "General ⭐", color: "#FFD700" }
+];
+
+function showRanksModal() {
+    let list = document.getElementById('ranks-list');
+    list.innerHTML = RANK_TIERS.map(r => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:10px; border-left:4px solid ${r.color};">
+            <span style="color:white; font-weight:bold; font-size:15px;">${r.name}</span>
+            <span style="color:${r.color}; font-family:'Rajdhani'; font-weight:bold;">${r.xp} XP</span>
+        </div>
+    `).join('');
+    document.getElementById('modal-ranks').classList.remove('hidden');
+}
+
 function showToast(m){let x=document.getElementById("toast");x.innerText=m;x.className="show";setTimeout(()=>{x.className=""},3000)}
 function toggleAuth(m){['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden'));document.getElementById(m+'-form').classList.remove('hidden');}
 
@@ -731,6 +771,13 @@ function formatMsgTime(iso) {
     let h = String(d.getHours()).padStart(2, '0');
     let m = String(d.getMinutes()).padStart(2, '0');
     return `${dia}/${mes} ${t('at')} ${h}:${m}`;
+}
+
+function formatRankInfo(rank, special, color) {
+    let h = '';
+    if(special) h += `<span class="special-badge">${special}</span>`;
+    if(rank) h += `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>`;
+    return h;
 }
 
 function initEmojis() {
@@ -824,8 +871,25 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 function renderMedals(boxId, medalsData) {
     let box = document.getElementById(boxId);
     if(!medalsData || medalsData.length === 0) { box.innerHTML = ''; return; }
-    let mHtml = medalsData.map(m => `<div style="background:var(--card-bg); padding:10px; border-radius:10px; border:1px solid rgba(102,252,241,0.3); width:80px; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.3);" title="${m.desc}"><div style="font-size:28px; filter:drop-shadow(0 0 5px rgba(255,255,255,0.2));">${m.icon}</div><div style="font-size:10px; color:white; margin-top:5px; font-weight:bold; font-family:'Inter'; text-transform:uppercase;">${m.name}</div></div>`).join('');
-    box.innerHTML = `<h3 style="color:white; margin-top:20px; font-family:'Rajdhani'; letter-spacing:1px;">${t('medals')}</h3><div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom: 20px;">${mHtml}</div>`;
+    
+    let mHtml = medalsData.map(m => {
+        let isEarned = m.earned;
+        let op = isEarned ? '1' : '0.4';
+        let filter = isEarned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
+        let statusText = isEarned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
+        
+        return `
+        <div style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${isEarned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}">
+            <div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div>
+            <div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>
+            ${statusText}
+        </div>`;
+    }).join('');
+    
+    box.innerHTML = `
+        <h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3>
+        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>
+    `;
 }
 
 function updateUI(){
@@ -836,9 +900,7 @@ function updateUI(){
     
     document.getElementById('p-name').innerText = user.username || "Soldado"; 
     document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
-    
-    let specHtml = user.special_emblem ? `<span class="special-badge">${user.special_emblem}</span>` : '';
-    document.getElementById('p-emblems').innerHTML = `${specHtml}<span class="rank-badge">${user.rank}</span>`;
+    document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     
     // HUD de Progresso
     let missingXP = user.next_xp - user.xp;
@@ -851,7 +913,10 @@ function updateUI(){
             <div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);">
                 <div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div>
             </div>
-            <div style="text-align: right; color: #888; font-size: 11px; margin-top: 5px;">Falta ${missingXP} XP para ${user.next_rank}</div>
+            <div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;">
+                <span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span>
+                <button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button>
+            </div>
         </div>
     `;
     
@@ -962,14 +1027,6 @@ async function loadMyHistory() {
     hData.posts.forEach(p => { grid.innerHTML += p.media_type==='video' ? `<video src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;" controls preload="metadata"></video>` : `<img src="${p.content_url}" style="width:100%; aspect-ratio:1/1; object-fit:cover; cursor:pointer; border-radius:10px;" onclick="window.open(this.src)">`; });
 }
 
-// INJETOR DE EMBLEMAS (FEED E CHATS)
-function formatRankInfo(rank, special) {
-    let h = '';
-    if(special) h += `<span class="special-badge">${special}</span>`;
-    if(rank) h += `<span class="rank-badge">${rank}</span>`;
-    return h;
-}
-
 async function loadFeed(){
     try{
         let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`); if(!r.ok)return; let p=await r.json();
@@ -986,8 +1043,9 @@ async function loadFeed(){
             m = `<div class="post-media-wrapper">${m}</div>`;
             let delBtn=x.author_id===user.id?`<span onclick="confirmDelete('post', ${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
             let heartIcon = x.user_liked ? "❤️" : "🤍"; let heartClass = x.user_liked ? "liked" : "";
-            
-            ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${formatRankInfo(x.author_rank, x.special_emblem)}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`
+            let rankHtml = formatRankInfo(x.author_rank, x.special_emblem, x.rank_color);
+
+            ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`
         });
         document.getElementById('feed-container').innerHTML=ht;
         
@@ -1005,7 +1063,7 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
     
     if(tp === 'post') {
         let r = await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:id,user_id:user.id})});
-        if(r.ok) { lastFeedHash=""; loadFeed(); loadMyHistory(); updateProfileState(); } // Atualiza XP após deletar post
+        if(r.ok) { lastFeedHash=""; loadFeed(); loadMyHistory(); updateProfileState(); } 
     } else if (tp === 'comment') {
         let r = await fetch('/comment/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comment_id:id,user_id:user.id})});
         if(r.ok) { lastFeedHash=""; loadFeed(); }
@@ -1059,7 +1117,7 @@ async function loadComments(pid) {
             let delBtn = (c.author_id === user.id) ? `<span onclick="confirmDelete('comment', ${c.id})" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>` : '';
             let txt = c.text;
             if(txt.startsWith('[AUDIO]')) { txt = `<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px; height:35px; outline:none; margin-top:5px;"></audio>`; }
-            return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block; margin-left:5px;">${formatRankInfo(c.author_rank, c.special_emblem)}</span> <span style="color:#e0e0e0; display:block; margin-top:3px;">${txt}</span></div>${delBtn}</div>`
+            return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block; margin-left:5px;">${formatRankInfo(c.author_rank, c.special_emblem, c.color)}</span> <span style="color:#e0e0e0; display:block; margin-top:3px;">${txt}</span></div>${delBtn}</div>`
         }).join('');
         updateStatusDots();
     }
@@ -1122,7 +1180,7 @@ async function fetchChatMessages(id, type) {
                     else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                     delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
                 }
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend',h);
             }
         });
@@ -1149,7 +1207,7 @@ function connectDmWS(id, name, type) {
                 else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
             }
-            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
+            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
         if(currentChatType === '1v1' && currentChatId === d.user_id) { fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); } else { fetchUnread(); }
@@ -1159,7 +1217,7 @@ function connectDmWS(id, name, type) {
 async function openChat(id, name, type) {
     let changingChat = (currentChatId !== id || currentChatType !== type);
     currentChatId = id; currentChatType = type;
-    document.getElementById('dm-header-name').innerText = type === 'group' ? "Esquadrão: " + name : "Chat: " + name;
+    document.getElementById('dm-header-name').innerText = name;
     goView('dm');
     if(type === '1v1') { await fetch(`/inbox/read/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}); fetchUnread(); }
     if(changingChat) { document.getElementById('dm-list').innerHTML = ''; }
@@ -1302,7 +1360,7 @@ async function fetchCommMessages(chid) {
                     else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                     delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
                 }
-                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
+                let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                 list.insertAdjacentHTML('beforeend', h);
             }
         });
@@ -1327,7 +1385,7 @@ function connectCommWS(chid) {
                 else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
             }
-            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
+            let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
     };
@@ -1358,9 +1416,7 @@ async function openPublicProfile(uid){
     document.getElementById('pub-avatar').src=d.avatar_url; let pc=document.getElementById('pub-cover'); pc.src=d.cover_url; pc.style.display='block';
     document.getElementById('pub-name').innerText=d.username; document.getElementById('pub-bio').innerText=d.bio;
     
-    let specHtml = d.special_emblem ? `<span class="special-badge">${d.special_emblem}</span>` : '';
-    document.getElementById('pub-emblems').innerHTML = `${specHtml}<span class="rank-badge">${d.rank}</span>`;
-    
+    document.getElementById('pub-emblems').innerHTML = formatRankInfo(d.rank, d.special_emblem, d.color);
     renderMedals('pub-medals-box', d.medals);
 
     let ab=document.getElementById('pub-actions'); ab.innerHTML='';
@@ -1391,8 +1447,6 @@ async function uploadToCloudinary(file){
 }
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c = await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){}finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){let d=await r.json();Object.assign(user,d);updateUI();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){}finally{btn.disabled=false;}}
-
-async function updateProfileState() { let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); }
 
 function clearSearch() { document.getElementById('search-input').value = ''; document.getElementById('search-results').innerHTML = ''; }
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';res.forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`}); updateStatusDots();}
@@ -1466,7 +1520,6 @@ async def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
 @app.post("/register")
 async def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
-    # O PRIMEIRO REGISTRADO DO SITE GANHA O CARGO DE FUNDADOR AUTOMATICAMENTE!
     is_first = db.query(User).count() == 0
     role = "fundador" if is_first else "membro"
     db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0, is_invisible=0, role=role))
@@ -1477,12 +1530,12 @@ async def reg(d: RegisterData, db: Session=Depends(get_db)):
 async def log(d: LoginData, db: Session=Depends(get_db)):
     u = db.query(User).filter(User.username==d.username).first()
     if not u or u.password_hash != criptografar(d.password): raise HTTPException(400, "Erro")
-    badges = get_user_badges(u.xp, u.id, getattr(u, 'role', 'membro'))
+    b = get_user_badges(u.xp, u.id, getattr(u, 'role', 'membro'))
     return {
         "id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, 
-        "xp": u.xp, "rank": badges['rank'], "special_emblem": badges['special_emblem'], 
-        "percent": badges['percent'], "next_xp": badges['next_xp'], "next_rank": badges['next_rank'], 
-        "medals": badges['medals'], "is_invisible": getattr(u, 'is_invisible', 0)
+        "xp": u.xp, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], 
+        "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], 
+        "medals": b['medals'], "is_invisible": getattr(u, 'is_invisible', 0)
     }
 
 @app.post("/post/create_from_url")
@@ -1537,7 +1590,7 @@ async def get_comments(post_id: int, db: Session=Depends(get_db)):
     res = []
     for c in comments:
         b = get_user_badges(c.author.xp, c.author.id, getattr(c.author, 'role', 'membro'))
-        res.append({"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, "author_rank": b['rank'], "special_emblem": b['special_emblem']})
+        res.append({"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, "author_rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']})
     return res
 
 @app.get("/posts")
@@ -1549,7 +1602,7 @@ async def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
         user_liked = db.query(Like).filter(Like.post_id == p.id, Like.user_id == uid).first() is not None
         comment_count = db.query(Comment).filter(Comment.post_id == p.id).count()
         b = get_user_badges(p.author.xp, p.author.id, getattr(p.author, 'role', 'membro'))
-        result.append({"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_rank": b['rank'], "special_emblem": b['special_emblem'], "author_id": p.author.id, "likes": like_count, "user_liked": user_liked, "comments": comment_count})
+        result.append({"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_rank": b['rank'], "rank_color": b['color'], "special_emblem": b['special_emblem'], "author_id": p.author.id, "likes": like_count, "user_liked": user_liked, "comments": comment_count})
     return result
 
 @app.post("/post/delete")
@@ -1571,7 +1624,7 @@ async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avat
     if cover_url: u.cover_url = cover_url
     if bio: u.bio = bio
     db.commit()
-    return {"avatar_url": u.avatar_url, "cover_url": u.cover_url, "bio": u.bio}
+    return {"status":"ok"}
 
 @app.get("/users/search")
 async def search_users(q: str, db: Session=Depends(get_db)):
@@ -1595,7 +1648,7 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     res = []
     for m in msgs:
         b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
+        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
 @app.post("/community/create")
@@ -1698,7 +1751,7 @@ async def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
     res = []
     for m in msgs:
         b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
+        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
 @app.websocket("/ws/{ch}/{uid}")
@@ -1737,7 +1790,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     user_data = {
                         "id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, 
                         "avatar": u_fresh.avatar_url, "content": txt, "can_delete": True, 
-                        "timestamp": now_iso, "rank": b['rank'], "special_emblem": b['special_emblem']
+                        "timestamp": now_iso, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']
                     }
                     await manager.broadcast(user_data, ch)
                     if ch.startswith("dm_") or ch.startswith("group_"): 
@@ -1762,7 +1815,7 @@ async def get_group_msgs(group_id: int, db: Session=Depends(get_db)):
     res = []
     for m in msgs:
         b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
+        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
 @app.post("/friend/request")
@@ -1810,7 +1863,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
         if received: status = "pending_received"; req_id = received.id
         
     b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
-    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
+    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
