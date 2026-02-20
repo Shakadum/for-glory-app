@@ -188,6 +188,8 @@ class CommunityRequest(Base):
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD inicial: {e}")
 
+
+# --- APP FASTAPI E GERENCIADORES ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -218,6 +220,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# --- INSPETOR DE BANCO DE DADOS (AUTO-REPARO) ---
 @app.on_event("startup")
 def startup_db_fix():
     def upgrade_db():
@@ -229,12 +232,14 @@ def startup_db_fix():
                         conn.execute(text("PRAGMA journal_mode=WAL;"))
                         conn.commit()
                 except: pass
+
             tables_to_check = {
                 "users": [("is_invisible", "INTEGER DEFAULT 0"),("role", "VARCHAR DEFAULT 'membro'")],
                 "private_messages": [("is_read", "INTEGER DEFAULT 0")],
                 "communities": [("banner_url", "VARCHAR DEFAULT ''")],
                 "community_channels": [("banner_url", "VARCHAR DEFAULT ''")]
             }
+            
             for table_name, cols in tables_to_check.items():
                 if insp.has_table(table_name):
                     existing_cols = [c['name'] for c in insp.get_columns(table_name)]
@@ -248,24 +253,47 @@ def startup_db_fix():
         except Exception as e: pass
     threading.Thread(target=upgrade_db).start()
 
+
+# --- SISTEMA DE CARREIRA MILITAR E MEDALHAS ---
 def get_user_badges(xp, user_id, role):
-    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
+    tiers = [
+        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"),
+        (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"),
+        (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"),
+        (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"),
+        (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"),
+        (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"),
+        (50000, "General ⭐", 50000, "#FFD700")
+    ]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
+    
     for i, t in enumerate(tiers):
         if xp >= t[0]:
-            rank = t[1]; color = t[3]; next_xp = t[2]; next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
+            rank = t[1]; color = t[3]; next_xp = t[2]
+            next_rank = tiers[i+1][1] if i+1 < len(tiers) else "Nível Máximo"
+            
     percent = int((xp / next_xp) * 100) if next_xp > xp else 100
     if percent > 100: percent = 100
+
     special_emblem = ""
     if user_id == 1 or role == "fundador": special_emblem = "💎 Fundador"
     elif role == "admin": special_emblem = "🛡️ Admin"
     elif role == "vip": special_emblem = "🌟 VIP"
+
     medals = []
-    all_medals = [{"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50}, {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500}, {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000}, {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000}, {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}]
+    all_medals = [
+        {"icon": "🩸", "name": "1º Sangue", "desc": "Completou a 1ª Missão", "req": 50},
+        {"icon": "🥈", "name": "Veterano", "desc": "Alcançou 500 XP", "req": 500},
+        {"icon": "🥇", "name": "Elite", "desc": "Alcançou 2.000 XP", "req": 2000},
+        {"icon": "🏆", "name": "Estrategista", "desc": "Alcançou 10.000 XP", "req": 10000},
+        {"icon": "⭐", "name": "Supremo", "desc": "Tornou-se General", "req": 50000}
+    ]
     if user_id == 1 or role == "fundador": medals.append({"icon": "💎", "name": "A Gênese", "desc": "Criador da Plataforma", "earned": True, "missing": 0})
     for m in all_medals:
-        earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
+        earned = xp >= m['req']
+        missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
+
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
@@ -298,7 +326,7 @@ def get_db():
     finally: db.close()
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-    # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO E BLINDADO ---
+    # --- FRONTEND (HTML/CSS/JS) ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -441,7 +469,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
-/* TOAST FIXO (Não some com o tempo errado) */
+/* TOAST FIXO E SEGURO */
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
 #toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
@@ -889,11 +917,11 @@ const T = {
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar', 'kick': 'Expulsar',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
         'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova notificação!', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL', 'incoming_call': 'CHAMADA RECEBIDA',
-        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base:', 'ch_banner_opt': 'Banner do Canal:'
+        'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):'
     },
     'en': {
         'login_title': 'FOR GLORY', 'login': 'LOGIN', 'create_acc': 'Create Account', 'forgot': 'Forgot Password',
-        'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL', 'enlist': 'ENLIST', 'back': 'Back',
+        'codename': 'CODENAME', 'password': 'PASSWORD', 'new_user': 'NEW USER', 'email_real': 'EMAIL (Real)', 'enlist': 'ENLIST', 'back': 'Back',
         'recover': 'RECOVER ACCESS', 'reg_email': 'REGISTERED EMAIL', 'send_link': 'SEND LINK', 'new_pass_title': 'NEW PASSWORD', 'new_pass': 'NEW PASSWORD', 'save_pass': 'SAVE PASSWORD',
         'confirm_action': 'CONFIRM ACTION', 'confirm_del': 'Are you sure you want to delete this?', 'delete': 'DELETE', 'cancel': 'CANCEL',
         'new_base': 'NEW OFFICIAL BASE', 'base_name': 'Base Name', 'base_desc': 'Description', 'pub_base': '🌍 Public', 'priv_base': '🔒 Private', 'establish': 'ESTABLISH',
@@ -1055,7 +1083,7 @@ async function fetchUnread() {
         
         let badgeBases = document.getElementById('bases-badge');
         if(d.comms.total > 0) { badgeBases.innerText = d.comms.total; badgeBases.style.display = 'block'; } else { badgeBases.style.display = 'none'; }
-        
+
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => { let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge'); if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; } });
         }
@@ -1433,7 +1461,11 @@ async function fetchChatMessages(id, type) {
                 if(!document.getElementById(msgId)) {
                     let m = (d.user_id === user.id); let c = d.content; let delBtn = ''; let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                     if(c === '[DELETED]') { c = `<span class="msg-deleted">${t('deleted_msg')}</span>`; } 
-                    else { if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; } else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } } delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : ''; }
+                    else {
+                        if(c.startsWith('[AUDIO]')) { c = `<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px; height:40px; outline:none;"></audio>`; }
+                        else if(c.startsWith('http') && c.includes('cloudinary')) { if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) { c = `<video src="${c}" style="max-width:100%; border-radius:10px; border:1px solid #444;" controls playsinline></video>`; } else { c = `<img src="${c}" style="max-width:100%; border-radius:10px; cursor:pointer; border:1px solid #444;" onclick="window.open(this.src)">`; } }
+                        delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>` : '';
+                    }
                     let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                     list.insertAdjacentHTML('beforeend',h);
                 }
@@ -1508,8 +1540,6 @@ async function openCommunity(cid) {
         let mHtml = "";
         (d.members || []).forEach(m => { 
             let roleBadge = m.id === d.creator_id ? t('creator') : (m.role === 'admin' ? t('admin') : t('member'));
-            
-            // BOTÕES COMPACTOS NOVO LAYOUT
             let actions = '<div class="admin-action-wrap">';
             if (d.is_admin && m.id !== d.creator_id && m.role !== 'admin') { actions += `<button title="${t('promote')}" class="admin-action-btn success" onclick="promoteMember(${cid}, ${m.id})">🔼</button>`; }
             if (d.creator_id === user.id && m.id !== d.creator_id && m.role === 'admin') { actions += `<button title="${t('demote')}" class="admin-action-btn danger" onclick="demoteMember(${cid}, ${m.id})">🔽</button>`; }
@@ -1517,8 +1547,7 @@ async function openCommunity(cid) {
             actions += '</div>';
 
             mHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px; transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${actions}</div>`; 
-        }); 
-        document.getElementById('c-info-members').innerHTML = mHtml;
+        }); document.getElementById('c-info-members').innerHTML = mHtml;
         
         let addBtn = document.getElementById('c-info-admin-btn'); let reqCont = document.getElementById('c-info-requests-container'); let reqList = document.getElementById('c-info-requests'); let delCont = document.getElementById('c-info-destroy-btn');
         if(d.creator_id === user.id) { delCont.innerHTML = `<button class="glass-btn" style="width:100%; margin-bottom:10px; color:#2ecc71; border-color:#2ecc71;" onclick="document.getElementById('modal-edit-comm').classList.remove('hidden')">✏️ EDITAR BASE</button><button class="glass-btn danger-btn" onclick="confirmDelete('base', ${cid})">${t('destroy_base')}</button>`; } else { delCont.innerHTML = ''; }
@@ -1674,7 +1703,7 @@ async def get(response: Response):
 
 @app.get("/users/online")
 async def get_online_users(db: Session=Depends(get_db)):
-    active_uids = list(manager.user_connections.keys())
+    active_uids = list(manager.user_ws.keys())
     if not active_uids: return []
     visible_users = db.query(User.id).filter(User.id.in_(active_uids), User.is_invisible == 0).all()
     return [u[0] for u in visible_users]
