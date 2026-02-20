@@ -252,6 +252,7 @@ html_content = r"""
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex:1;overflow:hidden;position:relative}
 
+/* SIDEBAR REORGANIZADA DE 6 ABAS */
 #sidebar{width:80px;background:rgba(11,12,16,0.6);backdrop-filter:blur(12px);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:20px 0;z-index:100}
 .nav-btn{width:50px;height:50px;border-radius:14px;border:none;background:transparent;color:#888;font-size:24px;margin-bottom:15px;cursor:pointer;transition:0.3s;position:relative; flex-shrink:0;}
 .nav-btn.active{background:rgba(102,252,241,0.15);color:var(--primary);border:1px solid var(--border);box-shadow:0 0 15px rgba(102,252,241,0.2);transform:scale(1.05)}
@@ -263,7 +264,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view{display:none;flex:1;flex-direction:column;overflow-y:auto;height:100%;width:100%;padding-bottom:20px}
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 
-/* POSTS FEED */
+/* POSTS FEED E ENGAJAMENTO */
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
 .post-card{background:var(--card-bg);width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;}
 .post-header{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2)}
@@ -288,18 +289,19 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; align-items:flex-start; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
+/* SELETORES MODERNOS */
 .styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
-/* CHAT E INPUTS BLINDADOS */
+/* CHAT, ÁUDIO E INPUTS BLINDADOS */
 .chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
-.chat-msg:disabled { opacity:0.5; background:rgba(0,0,0,0.5); cursor:not-allowed; }
+.chat-msg:disabled { opacity:0.8; background:rgba(255,85,85,0.1); cursor:not-allowed; border-color: #ff5555; color: #ff5555; font-weight:bold;}
 .btn-send-msg { background: var(--primary); border: none; flex: 0 0 45px !important; width: 45px !important; height: 45px !important; border-radius: 12px; font-weight: bold; color: #0b0c10; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; }
 .icon-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #888; flex: 0 0 35px; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; transition:0.2s;}
-.icon-btn.recording { color: #ff5555; animation: pulse 1s infinite; }
+.icon-btn.recording { color: #ff5555; animation: pulse 1s infinite; transform: scale(1.2); }
 
 #dm-list, #comm-chat-list {flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
 .msg-row{display:flex;gap:10px;max-width:85%; animation: fadeIn 0.2s ease-out;}
@@ -309,8 +311,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .del-msg-btn { font-size:12px; cursor:pointer; color:#ff5555; opacity:0.6; position:absolute; bottom:-15px; right:5px; transition:0.2s; }
 .del-msg-btn:hover { opacity:1; transform:scale(1.2); }
-
-/* MENSAGEM FANTASMA (DELETADA) */
 .msg-deleted { font-style: italic; color: #ffaa00; background: rgba(255,170,0,0.1); padding: 5px 10px; border-radius: 8px; font-size: 13px; display: inline-block; border: 1px dashed rgba(255,170,0,0.5); }
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
@@ -330,7 +330,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .ch-badge { font-size:10px; background:rgba(102,252,241,0.1); color:var(--primary); padding:3px 6px; border-radius:6px; margin-left:8px; border:1px solid rgba(102,252,241,0.3); font-weight:bold;}
 
-/* PERFIL E DEMAIS BOTÕES */
+/* PERFIL */
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
 .profile-cover{width:100%;height:100%;object-fit:cover;opacity:0.9;mask-image:linear-gradient(to bottom,black 60%,transparent 100%); background:#111;}
 .profile-pic-lg-wrap { position:absolute; bottom:-50px; left:50%; transform:translateX(-50%); z-index: 10; }
@@ -349,14 +349,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
-#toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#000;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s}
-#toast.show{visibility:visible;opacity:1}
+
+/* TOAST SUPERIOR E CENTRALIZADO */
+#toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
+#toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
 
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
 @keyframes scaleUp{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes pulse{0%{opacity:1; transform:scale(1);} 50%{opacity:0.5; transform:scale(1.2);} 100%{opacity:1; transform:scale(1);}}
 
+/* CARROSSEL MOBILE */
 @media(max-width:768px){
     #app{flex-direction:column-reverse}
     #sidebar{width:100%;height:65px;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 15px;border-top:1px solid var(--border);border-right:none;background:rgba(11,12,16,0.95);overflow-x:auto;overflow-y:hidden; white-space:nowrap; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
@@ -392,7 +395,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div id="sidebar">
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
         <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn active" onclick="goView('feed', this)">🎬</button>
+        <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
         <button class="nav-btn" onclick="goView('mycomms', this)">🛡️</button>
         <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
         <button class="nav-btn" onclick="goView('history', this)">🕒</button>
@@ -556,8 +559,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <script>
 var user=null, dmWS=null, commWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
 var activeCommId=null, activeChannelId=null;
-window.onlineUsers = []; window.unreadData = {}; 
-let mediaRecorders = {}; let audioChunks = {};
+window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
+let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
 const CLOUD_NAME = "dqa0q3qlx"; 
 const UPLOAD_PRESET = "for_glory_preset"; 
@@ -610,12 +613,20 @@ function updateStatusDots() {
     });
 }
 
+// 🔔 SISTEMA DE NOTIFICAÇÃO (TOAST E BADGE)
 async function fetchUnread() {
     if(!user) return;
     try {
         let r = await fetch(`/inbox/unread/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json(); window.unreadData = d.by_sender;
         let badge = document.getElementById('inbox-badge');
         if(d.total > 0) { badge.innerText = d.total; badge.style.display = 'block'; } else { badge.style.display = 'none'; }
+        
+        // Verifica se chegou mensagem nova e dispara o Toast
+        if (window.lastTotalUnread !== undefined && d.total > window.lastTotalUnread) {
+            showToast("🔔 Nova mensagem privada!");
+        }
+        window.lastTotalUnread = d.total;
+
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => {
                 let sid = parseInt(item.getAttribute('data-id')); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge');
@@ -642,8 +653,9 @@ async function doRegister(){try{let r=await fetch('/register',{method:'POST',hea
 
 function startApp(){
     document.getElementById('modal-login').classList.add('hidden');
-    updateUI(); fetchOnlineUsers(); fetchUnread(); 
-    goView('profile', document.getElementById('nav-profile-btn'));
+    updateUI(); 
+    fetchOnlineUsers(); fetchUnread(); 
+    goView('profile', document.getElementById('nav-profile-btn')); // NASCE NO PERFIL
     syncInterval=setInterval(()=>{
         if(document.getElementById('view-feed').classList.contains('active')) loadFeed();
         fetchOnlineUsers(); fetchUnread(); 
@@ -678,12 +690,27 @@ function goView(v, btnElem){
     if(v === 'feed') loadFeed();
 }
 
+/* 🎤 RÁDIO DE VOZ HD COM CRONÔMETRO TÁTICO */
 async function toggleRecord(type) {
     let btn = document.getElementById(`btn-mic-${type}`);
-    if (mediaRecorders[type] && mediaRecorders[type].state === 'recording') { mediaRecorders[type].stop(); btn.classList.remove('recording'); return; }
+    let inpId = type === 'dm' ? 'dm-msg' : (type === 'comm' ? 'comm-msg' : `comment-inp-${type.split('-')[1]}`);
+    let inp = document.getElementById(inpId);
+
+    if (mediaRecorders[type] && mediaRecorders[type].state === 'recording') { 
+        mediaRecorders[type].stop(); 
+        btn.classList.remove('recording'); 
+        clearInterval(recordTimers[type]);
+        if(inp) { inp.placeholder = "Processando áudio..."; inp.disabled = false; }
+        return; 
+    }
     try {
-        let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorders[type] = new MediaRecorder(stream);
+        let stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, sampleRate: 48000 } 
+        });
+        let options = {};
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) { options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 }; }
+        
+        mediaRecorders[type] = new MediaRecorder(stream, options);
         audioChunks[type] = [];
         mediaRecorders[type].ondataavailable = e => { if(e.data.size > 0) audioChunks[type].push(e.data); };
         mediaRecorders[type].onstop = async () => {
@@ -702,9 +729,24 @@ async function toggleRecord(type) {
                 }
             } catch(err) { showToast("Erro no rádio."); }
             stream.getTracks().forEach(t => t.stop());
+            if(inp) { inp.placeholder = "Mensagem..."; } 
         };
+        
         mediaRecorders[type].start();
         btn.classList.add('recording');
+        
+        // HUD Cronômetro
+        if(inp) {
+            inp.disabled = true;
+            recordSeconds[type] = 0;
+            inp.placeholder = `🔴 Gravando... 00:00`;
+            recordTimers[type] = setInterval(() => {
+                recordSeconds[type]++;
+                let mins = String(Math.floor(recordSeconds[type] / 60)).padStart(2, '0');
+                let secs = String(recordSeconds[type] % 60).padStart(2, '0');
+                inp.placeholder = `🔴 Gravando... ${mins}:${secs} (Clique no mic para enviar)`;
+            }, 1000);
+        }
     } catch (e) { showToast("Microfone bloqueado!"); }
 }
 
@@ -765,6 +807,8 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
         if(res.status === 'ok') {
             let msgBubble = document.getElementById(`${t}-${id}`).querySelector('.msg-bubble');
             msgBubble.innerHTML = `<span class="msg-deleted">🚫 Mensagem apagada</span>`;
+            let btn = document.getElementById(`${t}-${id}`).querySelector('.del-msg-btn');
+            if(btn) btn.remove();
             showToast("Apagado dos registros.");
         } else if (res.status === 'timeout') {
             showToast(res.msg);
@@ -936,7 +980,7 @@ async function submitCreateComm(e) {
         if(f) { let c = await uploadToCloudinary(f); av = c.secure_url; }
         let fd = new FormData(); fd.append('user_id', user.id); fd.append('name', n); fd.append('desc', d); fd.append('is_priv', p); fd.append('avatar_url', av);
         let r = await fetch('/community/create', {method:'POST', body:fd});
-        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Estabelecida!"); loadMyComms(); }
+        if(r.ok) { document.getElementById('modal-create-comm').classList.add('hidden'); showToast("Base Estabelecida!"); loadMyComms(); goView('mycomms', document.querySelectorAll('.nav-btn')[3]); }
     } catch(e) { alert("Erro ao criar."); } finally { btn.innerText = "ESTABELECER"; btn.disabled = false; }
 }
 
@@ -957,7 +1001,7 @@ async function openCommunity(cid) {
     document.getElementById('comm-chat-area').style.display = 'flex';
     
     let r = await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`); let d = await r.json();
-    document.getElementById('active-comm-name').innerText = d.name;
+    document.getElementById('active-comm-name').innerText = "🛡️ " + d.name;
     document.getElementById('c-info-av').src = d.avatar_url; document.getElementById('c-info-name').innerText = d.name; document.getElementById('c-info-desc').innerText = d.description;
     
     let mHtml = "";
@@ -1419,7 +1463,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 if msg_id:
                     user_data = {"id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt, "can_delete": True}
                     await manager.broadcast(user_data, ch)
-                    if ch.startswith("dm_"): await manager.broadcast({"type": "ping"}, "Geral")
             except Exception as e: db.rollback()
             finally: db.close()
     except Exception:
