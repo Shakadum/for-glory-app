@@ -309,7 +309,8 @@ def get_db():
     finally: db.close()
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-    # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO E BLINDADO ---
+
+# --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO E BLINDADO ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -536,7 +537,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     
     <div id="call-users-list" style="max-height:200px; overflow-y:auto; margin-bottom:20px; padding-right:5px;"></div>
     
-    <div id="call-bg-action" style="display:none; text-align:center; margin-bottom:15px;">
+    <div id="call-bg-action" style="text-align:center; margin-bottom:15px;">
         <input type="file" id="call-bg-file" style="display:none;" accept="image/*" onchange="uploadCallBg(this)">
         <button class="glass-btn" style="padding:8px 15px; font-size:11px;" onclick="document.getElementById('call-bg-file').click()">🖼️ TROCAR FUNDO DA CALL</button>
     </div>
@@ -1000,15 +1001,167 @@ var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
+// VARIÁVEIS DE ESTADO DA CALL E SONS TÁTICOS
 let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
-let callDuration = 0, callInterval = null; window.pendingCallChannel = null; window.pendingCallType = null; 
+let callDuration = 0, callInterval = null; 
+window.pendingCallChannel = null; window.pendingCallType = null;
+window.currentAgoraChannel = null; 
 
-// SONS TÁTICOS
 window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
+window.callingSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'); window.callingSound.loop = true;
 window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
 
-const CLOUD_NAME = "dqa0q3qlx"; const UPLOAD_PRESET = "for_glory_preset"; 
-const EMOJIS = ["😂","🔥","❤️","💀","🎮","🇧🇷","🫡","🤡","😭","😎","🤬","👀","👍","👎","🔫","💣","⚔️","🛡️","🏆","💰","🍕","🍺","👋","🚫","✅","👑","💩","👻","👽","🤖","🤫","🥶","🤯","🥳","🤢","🤕","🤑","🤠","😈","👿","👹","👺","👾"];
+async function initCall(typeParam, targetId) {
+    if (rtc.client) return showToast("Você já está em uma call!");
+    let channelName = "";
+    
+    if (typeParam === 'dm' || typeParam === '1v1') { 
+        channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
+        showToast("Chamando...");
+        await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
+        try { window.callingSound.play(); } catch(e){} 
+    } else if (typeParam === 'group') { 
+        channelName = `call_group_${targetId}`; 
+        showToast("Chamando o Esquadrão...");
+        await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
+        try { window.callingSound.play(); } catch(e){}
+    } else if (typeParam === 'channel' || typeParam === 'voice') { 
+        channelName = `call_channel_${targetId}`; 
+    } else { return showToast("Alvo da call inválido."); }
+    
+    window.callHasConnected = false;
+    connectToAgora(channelName, typeParam);
+}
+
+function declineCall() { 
+    document.getElementById('modal-incoming-call').classList.add('hidden'); 
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } 
+    if (globalWS && globalWS.readyState === WebSocket.OPEN && window.pendingCallerId) {
+        globalWS.send("REJECT_CALL:" + window.pendingCallerId);
+    }
+}
+
+async function acceptCall() { 
+    document.getElementById('modal-incoming-call').classList.add('hidden'); 
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } 
+    if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    
+    window.callHasConnected = false; 
+    await connectToAgora(window.pendingCallChannel, window.pendingCallType); 
+}
+
+async function connectToAgora(channelName, typeParam) {
+    window.currentAgoraChannel = channelName; 
+    try {
+        let res = await fetch('/agora-config'); let conf = await res.json();
+        if (!conf.app_id) { showToast("Erro: APP ID do Rádio não configurado."); return; }
+        if (rtc.client) { await rtc.client.leave(); }
+        
+        try {
+            let rBg = await fetch(`/call/bg/call/${channelName}`);
+            let resBg = await rBg.json();
+            if(resBg && resBg.bg_url) {
+                document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`;
+            } else {
+                document.getElementById('expanded-call-panel').style.backgroundImage = 'none';
+            }
+        } catch(e) {}
+
+        rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); rtc.remoteUsers = {};
+        
+        rtc.client.on("user-published", async (remoteUser, mediaType) => {
+            window.callHasConnected = true; 
+            if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+            
+            await rtc.client.subscribe(remoteUser, mediaType);
+            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
+        });
+        
+        rtc.client.on("user-unpublished", (remoteUser) => { 
+            delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); 
+            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { 
+                showToast("A ligação terminou."); leaveCall(); 
+            }
+        });
+        
+        await rtc.client.join(conf.app_id, channelName, null, user.id);
+        
+        try { 
+            rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); 
+        } catch(micErr) { 
+            alert("⚠️ Permissão de Microfone Negada ou nenhum microfone detectado no dispositivo!");
+            leaveCall(); 
+            return; 
+        }
+        
+        await rtc.client.publish([rtc.localAudioTrack]);
+        document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
+        
+    } catch(e) { console.error(e); showToast("Falha ao conectar."); leaveCall(); }
+}
+
+async function uploadCallBg(inputElem){
+    if(!inputElem.files[0] || !window.currentAgoraChannel) return;
+    showToast("Aplicando fundo tático...");
+    try{
+        let c = await uploadToCloudinary(inputElem.files[0]);
+        
+        await fetch('/call/bg/set',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({target_type: 'call', target_id: window.currentAgoraChannel, bg_url: c.secure_url})
+        });
+        
+        document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;
+        showToast("Fundo alterado para todos!");
+        
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) { 
+            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + c.secure_url); 
+        }
+    } catch(e) { showToast("Erro ao subir imagem."); }
+}
+
+async function leaveCall() { 
+    if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+    
+    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
+    if (rtc.client) { await rtc.client.leave(); } 
+    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; 
+    window.currentAgoraChannel = null;
+    
+    clearInterval(callInterval); 
+    document.getElementById('expanded-call-panel').style.display = 'none'; 
+    document.getElementById('floating-call-btn').style.display = 'none'; 
+    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤'; 
+}
+
+window.callUsersCache = {};
+async function renderCallPanel() {
+    let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
+    let isAdmin = window.currentCommIsAdmin || false;
+    
+    for(let uid in rtc.remoteUsers) {
+        count++; 
+        if(!window.callUsersCache[uid]) {
+            try {
+                let req = await fetch(`/users/basic/${uid}`);
+                window.callUsersCache[uid] = await req.json();
+            } catch(e) { window.callUsersCache[uid] = {name: "Aliado", avatar: "https://ui-avatars.com/api/?name=A"}; }
+        }
+        
+        let uData = window.callUsersCache[uid];
+        let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
+        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
+    }
+    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
+}
+
+function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
+function toggleMuteCall() { if(rtc.localAudioTrack) { let muted = !rtc.localAudioTrack.muted; rtc.localAudioTrack.setMuted(muted); let btn = document.getElementById('btn-mute-call'); if(muted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; } } }
+function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
+function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; document.getElementById('call-hud-status').innerText = t('in_call'); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
+function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
@@ -1113,30 +1266,33 @@ function startApp(){
         let d = JSON.parse(e.data);
         if(d.type === 'pong') return; 
         if(d.type === 'ping') { fetchUnread(); }
+
+        // SINCRONIZADOR DE BACKGROUND DA CHAMADA
+        if(d.type === 'sync_bg' && window.currentAgoraChannel === d.channel) {
+            document.getElementById('expanded-call-panel').style.backgroundImage = `url('${d.bg_url}')`;
+        }
+
         // NOTIFICAÇÃO SONORA E BOLINHA
         if(d.type === 'new_dm') {
             let isDmActive = document.getElementById('view-dm').classList.contains('active');
             if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
             else { try { window.msgSound.play(); } catch(err){} fetchUnread(); }
         }
+        
         // CALL KICK
         if(d.type === 'kick_call' && d.target_id === user.id) {
             showToast("Você foi removido da chamada."); leaveCall();
         }
-        // LIGAÇÃO RECEBIDA
-        if(d.type === 'incoming_call') {
-            document.getElementById('incoming-call-name').innerText = d.caller_name;
-            document.getElementById('incoming-call-av').src = d.caller_avatar;
-            window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
-            document.getElementById('modal-incoming-call').classList.remove('hidden');
-            try { window.ringtone.play(); } catch(err){}
-        }
+        
+        // LIGAÇÃO RECUSADA
         if(d.type === 'call_rejected') {
             showToast("❌ A chamada foi recusada.");
             leaveCall();
         }
+        
+        // LIGAÇÃO RECEBIDA
         if(d.type === 'incoming_call') {
-            window.pendingCallerId = d.caller_id; // Salva quem ligou para podermos recusar
+            window.pendingCallerId = d.caller_id;
             document.getElementById('incoming-call-name').innerText = d.caller_name;
             document.getElementById('incoming-call-av').src = d.caller_avatar;
             window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
@@ -1157,157 +1313,6 @@ function goView(v, btnElem){
     if(v === 'inbox') loadInbox(); if(v === 'mycomms') loadMyComms(); if(v === 'explore') loadPublicComms(); if(v === 'history') loadMyHistory(); if(v === 'feed') loadFeed();
 }
 
-async function initCall(typeParam, targetId) {
-    if (rtc.client) return showToast("Você já está em uma call!");
-    let channelName = "";
-    if (typeParam === 'dm' || typeParam === '1v1') { 
-        channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
-        showToast("Chamando...");
-        await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
-    } else if (typeParam === 'group') { 
-        channelName = `call_group_${targetId}`; 
-        showToast("Chamando o Esquadrão...");
-        await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
-    } else if (typeParam === 'channel' || typeParam === 'voice') { 
-        channelName = `call_channel_${targetId}`; 
-    } else { return showToast("Alvo da call inválido."); }
-    window.callHasConnected = false;
-    connectToAgora(channelName, typeParam);
-}
-
-function declineCall() { 
-    document.getElementById('modal-incoming-call').classList.add('hidden'); 
-    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } 
-    // Avisa o servidor que recusou
-    if (globalWS && globalWS.readyState === WebSocket.OPEN && window.pendingCallerId) {
-        globalWS.send("REJECT_CALL:" + window.pendingCallerId);
-    }
-}
-async function acceptCall() { document.getElementById('modal-incoming-call').classList.add('hidden'); if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } window.callHasConnected = false; await connectToAgora(window.pendingCallChannel, window.pendingCallType); }
-
-async function initCall(typeParam, targetId) {
-    if (rtc.client) return showToast("Você já está em uma call!");
-    let channelName = "";
-    
-    // Configura o HUD básico inicialmente
-    let chatName = document.getElementById('dm-header-name') ? document.getElementById('dm-header-name').innerText : "Conectando...";
-    if(typeof updateCallHUD === "function") updateCallHUD(chatName, "https://ui-avatars.com/api/?name=Call");
-
-    if (typeParam === 'dm' || typeParam === '1v1') { 
-        channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
-        showToast("Chamando...");
-        await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
-    } else if (typeParam === 'group') { 
-        channelName = `call_group_${targetId}`; 
-        showToast("Chamando o Esquadrão...");
-        await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
-    } else if (typeParam === 'channel' || typeParam === 'voice') { 
-        channelName = `call_channel_${targetId}`; 
-    } else { return showToast("Alvo da call inválido."); }
-    window.callHasConnected = false;
-    connectToAgora(channelName, typeParam);
-}
-
-// ATUALIZAÇÃO 3: Lógica do WebSocket para Sincronizar a Foto de Fundo + Conexão Agora (usando user.id)
-async function connectToAgora(channelName, typeParam) {
-    try {
-        let res = await fetch('/agora-config'); let conf = await res.json();
-        if (!conf.app_id) { showToast("Erro: APP ID do Rádio não configurado."); return; }
-        if (rtc.client) { await rtc.client.leave(); }
-        
-        // Pega o BG salvo especifico para essa call
-        try {
-            let tId = currentChatId || activeChannelId;
-            let tType = currentChatType || "channel";
-            let rBg = await fetch(`/call/bg/${tType}/${tId}`);
-            let resBg = await rBg.json();
-            if(resBg && resBg.bg_url) {
-                document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`;
-            } else {
-                document.getElementById('expanded-call-panel').style.backgroundImage = 'none';
-            }
-        } catch(e) {}
-
-        rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); rtc.remoteUsers = {};
-        
-        rtc.client.on("user-published", async (remoteUser, mediaType) => {
-            window.callHasConnected = true; 
-            await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
-        });
-        rtc.client.on("user-unpublished", (remoteUser) => { 
-            delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); 
-            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { showToast("A ligação terminou."); leaveCall(); }
-        });
-        
-        // CORREÇÃO AQUI: Em vez de um UID aleatório, usamos o user.id real para buscar a foto depois
-        await rtc.client.join(conf.app_id, channelName, null, user.id);
-        
-        try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
-        catch(micErr) { showToast("⚠️ Microfone bloqueado! Autorize no navegador."); await rtc.client.leave(); return; }
-        
-        await rtc.client.publish([rtc.localAudioTrack]);
-        document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
-        if (typeParam === 'channel' || typeParam === 'voice') { document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;animation:pulse 2s infinite; text-shadow: 0 0 20px #2ecc71;">🎙️</div><h3 style="color:var(--primary); font-family:'Rajdhani'; font-size:28px;">VOCÊ ESTÁ NA CALL</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p></div>`; }
-    } catch(e) { console.error(e); showToast("Erro ao conectar à central de Rádio."); leaveCall(); }
-}
-
-// ATUALIZAÇÃO 4: Upload do BG e Sincronização
-async function uploadCallBg(inputElem){
-    if(!inputElem.files[0]) return;
-    showToast("Fazendo upload da imagem...");
-    try{
-        let c = await uploadToCloudinary(inputElem.files[0]);
-        let targetId = currentChatId || activeChannelId;
-        let targetType = currentChatType || "channel";
-        
-        // Salva na sala especifica
-        await fetch('/call/bg/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_type:targetType,target_id:String(targetId),bg_url:c.secure_url})});
-        
-        document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;
-        showToast("Fundo alterado para todos na call!");
-        
-        // Sincronizar imagem ao vivo via WebSocket
-        let bgMsg = "[CALL_BG]" + c.secure_url;
-        if((targetType === '1v1' || targetType === 'dm' || targetType === 'group') && dmWS) { dmWS.send(bgMsg); }
-        else if (commWS) { commWS.send(bgMsg); }
-
-    } catch(e) { showToast("Erro."); }
-}
-
-// ATUALIZAÇÃO 5: Renderizar participantes reais (Foto e Nome)
-window.callUsersCache = {};
-async function renderCallPanel() {
-    let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
-    let isAdmin = window.currentCommIsAdmin || false;
-    
-    for(let uid in rtc.remoteUsers) {
-        count++; 
-        
-        // Busca os dados reais do usuário caso ainda não estejam no cache
-        if(!window.callUsersCache[uid]) {
-            try {
-                let req = await fetch(`/users/basic/${uid}`);
-                window.callUsersCache[uid] = await req.json();
-            } catch(e) { window.callUsersCache[uid] = {name: "Aliado", avatar: "https://ui-avatars.com/api/?name=A"}; }
-        }
-        
-        let uData = window.callUsersCache[uid];
-        let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
-        
-        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
-        
-        // Atualiza a foto principal do HUD flutuante se for uma ligação 1v1
-        if(currentChatType === '1v1' || currentChatType === 'dm') {
-            if(typeof updateCallHUD === "function") updateCallHUD(uData.name, uData.avatar);
-        }
-    }
-    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
-}
-
-function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
-async function leaveCall() { if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } if (rtc.client) { await rtc.client.leave(); } rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; clearInterval(callInterval); document.getElementById('expanded-call-panel').style.display = 'none'; document.getElementById('floating-call-btn').style.display = 'none'; let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤'; if(activeChannelId && window.currentCommType === 'voice') { joinChannel(activeChannelId, 'voice', null); } }
-function toggleMuteCall() { if(rtc.localAudioTrack) { let muted = !rtc.localAudioTrack.muted; rtc.localAudioTrack.setMuted(muted); let btn = document.getElementById('btn-mute-call'); if(muted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; } } }
 async function toggleRecord(type) { let btn=document.getElementById(`btn-mic-${type}`); let inpId=type==='dm'?'dm-msg':(type==='comm'?'comm-msg':`comment-inp-${type.split('-')[1]}`); let inp=document.getElementById(inpId); if(mediaRecorders[type]&&mediaRecorders[type].state==='recording'){mediaRecorders[type].stop();btn.classList.remove('recording');clearInterval(recordTimers[type]);if(inp){inp.placeholder=t('audio_proc');inp.disabled=false;}return;} try{ let stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false,sampleRate:48000}});let options={};if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')){options={mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:128000};} mediaRecorders[type]=new MediaRecorder(stream,options);audioChunks[type]=[];mediaRecorders[type].ondataavailable=e=>{if(e.data.size>0)audioChunks[type].push(e.data);}; mediaRecorders[type].onstop=async()=>{ let blob=new Blob(audioChunks[type],{type:'audio/webm'});let file=new File([blob],"radio.webm",{type:'audio/webm'}); try{ let res=await uploadToCloudinary(file);let audioMsg="[AUDIO]"+res.secure_url; if(type==='dm'&&dmWS){dmWS.send(audioMsg);}else if(type==='comm'&&commWS){commWS.send(audioMsg);}else if(type.startsWith('comment-')){ let pid=type.split('-')[1];await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:audioMsg})});lastFeedHash="";loadFeed();} }catch(err){} stream.getTracks().forEach(t=>t.stop());if(inp){inp.placeholder="";} }; mediaRecorders[type].start();btn.classList.add('recording'); if(inp){inp.disabled=true;recordSeconds[type]=0;inp.placeholder=`${t('recording')} 00:00`;recordTimers[type]=setInterval(()=>{recordSeconds[type]++;let mins=String(Math.floor(recordSeconds[type]/60)).padStart(2,'0');let secs=String(recordSeconds[type]%60).padStart(2,'0');inp.placeholder=`${t('recording')} ${mins}:${secs} ${t('click_to_send')}`;},1000);} }catch(e){showToast("Mic Blocked!");} }
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let hData=await hist.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){}}
 async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="confirmDelete('post', ${x.id})" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){}}
@@ -1319,11 +1324,11 @@ async function toggleComments(pid){let sec=document.getElementById(`comments-${p
 async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="confirmDelete('comment', ${c.id})" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){}}
 async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){}}
 async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
-function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;if (c.startsWith('[CALL_BG]')) {
-        let bgUrl = c.replace('[CALL_BG]', '');
-        document.getElementById('expanded-call-panel').style.backgroundImage = `url('${bgUrl}')`;
-        return; 
-    }let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
+function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
+    // IGNORA BACKGROUNDS NO CHAT
+    if (c.startsWith('[CALL_BG]')) { return; }
+    
+    let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
 async function openChat(id,name,type){let changingChat=(currentChatId!==id||currentChatType!==type);currentChatId=id;currentChatType=type;document.getElementById('dm-header-name').innerText=name;goView('dm');if(type==='1v1'){await fetch(`/inbox/read/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});fetchUnread();}if(changingChat){document.getElementById('dm-list').innerHTML='';}await fetchChatMessages(id,type);if(changingChat||!dmWS||dmWS.readyState!==WebSocket.OPEN){connectDmWS(id,name,type);}}
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(dmWS)dmWS.send(c.secure_url);}catch(e){}}
@@ -1385,14 +1390,14 @@ async function submitEditChannel(){let n=document.getElementById('edit-ch-name')
 
 async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
 
-function connectCommWS(chid){if(commWS)commWS.close();let p=location.protocol==='https:'?'wss:':'ws:';commWS=new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);commWS.onclose=()=>{setTimeout(()=>{if(activeChannelId===chid&&document.getElementById('comm-chat-area').style.display==='flex'&&window.currentCommType!=='voice'){fetchCommMessages(chid);connectCommWS(chid);}},2000);};commWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('comm-chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;if (c.startsWith('[CALL_BG]')) {
-        let bgUrl = c.replace('[CALL_BG]', '');
-        document.getElementById('expanded-call-panel').style.backgroundImage = `url('${bgUrl}')`;
-        return; 
-    }let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;}};}
+function connectCommWS(chid){if(commWS)commWS.close();let p=location.protocol==='https:'?'wss:':'ws:';commWS=new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);commWS.onclose=()=>{setTimeout(()=>{if(activeChannelId===chid&&document.getElementById('comm-chat-area').style.display==='flex'&&window.currentCommType!=='voice'){fetchCommMessages(chid);connectCommWS(chid);}},2000);};commWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('comm-chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
+    // IGNORA BACKGROUNDS NO CHAT
+    if (c.startsWith('[CALL_BG]')) { return; }
+
+    let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;}};}
 
 async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannelId!==chid);activeChannelId=chid;window.currentCommType=type;document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';if(btnElem){document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));btnElem.classList.add('active');}let inpForm=document.getElementById('comm-input-form');let inp=document.getElementById('comm-msg');let clip=document.getElementById('btn-comm-clip');let emj=document.getElementById('btn-comm-emoji');let mic=document.getElementById('btn-comm-mic');inp.disabled=false;clip.style.display='flex';emj.style.display='flex';mic.style.display='flex';inpForm.style.display='flex';let cp=document.getElementById('expanded-call-panel');cp.style.backgroundImage='none';document.getElementById('call-bg-action').style.display='none';if(changingChannel&&commWS){commWS.close();commWS=null;}if(type==='voice'){inpForm.style.display='none';document.getElementById('comm-chat-list').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;if(window.currentCommIsAdmin){document.getElementById('call-bg-action').style.display='block';}try{let r=await fetch(`/call/bg/channel/${chid}`);let res=await r.json();if(res.bg_url){cp.style.backgroundImage=`url('${res.bg_url}')`;}}catch(e){}}else{if(type==='media'){inp.disabled=true;inp.placeholder=t('media_only');emj.style.display='none';mic.style.display='none';}else if(type==='text'){inp.placeholder=t('base_msg_placeholder');clip.style.display='none';mic.style.display='flex';}else{inp.placeholder=t('base_msg_placeholder');}if(changingChannel){document.getElementById('comm-chat-list').innerHTML='';}await fetchCommMessages(chid);if(!commWS||commWS.readyState!==WebSocket.OPEN){connectCommWS(chid);}}}
-async function uploadCallBg(inputElem){if(!inputElem.files[0])return;showToast("Fazendo upload da imagem...");try{let c=await uploadToCloudinary(inputElem.files[0]);let targetId=activeChannelId;let targetType="channel";await fetch('/call/bg/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_type:targetType,target_id:String(targetId),bg_url:c.secure_url})});document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;showToast("Fundo alterado!");}catch(e){showToast("Erro.");}}
+
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){}}
 async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
@@ -1429,21 +1434,6 @@ async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
         return {"is_invisible": u.is_invisible}
     return {"status": "error"}
 
-@app.post("/profile/set_wallpaper")
-async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
-    config = db.query(UserConfig).filter_by(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id']).first()
-    if config:
-        config.wallpaper_url = d['url']
-    else:
-        db.add(UserConfig(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id'], wallpaper_url=d['url']))
-    db.commit()
-    return {"status": "ok"}
-
-@app.get("/profile/get_wallpaper")
-async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_db)):
-    config = db.query(UserConfig).filter_by(user_id=uid, target_type=type, target_id=tid).first()
-    return {"url": config.wallpaper_url if config else None}
-    
 @app.get("/notifications/{uid}")
 async def get_notifications(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
@@ -1846,6 +1836,12 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 await manager.send_personal({"type": "call_rejected"}, target)
                 continue
                 
+            if txt.startswith("SYNC_BG:"):
+                parts = txt.split(":", 2)
+                if len(parts) == 3:
+                    await manager.broadcast({"type": "sync_bg", "channel": parts[1], "bg_url": parts[2]}, "Geral")
+                continue
+                
             db = SessionLocal()
             msg_id = None
             now_iso = datetime.utcnow().isoformat() + "Z"
@@ -1902,74 +1898,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
     except Exception:
         manager.disconnect(ws, ch, uid)
 
-@app.post("/group/create")
-async def create_group(d: CreateGroupData, db: Session=Depends(get_db)):
-    grp = ChatGroup(name=d.name)
-    db.add(grp); db.commit(); db.refresh(grp)
-    db.add(GroupMember(group_id=grp.id, user_id=d.creator_id))
-    for mid in d.member_ids: db.add(GroupMember(group_id=grp.id, user_id=mid))
-    db.commit()
-    return {"status": "ok"}
-
-@app.get("/group/{group_id}/messages")
-async def get_group_msgs(group_id: int, db: Session=Depends(get_db)):
-    msgs = db.query(GroupMessage).filter(GroupMessage.group_id == group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
-    res = []
-    for m in msgs:
-        b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
-    return res
-
-@app.post("/friend/request")
-async def send_req(d: dict, db: Session=Depends(get_db)):
-    sender_id = d.get('sender_id'); target_id = d.get('target_id')
-    me = db.query(User).filter(User.id == sender_id).first()
-    target = db.query(User).filter(User.id == target_id).first()
-    if target in me.friends: return {"status": "already_friends"}
-    existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==sender_id, FriendRequest.receiver_id==target_id),and_(FriendRequest.sender_id==target_id, FriendRequest.receiver_id==sender_id))).first()
-    if existing: return {"status": "pending"}
-    db.add(FriendRequest(sender_id=sender_id, receiver_id=target_id)); db.commit()
-    return {"status": "sent"}
-
-@app.get("/friend/requests")
-async def get_reqs(uid: int, db: Session=Depends(get_db)):
-    reqs = db.query(FriendRequest).filter(FriendRequest.receiver_id == uid).all()
-    requests_data = [{"id": r.id, "username": db.query(User).filter(User.id == r.sender_id).first().username} for r in reqs]
-    me = db.query(User).filter(User.id == uid).first()
-    friends_data = [{"id": f.id, "username": f.username, "avatar": f.avatar_url} for f in me.friends]
-    return {"requests": requests_data, "friends": friends_data}
-
-@app.post("/friend/handle")
-async def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
-    req = db.query(FriendRequest).filter(FriendRequest.id == d.request_id).first()
-    if not req: return {"status": "error"}
-    if d.action == 'accept':
-        u1 = db.query(User).filter(User.id == req.sender_id).first()
-        u2 = db.query(User).filter(User.id == req.receiver_id).first()
-        u1.friends.append(u2); u2.friends.append(u1)
-    db.delete(req); db.commit()
-    return {"status": "ok"}
-
-@app.get("/user/{target_id}")
-async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
-    target = db.query(User).filter(User.id == target_id).first()
-    viewer = db.query(User).filter(User.id == viewer_id).first()
-    posts = db.query(Post).filter(Post.user_id == target_id).order_by(Post.timestamp.desc()).all()
-    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
-    status = "friends" if target in viewer.friends else "none"
-    req_id = None
-    if status == "none":
-        sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
-        received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
-        if sent: status = "pending_sent"
-        if received: status = "pending_received"; req_id = received.id
-        
-    b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
-    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
-
 @app.post("/profile/set_wallpaper")
 async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
-    # d deve conter: user_id, target_type, target_id, url
     config = db.query(UserConfig).filter_by(
         user_id=d['user_id'], 
         target_type=d['target_type'], 
@@ -1994,7 +1924,8 @@ async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_d
     return {"url": config.wallpaper_url if config else None}
     
 @app.get("/agora-config")
-async def get_agora_config(): return {"app_id": AGORA_APP_ID}
+async def get_agora_config(): 
+    return {"app_id": AGORA_APP_ID}
 
 @app.get("/users/basic/{uid}")
 async def get_basic_user(uid: int, db: Session=Depends(get_db)):
@@ -2005,8 +1936,3 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
