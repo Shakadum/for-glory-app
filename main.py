@@ -20,7 +20,6 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from jose import jwt, JWTError
 from collections import Counter
 
-# --- CONFIGURAÇÕES GERAIS E CHAVES ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
@@ -47,7 +46,6 @@ cloudinary.config(
     secure=True
 )
 
-# --- BANCO DE DADOS BLINDADO ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./for_glory_v6.db")
 
 if "sqlite" in DATABASE_URL:
@@ -185,10 +183,16 @@ class CommunityRequest(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", foreign_keys=[user_id])
 
+class CallBackground(Base):
+    __tablename__ = "call_backgrounds"
+    id = Column(Integer, primary_key=True, index=True)
+    target_type = Column(String, index=True) 
+    target_id = Column(String, index=True) 
+    bg_url = Column(String)
+
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro BD inicial: {e}")
 
-# --- APP FASTAPI E GERENCIADORES ---
 app = FastAPI(title="For Glory Cloud")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -219,7 +223,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- INSPETOR DE BANCO DE DADOS SINCRONIZADO E SEGURO ---
 @app.on_event("startup")
 def startup_db_fix():
     try:
@@ -248,17 +251,8 @@ def startup_db_fix():
                         except Exception: pass
     except Exception: pass
 
-# --- SISTEMA DE CARREIRA MILITAR E MEDALHAS ---
 def get_user_badges(xp, user_id, role):
-    tiers = [
-        (0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"),
-        (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"),
-        (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"),
-        (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"),
-        (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"),
-        (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"),
-        (50000, "General ⭐", 50000, "#FFD700")
-    ]
+    tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
     for i, t in enumerate(tiers):
         if xp >= t[0]:
@@ -305,8 +299,7 @@ def get_db():
     finally: db.close()
 
 def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-    # --- FRONTEND COMPLETAMENTE DESCOMPRIMIDO E BLINDADO ---
-html_content = r"""
+    html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -344,7 +337,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-/* HUD DA CALL FLUTUANTE PREMIUM (RADAR DE VIDRO) */
+/* HUD DA CALL FLUTUANTE PREMIUM (RADAR DE VIDRO E IMAGEM DE FUNDO) */
 #floating-call-btn { 
     position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
     background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; 
@@ -356,15 +349,28 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #floating-call-btn:hover { transform:scale(1.1); box-shadow: 0 0 30px rgba(102,252,241,0.8); }
 @keyframes radar-glow { 0% { box-shadow: 0 0 0 0 rgba(102,252,241,0.6); } 70% { box-shadow: 0 0 0 25px rgba(102,252,241,0); } 100% { box-shadow: 0 0 0 0 rgba(102,252,241,0); } }
 
-#expanded-call-panel { display:none; position:fixed; bottom:125px; right:40px; width:300px; background:rgba(11,12,16,0.95); border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 15px 50px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); backdrop-filter:blur(15px); animation:scaleUp 0.3s ease-out; }
-.remote-user-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; background:rgba(255,255,255,0.03); padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.05); transition:0.3s;}
-.remote-user-row:hover { background:rgba(255,255,255,0.08); border-color:var(--primary); }
-.vol-slider { flex:1; accent-color: var(--primary); height:6px; background:#333; border-radius:3px; outline:none; -webkit-appearance:none; }
-.vol-slider::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; background:var(--primary); border-radius:50%; cursor:pointer; box-shadow:0 0 10px var(--primary); }
+#expanded-call-panel { 
+    display:none; position:fixed; bottom:125px; right:40px; width:340px; 
+    background-color: rgba(15, 20, 25, 0.95); background-size: cover; background-position: center;
+    border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; 
+    box-shadow:0 20px 60px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); 
+    animation:scaleUp 0.3s ease-out; overflow:hidden;
+}
+#expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 0; }
+#expanded-call-panel > * { position: relative; z-index: 1; }
+
+.call-participant-card { display:flex; align-items:center; gap:12px; margin-bottom:10px; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(5px); transition:0.3s;}
+.call-participant-card:hover { background:rgba(255,255,255,0.1); border-color:var(--primary); }
+.call-avatar { width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; }
+.call-name { flex:1; color:white; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.call-kick-btn { background:rgba(255,85,85,0.1); border:1px solid rgba(255,85,85,0.4); color:#ff5555; padding:6px; border-radius:8px; cursor:pointer; transition:0.2s; display:flex; align-items:center; justify-content:center; }
+.call-kick-btn:hover { background:rgba(255,85,85,0.3); box-shadow:0 0 10px rgba(255,85,85,0.5); transform:scale(1.1); }
+
+.vol-slider { width: 70px; accent-color: var(--primary); height:4px; background:#333; border-radius:2px; outline:none; }
 .call-btn-circle { background:#1f2833; color:white; border:1px solid #444; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
-.call-btn-circle:hover { transform:scale(1.1); border-color:var(--primary); color:var(--primary); }
+.call-btn-circle:hover { transform:scale(1.1); border-color:var(--primary); color:var(--primary); box-shadow:0 0 15px rgba(102,252,241,0.3); }
 .call-btn-circle.muted { background:rgba(255,85,85,0.1); color:#ff5555; border-color:#ff5555; box-shadow:0 0 15px rgba(255,85,85,0.4); }
-.call-btn-hangup { background:linear-gradient(135deg, #ff5555, #cc0000); color:white; border:none; border-radius:30px; width:100%; padding:14px; font-size:15px; font-family:'Rajdhani'; font-weight:bold; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 8px 20px rgba(255,85,85,0.4); margin-top:15px; text-transform:uppercase;}
+.call-btn-hangup { background:linear-gradient(135deg, #ff5555, #cc0000); color:white; border:none; border-radius:30px; width:100%; padding:14px; font-size:15px; font-family:'Rajdhani'; font-weight:bold; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 8px 20px rgba(255,85,85,0.4); margin-top:10px; text-transform:uppercase;}
 .call-btn-hangup:hover { transform:translateY(-2px); box-shadow:0 12px 25px rgba(255,85,85,0.6); }
 
 /* LAYOUT DE BOTÕES COMPACTOS NAS CONFIGS DA BASE */
@@ -457,6 +463,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
+/* TOAST FIXO E SEGURO */
+#toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
+#toast.show{visibility:visible;opacity:1; top:40px;}
 .hidden{display:none !important}
 
 @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
@@ -476,6 +485,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </style>
 </head>
 <body>
+<div id="toast">Notificação</div>
 
 <div id="modal-incoming-call" class="modal hidden">
     <div class="modal-box" style="border-color: #2ecc71;">
@@ -509,18 +519,23 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <div id="floating-call-btn" onclick="toggleCallPanel()">📞</div>
 <div id="expanded-call-panel">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
-        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter';"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></span>
-        <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:18px; font-weight:bold;">00:00</span>
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:15px; margin-bottom:15px;">
+        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></span>
+        <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:22px; font-weight:bold; text-shadow:0 0 10px rgba(255,255,255,0.5);">00:00</span>
     </div>
     
-    <div id="call-users-list" style="max-height:200px; overflow-y:auto; margin-bottom:15px;"></div>
+    <div id="call-users-list" style="max-height:200px; overflow-y:auto; margin-bottom:20px; padding-right:5px;"></div>
     
-    <div style="display:flex; gap:10px; justify-content:center;">
-        <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()" title="Mutar Meu Microfone">🎤</button>
+    <div id="call-bg-action" style="display:none; text-align:center; margin-bottom:15px;">
+        <input type="file" id="call-bg-file" style="display:none;" accept="image/*" onchange="uploadCallBg(this)">
+        <button class="glass-btn" style="padding:8px 15px; font-size:11px;" onclick="document.getElementById('call-bg-file').click()">🖼️ TROCAR FUNDO DA CALL</button>
+    </div>
+
+    <div style="display:flex; gap:15px; justify-content:center;">
+        <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()" title="Mutar Microfone">🎤</button>
         <button class="call-btn-circle" onclick="toggleCallPanel()" title="Minimizar">🔽</button>
-        <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 DESLIGAR</button>
     </div>
+    <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 DESLIGAR</button>
 </div>
 
 <div id="modal-login" class="modal">
@@ -867,6 +882,15 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <script>
+window.toastTimer = null;
+function showToast(m){
+    let x=document.getElementById("toast");
+    x.innerText=m;
+    x.className="show";
+    if(window.toastTimer) clearTimeout(window.toastTimer);
+    window.toastTimer = setTimeout(()=>{x.className=""}, 5000); 
+}
+
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -878,7 +902,7 @@ const T = {
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
-        'edit_base': 'EDITAR BASE', 'base_avatar': 'Novo Avatar', 'base_banner': 'Novo Banner',
+        'edit_base': 'EDIT BASE', 'base_avatar': 'Novo Avatar', 'base_banner': 'Novo Banner',
         'stealth_on': '🕵️ MODO FURTIVO: ATIVADO', 'stealth_off': '🟢 MODO FURTIVO: DESATIVADO', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitações', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
@@ -890,7 +914,7 @@ const T = {
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceitar Aliado', 'recruit_ally': 'Recrutar Aliado',
         'creator': '👑 CRIADOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBRO', 'promote': 'Promover', 'demote': 'Rebaixar', 'kick': 'Expulsar',
         'base_members': 'Membros da Base', 'entry_requests': 'Solicitações de Entrada', 'destroy_base': 'DESTRUIR BASE',
-        'media_only': 'Canal restrito para mídia 📎', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL', 'incoming_call': 'CHAMADA RECEBIDA',
+        'media_only': 'Canal restrito para mídia 📎', 'new_msg_alert': '🔔 Nova notificação!', 'in_call': 'EM CHAMADA', 'join_call': 'ENTRAR NA CALL', 'incoming_call': 'CHAMADA RECEBIDA',
         'progression': 'PROGRESSO MILITAR (XP)', 'medals': '🏆 SALA DE TROFÉUS', 'base_banner_opt': 'Banner da Base (Opcional):', 'ch_banner_opt': 'Banner do Canal (Opcional):',
         'no_trophies': 'Soldado sem troféus'
     },
@@ -916,7 +940,7 @@ const T = {
         'request_join': '🔒 REQUEST', 'enter': '🌍 ENTER', 'ally': '✔ Ally', 'sent': 'Sent', 'accept_ally': 'Accept Ally', 'recruit_ally': 'Recruit Ally',
         'creator': '👑 CREATOR', 'admin': '🛡️ ADMIN', 'member': 'MEMBER', 'promote': 'Promote', 'demote': 'Demote', 'kick': 'Kick',
         'base_members': 'Members', 'entry_requests': 'Requests', 'destroy_base': 'DESTROY BASE',
-        'media_only': 'Media restricted channel 📎', 'in_call': 'IN CALL', 'join_call': 'JOIN CALL', 'incoming_call': 'INCOMING CALL',
+        'media_only': 'Media restricted channel 📎', 'new_msg_alert': '🔔 New notification!', 'in_call': 'IN CALL', 'join_call': 'JOIN CALL', 'incoming_call': 'INCOMING CALL',
         'progression': 'PROGRESSION (XP)', 'medals': '🏆 MEDALS', 'base_banner_opt': 'Base Banner (Optional):', 'ch_banner_opt': 'Channel Banner (Optional):',
         'no_trophies': 'Soldier without trophies'
     },
@@ -937,12 +961,12 @@ const T = {
         'msg_placeholder': 'Mensaje secreto...', 'base_msg_placeholder': 'Mensaje para la base...',
         'at': 'a las', 'deleted_msg': '🚫 Borrado', 'audio_proc': 'Procesando...',
         'recording': '🔴 Grabando...', 'click_to_send': '(Click mic enviar)',
-        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón DM',
+        'empty_box': 'Tu buzón está vacío. ¡Recluta aliados!', 'direct_msg': 'Mensaje Directo', 'squad': '👥 Escuadrón',
         'no_bases': 'Aún no tienes bases.', 'no_bases_found': 'No se encontraron bases.', 'no_history': 'No hay misiones.',
         'request_join': '🔒 SOLICITAR', 'enter': '🌍 ENTRAR', 'ally': '✔ Aliado', 'sent': 'Enviado', 'accept_ally': 'Aceptar Aliado', 'recruit_ally': 'Reclutar Aliado',
         'creator': '👑 CREADOR', 'admin': '🛡️ ADMIN', 'member': 'MIEMBRO', 'promote': 'Promover', 'demote': 'Degradar', 'kick': 'Expulsar',
         'base_members': 'Miembros de la Base', 'entry_requests': 'Solicitudes de Entrada', 'destroy_base': 'DESTRUIR BASE',
-        'media_only': 'Canal restringido a medios 📎', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL', 'incoming_call': 'LLAMADA ENTRANTE',
+        'media_only': 'Canal restringido a medios 📎', 'new_msg_alert': '🔔 ¡Nueva notificación!', 'in_call': 'EN LLAMADA', 'join_call': 'ENTRAR A LA CALL', 'incoming_call': 'LLAMADA ENTRANTE',
         'progression': 'PROGRESO MILITAR (XP)', 'medals': '🏆 SALA DE TROFEOS', 'base_banner_opt': 'Banner de Base (Opcional):', 'ch_banner_opt': 'Banner del Canal (Opcional):',
         'no_trophies': 'Soldado sin trofeos'
     }
@@ -980,6 +1004,7 @@ let callDuration = 0, callInterval = null; window.pendingCallChannel = null; win
 
 // SONS TÁTICOS
 window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
+window.outgoingRingTone = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'); window.outgoingRingTone.loop = true;
 window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
 
 const CLOUD_NAME = "dqa0q3qlx"; const UPLOAD_PRESET = "for_glory_preset"; 
@@ -999,14 +1024,6 @@ function showRanksModal() {
     let list = document.getElementById('ranks-list');
     list.innerHTML = RANK_TIERS.map(r => `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:10px; border-left:4px solid ${r.color};"><span style="color:white; font-weight:bold; font-size:15px;">${r.name}</span><span style="color:${r.color}; font-family:'Rajdhani'; font-weight:bold;">${r.xp} XP</span></div>`).join('');
     document.getElementById('modal-ranks').classList.remove('hidden');
-}
-
-function showToast(m){
-    let x=document.getElementById("toast");
-    x.innerText=m;
-    x.className="show";
-    if(window.toastTimer) clearTimeout(window.toastTimer);
-    window.toastTimer = setTimeout(()=>{x.className=""}, 5000); 
 }
 
 function toggleAuth(m){
@@ -1060,7 +1077,7 @@ function updateStatusDots() {
     document.querySelectorAll('.status-dot').forEach(dot => { let uid = parseInt(dot.getAttribute('data-uid')); if(!uid) return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); });
 }
 
-// --- NOTIFICAÇÕES GLOBAIS BLINDADAS (SÓ BOLINHA E SOM) ---
+// --- NOTIFICAÇÕES GLOBAIS BLINDADAS (SÓ BOLINHA, SEM TOAST) ---
 async function fetchUnread() {
     if(!user) return;
     try {
@@ -1072,6 +1089,8 @@ async function fetchUnread() {
         
         let badgeBases = document.getElementById('bases-badge');
         if(d.comms.total > 0) { badgeBases.innerText = d.comms.total; badgeBases.style.display = 'block'; } else { badgeBases.style.display = 'none'; }
+        
+        window.lastTotalUnread = d.dms.total;
 
         if(document.getElementById('view-inbox').classList.contains('active')) {
             document.querySelectorAll('.inbox-item').forEach(item => { let sid = item.getAttribute('data-id'); let type = item.getAttribute('data-type'); let b = item.querySelector('.list-badge'); if(type === '1v1' && window.unreadData[sid]) { b.innerText = window.unreadData[sid]; b.style.display = 'block'; } else if(b) { b.style.display = 'none'; } });
@@ -1184,15 +1203,9 @@ async function doResetPassword() { let newPass = document.getElementById('new-pa
 function renderMedals(boxId, medalsData, isPublic = false) {
     let box = document.getElementById(boxId); 
     if(!medalsData) { box.innerHTML = ''; return; }
-    
     let medalsToShow = isPublic ? medalsData.filter(m => m.earned) : medalsData;
-    
-    if (isPublic && medalsToShow.length === 0) {
-        box.innerHTML = `<div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:12px; border:1px dashed #444; color:#888; font-style:italic;">🎖️ ${t('no_trophies')}</div>`;
-        return;
-    }
+    if (isPublic && medalsToShow.length === 0) { box.innerHTML = `<div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:12px; border:1px dashed #444; color:#888; font-style:italic;">🎖️ ${t('no_trophies')}</div>`; return; }
     if(!isPublic && medalsToShow.length === 0) { box.innerHTML = ''; return; }
-    
     let mHtml = medalsToShow.map(m => {
         let op = m.earned ? '1' : '0.4'; let filter = m.earned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
         let statusText = m.earned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
@@ -1223,29 +1236,21 @@ function startApp(){
         let d = JSON.parse(e.data);
         if(d.type === 'pong') return; 
         if(d.type === 'ping') { fetchUnread(); }
-        // NOTIFICAÇÃO SONORA E BOLINHA VERMELHA (SEM TOAST PISCANTE)
+        // NOTIFICAÇÃO SONORA E BOLINHA VERMELHA SOMENTE
         if(d.type === 'new_dm') {
             let isDmActive = document.getElementById('view-dm').classList.contains('active');
-            if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {
-                // Já estou com a conversa aberta na tela, não notifica
-            } else { 
-                try { window.msgSound.play(); } catch(err){}
-                fetchUnread(); 
-            }
+            if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
+            else { try { window.msgSound.play(); } catch(err){} fetchUnread(); }
         }
-        // ALERTA DE CALL RECEBIDA NA TELA (TOQUE DE CELULAR)
         if(d.type === 'incoming_call') {
             document.getElementById('incoming-call-name').innerText = d.caller_name;
             document.getElementById('incoming-call-av').src = d.caller_avatar;
-            window.pendingCallChannel = d.channel_name;
-            window.pendingCallType = d.call_type;
+            window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
             document.getElementById('modal-incoming-call').classList.remove('hidden');
             try { window.ringtone.play(); } catch(err){}
         }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
-
-    // HEARTBEAT (PULSO PARA MANTER ONLINE SEMPRE!)
     setInterval(()=>{ if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } }, 20000);
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
@@ -1267,7 +1272,7 @@ function goView(v, btnElem){
 }
 
 /* =========================================
-   SISTEMA DE CALL (AGORA.IO SFU) TOTALMENTE BLINDADO E SILENCIOSO
+   SISTEMA DE CALL (AGORA.IO SFU) - COMPATIBILIDADE MÁXIMA
    ========================================= */
 window.callHasConnected = false;
 
@@ -1277,10 +1282,12 @@ async function initCall(typeParam, targetId) {
     if (typeParam === 'dm' || typeParam === '1v1') { 
         channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
         showToast("Chamando...");
+        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'group') { 
         channelName = `call_group_${targetId}`; 
         showToast("Chamando o Esquadrão...");
+        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'channel' || typeParam === 'voice') { 
         channelName = `call_channel_${targetId}`; 
@@ -1310,41 +1317,41 @@ async function connectToAgora(channelName, typeParam) {
         
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
             window.callHasConnected = true; // ALGUÉM ENTROU!
+            try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){}
             await rtc.client.subscribe(remoteUser, mediaType);
             if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
         });
         
         rtc.client.on("user-unpublished", (remoteUser) => { 
-            delete rtc.remoteUsers[remoteUser.uid]; 
-            renderCallPanel(); 
+            delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); 
             // SE FICAR SOZINHO, DESLIGA AUTOMÁTICO!
             if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) {
-                showToast("A ligação terminou.");
-                leaveCall();
+                showToast("A ligação terminou."); leaveCall();
             }
         });
         
-        // GERA ID ÚNICO BASEADO NO TEMPO PARA NÃO DERRUBAR A LIGAÇÃO (BUG DO CLONE)
+        // GERA ID ÚNICO BASEADO NO TEMPO PARA NÃO DERRUBAR A LIGAÇÃO
         let uniqueUid = user.id + Math.floor(Math.random() * 10000); 
         await rtc.client.join(conf.app_id, channelName, null, uniqueUid);
         
         try {
-            rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: "high_quality", AEC: true, ANS: true, AGC: false });
+            // AQUI ESTÁ A CORREÇÃO DE COMPATIBILIDADE DE MICROFONE
+            rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         } catch(micErr) {
             showToast("⚠️ Microfone bloqueado! Autorize no navegador.");
+            try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){}
             await rtc.client.leave(); return;
         }
         
         await rtc.client.publish([rtc.localAudioTrack]);
-        
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
         if (typeParam === 'channel' || typeParam === 'voice') {
             document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;animation:pulse 2s infinite; text-shadow: 0 0 20px #2ecc71;">🎙️</div><h3 style="color:var(--primary); font-family:'Rajdhani'; font-size:28px;">VOCÊ ESTÁ NA CALL</h3><p style="color:#aaa; font-size:14px; max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p></div>`;
         }
     } catch(e) { 
-        console.error(e); 
-        showToast("Erro ao conectar à central de Rádio."); 
+        console.error(e); showToast("Erro ao conectar à central de Rádio."); 
+        try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(err){}
         leaveCall(); 
     }
 }
@@ -1362,7 +1369,7 @@ function showCallPanel() {
 function renderCallPanel() {
     let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
     for(let uid in rtc.remoteUsers) {
-        count++; list.innerHTML += `<div class="remote-user-row"><div style="width:30px;height:30px;border-radius:50%;background:#444;display:flex;align-items:center;justify-content:center;font-size:14px;">👤</div><input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
+        count++; list.innerHTML += `<div class="remote-user-row"><img src="https://ui-avatars.com/api/?name=Aliado&background=111&color=66fcf1" class="call-avatar"><span class="call-name">Aliado na Escuta</span><input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
     }
     if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
 }
@@ -1370,6 +1377,7 @@ function renderCallPanel() {
 function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
 
 async function leaveCall() {
+    try { window.outgoingRingTone.pause(); window.outgoingRingTone.currentTime = 0; } catch(e){}
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } if (rtc.client) { await rtc.client.leave(); }
     rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; clearInterval(callInterval);
     document.getElementById('expanded-call-panel').style.display = 'none'; document.getElementById('floating-call-btn').style.display = 'none';
@@ -1458,7 +1466,6 @@ document.getElementById('btn-confirm-delete').onclick = async () => {
 };
 
 async function updateProfileState() { try { let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) {} }
-
 async function toggleLike(pid, btn) { try { let r = await fetch('/post/like', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({post_id:pid, user_id:user.id})}); if(r.ok) { let d = await r.json(); let icon = btn.querySelector('.icon'); let count = btn.querySelector('.count'); if(d.liked) { btn.classList.add('liked'); icon.innerText = "❤️"; } else { btn.classList.remove('liked'); icon.innerText = "🤍"; } count.innerText = d.count; lastFeedHash=""; } } catch(e) {} }
 
 async function toggleComments(pid) { let sec = document.getElementById(`comments-${pid}`); if(sec.style.display === 'block') { sec.style.display = 'none'; } else { sec.style.display = 'block'; loadComments(pid); } }
@@ -1511,13 +1518,10 @@ function connectDmWS(id, name, type) {
             let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
-        
         let isDmActive = document.getElementById('view-dm').classList.contains('active');
         if(isDmActive && currentChatType === '1v1' && currentChatId === d.user_id) { 
             fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); 
-        } else { 
-            fetchUnread(); 
-        }
+        } else { fetchUnread(); }
     };
 }
 
@@ -1724,7 +1728,6 @@ async function searchUsers(){
 </body>
 </html>
 """
-# --- ROTAS DA API ---
 @app.get("/", response_class=HTMLResponse)
 async def get(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
@@ -1915,8 +1918,7 @@ async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avat
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.ilike(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
-
-@app.get("/inbox/{uid}")
+    @app.get("/inbox/{uid}")
 async def get_inbox(uid: int, db: Session=Depends(get_db)):
     me = db.query(User).filter(User.id == uid).first()
     friends_data = [{"id": f.id, "name": f.username, "avatar": f.avatar_url} for f in me.friends]
