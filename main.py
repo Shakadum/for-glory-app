@@ -349,7 +349,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-/* HUD DA CALL FLUTUANTE PREMIUM (RADAR) */
+/* HUD DA CALL FLUTUANTE PREMIUM */
 #floating-call-btn { 
     position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
     background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; 
@@ -362,13 +362,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 @keyframes radar-glow { 0% { box-shadow: 0 0 0 0 rgba(102,252,241,0.6); } 70% { box-shadow: 0 0 0 25px rgba(102,252,241,0); } 100% { box-shadow: 0 0 0 0 rgba(102,252,241,0); } }
 
 #expanded-call-panel { 
-    display:none; position:fixed; bottom:125px; right:40px; width:340px; 
+    display:none; position:fixed; bottom:125px; right:40px; width:320px; 
     background-color: rgba(15, 20, 25, 0.95); background-size: cover; background-position: center;
     border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; 
     box-shadow:0 20px 60px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); 
     animation:scaleUp 0.3s ease-out; overflow:hidden;
 }
-#expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); z-index: 0; }
+#expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 0; }
 #expanded-call-panel > * { position: relative; z-index: 1; }
 
 .call-participant-card { display:flex; align-items:center; gap:12px; margin-bottom:10px; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(5px); transition:0.3s;}
@@ -378,7 +378,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .call-kick-btn { background:rgba(255,85,85,0.1); border:1px solid rgba(255,85,85,0.4); color:#ff5555; padding:6px; border-radius:8px; cursor:pointer; transition:0.2s; display:flex; align-items:center; justify-content:center; }
 .call-kick-btn:hover { background:rgba(255,85,85,0.3); box-shadow:0 0 10px rgba(255,85,85,0.5); transform:scale(1.1); }
 
-.vol-slider { width: 70px; accent-color: var(--primary); height:4px; background:#333; border-radius:2px; outline:none; }
+.vol-slider { width: 70px; accent-color: var(--primary); height:4px; background:#333; border-radius:2px; outline:none; cursor:pointer;}
 .call-btn-circle { background:#1f2833; color:white; border:1px solid #444; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
 .call-btn-circle:hover { transform:scale(1.1); border-color:var(--primary); color:var(--primary); box-shadow:0 0 15px rgba(102,252,241,0.3); }
 .call-btn-circle.muted { background:rgba(255,85,85,0.1); color:#ff5555; border-color:#ff5555; box-shadow:0 0 15px rgba(255,85,85,0.4); }
@@ -414,7 +414,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; align-items:flex-start; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
-.styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
+.styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
@@ -531,15 +531,23 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <div id="floating-call-btn" onclick="toggleCallPanel()">📞</div>
 <div id="expanded-call-panel">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:15px; margin-bottom:15px;">
-        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;"><span style="animation:pulse 1s infinite; display:inline-block;">🔴</span> <span id="call-hud-status" data-i18n="in_call">EM CHAMADA</span></span>
+        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;">
+            <span id="call-hud-status-icon" style="animation:pulse 1s infinite; display:inline-block;">🔴</span> 
+            <span id="call-hud-status">CONECTANDO...</span>
+        </span>
         <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:22px; font-weight:bold; text-shadow:0 0 10px rgba(255,255,255,0.5);">00:00</span>
     </div>
     
-    <div id="call-users-list" style="max-height:200px; overflow-y:auto; margin-bottom:20px; padding-right:5px;"></div>
+    <div id="call-active-profile" style="text-align:center; margin-bottom:15px; display:none;">
+        <img id="call-active-avatar" src="" style="width:80px; height:80px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; margin:0 auto; display:block; box-shadow:0 0 15px rgba(102,252,241,0.5);">
+        <div id="call-active-name" style="color:white; font-weight:bold; margin-top:10px; font-size:18px; font-family:'Rajdhani'; letter-spacing:1px;"></div>
+    </div>
+
+    <div id="call-users-list" style="max-height:150px; overflow-y:auto; margin-bottom:15px; padding-right:5px;"></div>
     
     <div id="call-bg-action" style="text-align:center; margin-bottom:15px;">
         <input type="file" id="call-bg-file" style="display:none;" accept="image/*" onchange="uploadCallBg(this)">
-        <button class="glass-btn" style="padding:8px 15px; font-size:11px;" onclick="document.getElementById('call-bg-file').click()">🖼️ TROCAR FUNDO DA CALL</button>
+        <button class="glass-btn" style="padding:8px 15px; font-size:11px; width:100%;" onclick="document.getElementById('call-bg-file').click()">🖼️ TROCAR FUNDO DA CALL</button>
     </div>
 
     <div style="display:flex; gap:15px; justify-content:center;">
@@ -904,7 +912,7 @@ const T = {
         'new_squad': 'NOVO ESQUADRÃO', 'group_name': 'Nome do Grupo', 'select_allies': 'Selecione os aliados:', 'create': 'CRIAR',
         'new_post': 'NOVO POST', 'caption_placeholder': 'Legenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escreva sua Bio...', 'save': 'SALVAR',
-        'edit_base': 'EDITAR BASE', 'base_avatar': 'Novo Avatar', 'base_banner': 'Novo Banner',
+        'edit_base': 'EDIT BASE', 'base_avatar': 'Novo Avatar', 'base_banner': 'Novo Banner',
         'stealth_on': '🕵️ MODO FURTIVO: ATIVADO', 'stealth_off': '🟢 MODO FURTIVO: DESATIVADO', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitações', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
         'private_msgs': 'MENSAGENS PRIVADAS', 'group_x1': '+ GRUPO X1', 'my_bases': '🛡️ MINHAS BASES', 'create_base': '+ CRIAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MEU HISTÓRICO',
@@ -1001,15 +1009,26 @@ var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
-// VARIÁVEIS DE ESTADO DA CALL E SONS TÁTICOS
+// ==========================================
+// SISTEMA DE RÁDIO E CALL BLINDADO
+// ==========================================
 let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
 let callDuration = 0, callInterval = null; 
 window.pendingCallChannel = null; window.pendingCallType = null;
-window.currentAgoraChannel = null; 
+window.currentAgoraChannel = null;
+
+// Desbloqueador de Áudio Automático (Garante que os sons vão tocar no celular e PC)
+document.body.addEventListener('click', () => {
+    if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
+}, { once: true });
 
 window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
 window.callingSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'); window.callingSound.loop = true;
 window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
+
+function safePlaySound(snd) {
+    try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado pelo navegador")); } } catch(err){}
+}
 
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
@@ -1017,17 +1036,17 @@ async function initCall(typeParam, targetId) {
     
     if (typeParam === 'dm' || typeParam === '1v1') { 
         channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
-        showToast("Chamando...");
+        showToast("Chamando Aliado...");
         await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
-        try { window.callingSound.play(); } catch(e){} 
+        safePlaySound(window.callingSound); 
     } else if (typeParam === 'group') { 
         channelName = `call_group_${targetId}`; 
-        showToast("Chamando o Esquadrão...");
+        showToast("Chamando Esquadrão...");
         await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
-        try { window.callingSound.play(); } catch(e){}
+        safePlaySound(window.callingSound);
     } else if (typeParam === 'channel' || typeParam === 'voice') { 
         channelName = `call_channel_${targetId}`; 
-    } else { return showToast("Alvo da call inválido."); }
+    } else { return showToast("Alvo inválido."); }
     
     window.callHasConnected = false;
     connectToAgora(channelName, typeParam);
@@ -1052,19 +1071,21 @@ async function acceptCall() {
 
 async function connectToAgora(channelName, typeParam) {
     window.currentAgoraChannel = channelName; 
+    
+    // Atualiza HUD inicial
+    document.getElementById('call-active-profile').style.display = 'none';
+    document.getElementById('call-hud-status').innerText = "CHAMANDO...";
+    
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
-        if (!conf.app_id) { showToast("Erro: APP ID do Rádio não configurado."); return; }
+        if (!conf.app_id) { showToast("Erro: Central de Rádio Offline."); return; }
         if (rtc.client) { await rtc.client.leave(); }
         
         try {
             let rBg = await fetch(`/call/bg/call/${channelName}`);
             let resBg = await rBg.json();
-            if(resBg && resBg.bg_url) {
-                document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`;
-            } else {
-                document.getElementById('expanded-call-panel').style.backgroundImage = 'none';
-            }
+            if(resBg && resBg.bg_url) { document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`; } 
+            else { document.getElementById('expanded-call-panel').style.backgroundImage = 'none'; }
         } catch(e) {}
 
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); rtc.remoteUsers = {};
@@ -1072,16 +1093,13 @@ async function connectToAgora(channelName, typeParam) {
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
             window.callHasConnected = true; 
             if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
-            
             await rtc.client.subscribe(remoteUser, mediaType);
             if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
         });
         
         rtc.client.on("user-unpublished", (remoteUser) => { 
             delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); 
-            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { 
-                showToast("A ligação terminou."); leaveCall(); 
-            }
+            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { showToast("O aliado desligou."); leaveCall(); }
         });
         
         await rtc.client.join(conf.app_id, channelName, null, user.id);
@@ -1089,36 +1107,28 @@ async function connectToAgora(channelName, typeParam) {
         try { 
             rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); 
         } catch(micErr) { 
-            alert("⚠️ Permissão de Microfone Negada ou nenhum microfone detectado no dispositivo!");
-            leaveCall(); 
-            return; 
+            alert("⚠️ Sem Microfone! Autorize no navegador."); leaveCall(); return; 
         }
         
         await rtc.client.publish([rtc.localAudioTrack]);
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
-    } catch(e) { console.error(e); showToast("Falha ao conectar."); leaveCall(); }
+    } catch(e) { showToast("Falha ao conectar."); leaveCall(); }
 }
 
 async function uploadCallBg(inputElem){
-    if(!inputElem.files[0] || !window.currentAgoraChannel) return;
+    if(!inputElem.files || !inputElem.files[0]) return;
+    if(!window.currentAgoraChannel) { showToast("Aguarde conectar na call."); return; }
+    
     showToast("Aplicando fundo tático...");
     try{
         let c = await uploadToCloudinary(inputElem.files[0]);
-        
-        await fetch('/call/bg/set',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({target_type: 'call', target_id: window.currentAgoraChannel, bg_url: c.secure_url})
-        });
+        await fetch('/call/bg/set',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target_type: 'call', target_id: window.currentAgoraChannel, bg_url: c.secure_url}) });
         
         document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;
-        showToast("Fundo alterado para todos!");
-        
-        if(globalWS && globalWS.readyState === WebSocket.OPEN) { 
-            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + c.secure_url); 
-        }
-    } catch(e) { showToast("Erro ao subir imagem."); }
+        showToast("Fundo alterado!");
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + c.secure_url); }
+    } catch(e) { showToast("Erro na imagem."); }
 }
 
 async function leaveCall() { 
@@ -1127,19 +1137,19 @@ async function leaveCall() {
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
     if (rtc.client) { await rtc.client.leave(); } 
-    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; 
-    window.currentAgoraChannel = null;
+    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; window.currentAgoraChannel = null;
     
     clearInterval(callInterval); 
     document.getElementById('expanded-call-panel').style.display = 'none'; 
     document.getElementById('floating-call-btn').style.display = 'none'; 
-    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤'; 
+    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = '🎤'; isMicMuted = false;
 }
 
 window.callUsersCache = {};
 async function renderCallPanel() {
     let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
     let isAdmin = window.currentCommIsAdmin || false;
+    let lastUser = null;
     
     for(let uid in rtc.remoteUsers) {
         count++; 
@@ -1151,17 +1161,50 @@ async function renderCallPanel() {
         }
         
         let uData = window.callUsersCache[uid];
+        lastUser = uData;
         let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
-        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
+        // Slider oninput para responder na hora
+        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" oninput="changeRemoteVol(${uid}, this.value)"></div>`;
     }
-    if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
+    
+    let profDiv = document.getElementById('call-active-profile');
+    let st = document.getElementById('call-hud-status');
+    
+    if(count === 1 && lastUser) {
+        profDiv.style.display = 'block';
+        document.getElementById('call-active-avatar').src = lastUser.avatar;
+        document.getElementById('call-active-name').innerText = lastUser.name;
+    } else {
+        profDiv.style.display = 'none';
+    }
+    
+    if(count === 0) {
+        list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando na escuta...</p>`;
+        st.innerText = "CHAMANDO...";
+    } else {
+        st.innerText = "EM CHAMADA";
+        if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    }
 }
 
 function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
-function toggleMuteCall() { if(rtc.localAudioTrack) { let muted = !rtc.localAudioTrack.muted; rtc.localAudioTrack.setMuted(muted); let btn = document.getElementById('btn-mute-call'); if(muted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; } } }
+
+let isMicMuted = false;
+async function toggleMuteCall() { 
+    if(rtc.localAudioTrack) { 
+        isMicMuted = !isMicMuted;
+        await rtc.localAudioTrack.setEnabled(!isMicMuted); // Código seguro para mutar na versão v4 do Agora
+        let btn = document.getElementById('btn-mute-call'); 
+        if(isMicMuted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } 
+        else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; } 
+    } 
+}
+
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
-function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; document.getElementById('call-hud-status').innerText = t('in_call'); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
+function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
+// ==========================================
+
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
@@ -1179,7 +1222,6 @@ document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState=
 async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){} }
 function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
 
-// BLINDAGEM DA NOTIFICAÇÃO VERMELHA
 async function fetchUnread(){
     if(!user) return;
     try {
@@ -1267,37 +1309,31 @@ function startApp(){
         if(d.type === 'pong') return; 
         if(d.type === 'ping') { fetchUnread(); }
 
-        // SINCRONIZADOR DE BACKGROUND DA CHAMADA
         if(d.type === 'sync_bg' && window.currentAgoraChannel === d.channel) {
             document.getElementById('expanded-call-panel').style.backgroundImage = `url('${d.bg_url}')`;
         }
 
-        // NOTIFICAÇÃO SONORA E BOLINHA
         if(d.type === 'new_dm') {
             let isDmActive = document.getElementById('view-dm').classList.contains('active');
             if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
-            else { try { window.msgSound.play(); } catch(err){} fetchUnread(); }
+            else { safePlaySound(window.msgSound); fetchUnread(); }
         }
         
-        // CALL KICK
         if(d.type === 'kick_call' && d.target_id === user.id) {
             showToast("Você foi removido da chamada."); leaveCall();
         }
         
-        // LIGAÇÃO RECUSADA
         if(d.type === 'call_rejected') {
-            showToast("❌ A chamada foi recusada.");
-            leaveCall();
+            showToast("❌ A chamada foi recusada."); leaveCall();
         }
         
-        // LIGAÇÃO RECEBIDA
         if(d.type === 'incoming_call') {
             window.pendingCallerId = d.caller_id;
             document.getElementById('incoming-call-name').innerText = d.caller_name;
             document.getElementById('incoming-call-av').src = d.caller_avatar;
             window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
             document.getElementById('modal-incoming-call').classList.remove('hidden');
-            try { window.ringtone.play(); } catch(err){}
+            safePlaySound(window.ringtone);
         }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
@@ -1325,9 +1361,7 @@ async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?no
 async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){}}
 async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
 function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
-    // IGNORA BACKGROUNDS NO CHAT
     if (c.startsWith('[CALL_BG]')) { return; }
-    
     let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
 async function openChat(id,name,type){let changingChat=(currentChatId!==id||currentChatType!==type);currentChatId=id;currentChatType=type;document.getElementById('dm-header-name').innerText=name;goView('dm');if(type==='1v1'){await fetch(`/inbox/read/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});fetchUnread();}if(changingChat){document.getElementById('dm-list').innerHTML='';}await fetchChatMessages(id,type);if(changingChat||!dmWS||dmWS.readyState!==WebSocket.OPEN){connectDmWS(id,name,type);}}
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
@@ -1391,13 +1425,10 @@ async function submitEditChannel(){let n=document.getElementById('edit-ch-name')
 async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
 
 function connectCommWS(chid){if(commWS)commWS.close();let p=location.protocol==='https:'?'wss:':'ws:';commWS=new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);commWS.onclose=()=>{setTimeout(()=>{if(activeChannelId===chid&&document.getElementById('comm-chat-area').style.display==='flex'&&window.currentCommType!=='voice'){fetchCommMessages(chid);connectCommWS(chid);}},2000);};commWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('comm-chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
-    // IGNORA BACKGROUNDS NO CHAT
     if (c.startsWith('[CALL_BG]')) { return; }
-
     let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;}};}
 
 async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannelId!==chid);activeChannelId=chid;window.currentCommType=type;document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';if(btnElem){document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));btnElem.classList.add('active');}let inpForm=document.getElementById('comm-input-form');let inp=document.getElementById('comm-msg');let clip=document.getElementById('btn-comm-clip');let emj=document.getElementById('btn-comm-emoji');let mic=document.getElementById('btn-comm-mic');inp.disabled=false;clip.style.display='flex';emj.style.display='flex';mic.style.display='flex';inpForm.style.display='flex';let cp=document.getElementById('expanded-call-panel');cp.style.backgroundImage='none';document.getElementById('call-bg-action').style.display='none';if(changingChannel&&commWS){commWS.close();commWS=null;}if(type==='voice'){inpForm.style.display='none';document.getElementById('comm-chat-list').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;if(window.currentCommIsAdmin){document.getElementById('call-bg-action').style.display='block';}try{let r=await fetch(`/call/bg/channel/${chid}`);let res=await r.json();if(res.bg_url){cp.style.backgroundImage=`url('${res.bg_url}')`;}}catch(e){}}else{if(type==='media'){inp.disabled=true;inp.placeholder=t('media_only');emj.style.display='none';mic.style.display='none';}else if(type==='text'){inp.placeholder=t('base_msg_placeholder');clip.style.display='none';mic.style.display='flex';}else{inp.placeholder=t('base_msg_placeholder');}if(changingChannel){document.getElementById('comm-chat-list').innerHTML='';}await fetchCommMessages(chid);if(!commWS||commWS.readyState!==WebSocket.OPEN){connectCommWS(chid);}}}
-
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){}}
 async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
@@ -1936,3 +1967,4 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
