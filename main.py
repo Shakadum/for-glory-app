@@ -1131,6 +1131,18 @@ function startApp(){
             document.getElementById('modal-incoming-call').classList.remove('hidden');
             try { window.ringtone.play(); } catch(err){}
         }
+        if(d.type === 'call_rejected') {
+            showToast("❌ A chamada foi recusada.");
+            leaveCall();
+        }
+        if(d.type === 'incoming_call') {
+            window.pendingCallerId = d.caller_id; // Salva quem ligou para podermos recusar
+            document.getElementById('incoming-call-name').innerText = d.caller_name;
+            document.getElementById('incoming-call-av').src = d.caller_avatar;
+            window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
+            document.getElementById('modal-incoming-call').classList.remove('hidden');
+            try { window.ringtone.play(); } catch(err){}
+        }
     };
     globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
     setInterval(()=>{ if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } }, 20000);
@@ -1163,14 +1175,59 @@ async function initCall(typeParam, targetId) {
     connectToAgora(channelName, typeParam);
 }
 
-function declineCall() { document.getElementById('modal-incoming-call').classList.add('hidden'); if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } }
+function declineCall() { 
+    document.getElementById('modal-incoming-call').classList.add('hidden'); 
+    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } 
+    // Avisa o servidor que recusou
+    if (globalWS && globalWS.readyState === WebSocket.OPEN && window.pendingCallerId) {
+        globalWS.send("REJECT_CALL:" + window.pendingCallerId);
+    }
+}
 async function acceptCall() { document.getElementById('modal-incoming-call').classList.add('hidden'); if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; } window.callHasConnected = false; await connectToAgora(window.pendingCallChannel, window.pendingCallType); }
 
+async function initCall(typeParam, targetId) {
+    if (rtc.client) return showToast("Você já está em uma call!");
+    let channelName = "";
+    
+    // Configura o HUD básico inicialmente
+    let chatName = document.getElementById('dm-header-name') ? document.getElementById('dm-header-name').innerText : "Conectando...";
+    if(typeof updateCallHUD === "function") updateCallHUD(chatName, "https://ui-avatars.com/api/?name=Call");
+
+    if (typeParam === 'dm' || typeParam === '1v1') { 
+        channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
+        showToast("Chamando...");
+        await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
+    } else if (typeParam === 'group') { 
+        channelName = `call_group_${targetId}`; 
+        showToast("Chamando o Esquadrão...");
+        await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
+    } else if (typeParam === 'channel' || typeParam === 'voice') { 
+        channelName = `call_channel_${targetId}`; 
+    } else { return showToast("Alvo da call inválido."); }
+    window.callHasConnected = false;
+    connectToAgora(channelName, typeParam);
+}
+
+// ATUALIZAÇÃO 3: Lógica do WebSocket para Sincronizar a Foto de Fundo + Conexão Agora (usando user.id)
 async function connectToAgora(channelName, typeParam) {
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
         if (!conf.app_id) { showToast("Erro: APP ID do Rádio não configurado."); return; }
         if (rtc.client) { await rtc.client.leave(); }
+        
+        // Pega o BG salvo especifico para essa call
+        try {
+            let tId = currentChatId || activeChannelId;
+            let tType = currentChatType || "channel";
+            let rBg = await fetch(`/call/bg/${tType}/${tId}`);
+            let resBg = await rBg.json();
+            if(resBg && resBg.bg_url) {
+                document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`;
+            } else {
+                document.getElementById('expanded-call-panel').style.backgroundImage = 'none';
+            }
+        } catch(e) {}
+
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); rtc.remoteUsers = {};
         
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
@@ -1183,8 +1240,8 @@ async function connectToAgora(channelName, typeParam) {
             if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { showToast("A ligação terminou."); leaveCall(); }
         });
         
-        let uniqueUid = user.id + Math.floor(Math.random() * 10000); 
-        await rtc.client.join(conf.app_id, channelName, null, uniqueUid);
+        // CORREÇÃO AQUI: Em vez de um UID aleatório, usamos o user.id real para buscar a foto depois
+        await rtc.client.join(conf.app_id, channelName, null, user.id);
         
         try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
         catch(micErr) { showToast("⚠️ Microfone bloqueado! Autorize no navegador."); await rtc.client.leave(); return; }
@@ -1195,23 +1252,55 @@ async function connectToAgora(channelName, typeParam) {
     } catch(e) { console.error(e); showToast("Erro ao conectar à central de Rádio."); leaveCall(); }
 }
 
-function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
-function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; document.getElementById('call-hud-status').innerText = t('in_call'); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
+// ATUALIZAÇÃO 4: Upload do BG e Sincronização
+async function uploadCallBg(inputElem){
+    if(!inputElem.files[0]) return;
+    showToast("Fazendo upload da imagem...");
+    try{
+        let c = await uploadToCloudinary(inputElem.files[0]);
+        let targetId = currentChatId || activeChannelId;
+        let targetType = currentChatType || "channel";
+        
+        // Salva na sala especifica
+        await fetch('/call/bg/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_type:targetType,target_id:String(targetId),bg_url:c.secure_url})});
+        
+        document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;
+        showToast("Fundo alterado para todos na call!");
+        
+        // Sincronizar imagem ao vivo via WebSocket
+        let bgMsg = "[CALL_BG]" + c.secure_url;
+        if((targetType === '1v1' || targetType === 'dm' || targetType === 'group') && dmWS) { dmWS.send(bgMsg); }
+        else if (commWS) { commWS.send(bgMsg); }
 
-function kickFromCall(targetUid) {
-    if(confirm("Expulsar soldado da ligação?")) {
-        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); }
-    }
+    } catch(e) { showToast("Erro."); }
 }
 
-function renderCallPanel() {
+// ATUALIZAÇÃO 5: Renderizar participantes reais (Foto e Nome)
+window.callUsersCache = {};
+async function renderCallPanel() {
     let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
     let isAdmin = window.currentCommIsAdmin || false;
+    
     for(let uid in rtc.remoteUsers) {
         count++; 
-        let cleanUid = String(uid).substring(0, String(uid).length - 4);
-        let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${cleanUid})" title="Expulsar">❌</button>` : '';
-        list.innerHTML += `<div class="call-participant-card"><img src="https://ui-avatars.com/api/?name=Aliado&background=111&color=66fcf1" class="call-avatar"><span class="call-name">Aliado na Escuta</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
+        
+        // Busca os dados reais do usuário caso ainda não estejam no cache
+        if(!window.callUsersCache[uid]) {
+            try {
+                let req = await fetch(`/users/basic/${uid}`);
+                window.callUsersCache[uid] = await req.json();
+            } catch(e) { window.callUsersCache[uid] = {name: "Aliado", avatar: "https://ui-avatars.com/api/?name=A"}; }
+        }
+        
+        let uData = window.callUsersCache[uid];
+        let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
+        
+        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" onchange="changeRemoteVol(${uid}, this.value)"></div>`;
+        
+        // Atualiza a foto principal do HUD flutuante se for uma ligação 1v1
+        if(currentChatType === '1v1' || currentChatType === 'dm') {
+            if(typeof updateCallHUD === "function") updateCallHUD(uData.name, uData.avatar);
+        }
     }
     if(count === 0) list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando aliados...</p>`;
 }
@@ -1230,7 +1319,11 @@ async function toggleComments(pid){let sec=document.getElementById(`comments-${p
 async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="confirmDelete('comment', ${c.id})" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){}}
 async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){}}
 async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
-function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
+function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;if (c.startsWith('[CALL_BG]')) {
+        let bgUrl = c.replace('[CALL_BG]', '');
+        document.getElementById('expanded-call-panel').style.backgroundImage = `url('${bgUrl}')`;
+        return; 
+    }let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="confirmDelete('${prefix}', ${d.id})">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
 async function openChat(id,name,type){let changingChat=(currentChatId!==id||currentChatType!==type);currentChatId=id;currentChatType=type;document.getElementById('dm-header-name').innerText=name;goView('dm');if(type==='1v1'){await fetch(`/inbox/read/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});fetchUnread();}if(changingChat){document.getElementById('dm-list').innerHTML='';}await fetchChatMessages(id,type);if(changingChat||!dmWS||dmWS.readyState!==WebSocket.OPEN){connectDmWS(id,name,type);}}
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(dmWS)dmWS.send(c.secure_url);}catch(e){}}
@@ -1544,7 +1637,7 @@ async def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
 @app.post("/call/ring/dm")
 async def ring_dm(d: CallRingDMData, db: Session=Depends(get_db)):
     caller = db.query(User).get(d.caller_id)
-    await manager.send_personal({"type": "incoming_call", "caller_name": caller.username, "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "dm", "target_id": d.target_id}, d.target_id)
+    await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": caller.username, "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "dm", "target_id": d.target_id}, d.target_id)
     return {"status": "ok"}
     
 @app.post("/call/ring/group")
@@ -1554,7 +1647,7 @@ async def ring_group(d: CallRingGroupData, db: Session=Depends(get_db)):
     members = db.query(GroupMember).filter_by(group_id=d.group_id).all()
     for m in members:
         if m.user_id != d.caller_id:
-            await manager.send_personal({"type": "incoming_call", "caller_name": f"{caller.username} (Grp: {group.name})", "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "group", "target_id": d.group_id}, m.user_id)
+            await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": f"{caller.username} (Grp: {group.name})", "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "group", "target_id": d.group_id}, m.user_id)
     return {"status": "ok"}
 
 @app.post("/community/create")
@@ -1737,6 +1830,10 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if txt == "ping":
                 await ws.send_text(json.dumps({"type": "pong"})); continue
             if txt.startswith("KICK_CALL:"):
+                if txt.startswith("REJECT_CALL:"):
+                target = int(txt.split(":")[1])
+                await manager.send_personal({"type": "call_rejected"}, target)
+                continue
                 target = int(txt.split(":")[1])
                 await manager.broadcast({"type": "kick_call", "target_id": target}, ch)
                 continue
@@ -1866,8 +1963,15 @@ async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_d
 @app.get("/agora-config")
 async def get_agora_config(): return {"app_id": AGORA_APP_ID}
 
+@app.get("/users/basic/{uid}")
+async def get_basic_user(uid: int, db: Session=Depends(get_db)):
+    u = db.query(User).get(uid)
+    if u: return {"name": u.username, "avatar": u.avatar_url}
+    return {"name": "Desconhecido", "avatar": "https://ui-avatars.com/api/?name=?"}
+    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
