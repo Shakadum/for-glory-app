@@ -36,14 +36,11 @@ cloudinary.config(
 )
 
 # --- BANCO DE DADOS (PRIORIDADE ABSOLUTA: NEON) ---
-# Aqui o sistema vai sempre preferir a variável de ambiente DATABASE_URL que você configurou no Render
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Fallback apenas se a variável não for encontrada de jeito nenhum
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./for_glory_v7.db"
 
-# Correção do prefixo exigido pelo SQLAlchemy para o Neon
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -233,22 +230,6 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 def get_user_badges(xp, user_id, role):
-def format_user_summary(user: User):
-    """Helper para padronizar o retorno de dados do usuário e evitar repetição (DRY)."""
-    if not user:
-        return {
-            "id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
-            "rank": "Recruta", "color": "#888", "special_emblem": ""
-        }
-    b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
-    return {
-        "id": user.id,
-        "username": user.username,
-        "avatar_url": user.avatar_url,
-        "rank": b['rank'],
-        "color": b['color'],
-        "special_emblem": b['special_emblem']
-    }
     tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
     for i, t in enumerate(tiers):
@@ -264,6 +245,22 @@ def format_user_summary(user: User):
         earned = xp >= m['req']; missing = m['req'] - xp if not earned else 0
         medals.append({"icon": m['icon'], "name": m['name'], "desc": m['desc'], "earned": earned, "missing": missing})
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
+
+def format_user_summary(user: User):
+    if not user:
+        return {
+            "id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
+            "rank": "Recruta", "color": "#888", "special_emblem": ""
+        }
+    b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
+    return {
+        "id": user.id,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "rank": b['rank'],
+        "color": b['color'],
+        "special_emblem": b['special_emblem']
+    }
 
 def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
 def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
@@ -332,7 +329,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-/* HUD DA CALL FLUTUANTE PREMIUM */
 #floating-call-btn { 
     position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
     background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; 
@@ -695,14 +691,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div id="modal-ranks" class="modal hidden">
-    <div class="modal-box" style="max-height: 80vh; overflow-y: auto;">
-        <h2 style="color:var(--primary); font-family:'Rajdhani';">📋 TODAS AS PATENTES</h2>
-        <div id="ranks-list" style="display:flex; flex-direction:column; gap:10px; text-align:left; margin-top:15px;"></div>
-        <button onclick="document.getElementById('modal-ranks').classList.add('hidden')" class="btn-main" style="margin-top:20px;" data-i18n="cancel">FECHAR</button>
-    </div>
-</div>
-
 <div id="app">
     <div id="sidebar">
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)"><img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'"></button>
@@ -947,7 +935,7 @@ const T = {
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escribe tu Bio...', 'save': 'GUARDAR',
-        'edit_base': 'EDITAR BASE', 'base_avatar': 'Nuevo Avatar', 'base_banner': 'Nuevo Banner',
+        'edit_base': 'EDIT BASE', 'base_avatar': 'Nuevo Avatar', 'base_banner': 'Nuevo Banner',
         'stealth_on': '🕵️ MODO FURTIVO: ON', 'stealth_off': '🟢 MODO FURTIVO: OFF', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitudes', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
         'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
@@ -1551,7 +1539,7 @@ def get_online_users(db: Session=Depends(get_db)):
 @app.post("/profile/stealth")
 def toggle_stealth(d: dict, db: Session=Depends(get_db)):
     uid = d.get("uid")
-    u = db.query(User).filter(User.id == uid).first()
+    u = db.query(User).filter_by(id=uid).first()
     if u:
         u.is_invisible = 1 if u.is_invisible == 0 else 0
         db.commit()
@@ -1591,7 +1579,7 @@ def mark_read(sender_id: int, d: ReadData, db: Session=Depends(get_db)):
 
 @app.post("/auth/forgot-password")
 def forgot_password(d: ForgotPasswordData, db: Session=Depends(get_db)):
-    user = db.query(User).filter(User.email == d.email).first()
+    user = db.query(User).filter_by(email=d.email).first()
     if not user: return {"status": "ok"} 
     token = create_reset_token(user.email)
     reset_link = f"https://for-glory.onrender.com/?token={token}"
@@ -1605,7 +1593,7 @@ def forgot_password(d: ForgotPasswordData, db: Session=Depends(get_db)):
 def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
     email = verify_reset_token(d.token)
     if not email: raise HTTPException(400, "Token inválido")
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter_by(email=email).first()
     if not user: raise HTTPException(404, "Usuário não encontrado")
     user.password_hash = criptografar(d.new_password)
     db.commit()
@@ -1613,7 +1601,7 @@ def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
 
 @app.post("/register")
 def reg(d: RegisterData, db: Session=Depends(get_db)):
-    if db.query(User).filter(User.username==d.username).first(): raise HTTPException(400, "User existe")
+    if db.query(User).filter_by(username=d.username).first(): raise HTTPException(400, "User existe")
     is_first = db.query(User).count() == 0
     role = "fundador" if is_first else "membro"
     db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0, is_invisible=0, role=role))
@@ -1622,7 +1610,7 @@ def reg(d: RegisterData, db: Session=Depends(get_db)):
 
 @app.post("/login")
 def log(d: LoginData, db: Session=Depends(get_db)):
-    u = db.query(User).filter(User.username==d.username).first()
+    u = db.query(User).filter_by(username=d.username).first()
     if not u or u.password_hash != criptografar(d.password): raise HTTPException(400, "Erro")
     b = get_user_badges(u.xp, u.id, getattr(u, 'role', 'membro'))
     return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "medals": b['medals'], "is_invisible": getattr(u, 'is_invisible', 0)}
@@ -1630,7 +1618,7 @@ def log(d: LoginData, db: Session=Depends(get_db)):
 @app.post("/post/create_from_url")
 def create_post_url(user_id: int = Form(...), caption: str = Form(""), content_url: str = Form(...), media_type: str = Form(...), db: Session=Depends(get_db)):
     db.add(Post(user_id=user_id, content_url=content_url, media_type=media_type, caption=caption))
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter_by(id=user_id).first()
     if user: user.xp += 50 
     db.commit()
     return {"status":"ok"}
@@ -1654,7 +1642,7 @@ def add_comment(d: CommentData, db: Session=Depends(get_db)):
 @app.post("/comment/delete")
 def del_comment(d: dict, db: Session=Depends(get_db)):
     cid = d.get('comment_id'); uid = d.get('user_id')
-    c = db.query(Comment).filter(Comment.id == cid).first()
+    c = db.query(Comment).filter_by(id=cid).first()
     if c and c.user_id == uid: db.delete(c); db.commit()
     return {"status": "ok"}
 
@@ -1662,9 +1650,9 @@ def del_comment(d: dict, db: Session=Depends(get_db)):
 def delete_msg(d: dict, db: Session=Depends(get_db)):
     msg_id = d.get('msg_id'); msg_type = d.get('type'); uid = d.get('user_id')
     msg = None
-    if msg_type == 'dm': msg = db.query(PrivateMessage).get(msg_id)
-    elif msg_type == 'comm': msg = db.query(CommunityMessage).get(msg_id)
-    elif msg_type == 'group': msg = db.query(GroupMessage).get(msg_id)
+    if msg_type == 'dm': msg = db.query(PrivateMessage).filter_by(id=msg_id).first()
+    elif msg_type == 'comm': msg = db.query(CommunityMessage).filter_by(id=msg_id).first()
+    elif msg_type == 'group': msg = db.query(GroupMessage).filter_by(id=msg_id).first()
     
     if msg and msg.sender_id == uid:
         if (datetime.utcnow() - msg.timestamp).total_seconds() > 300: return {"status": "timeout", "msg": "Tempo limite (5min) excedido."}
@@ -1684,24 +1672,22 @@ def get_comments(post_id: int, db: Session=Depends(get_db)):
 
 @app.get("/posts")
 def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
-    # Usa joinedload para carregar o autor junto com o post na mesma consulta (Evita N+1)
     posts = db.query(Post).options(joinedload(Post.author)).order_by(Post.timestamp.desc()).limit(limit).all()
-    
-    # Busca todos os likes e comentários relevantes em bulk (massa) para performance
     post_ids = [p.id for p in posts]
-    likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all()
-    comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all()
     
-    comments_dict = dict(comments_count)
+    likes_bulk = []
+    comments_dict = {}
+    if post_ids:
+        likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all()
+        comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all()
+        comments_dict = dict(comments_count)
     
     result = []
     for p in posts:
-        # Lógica em memória (super rápido, não toca no banco)
         post_likes = [l for l in likes_bulk if l[0] == p.id]
         like_count = len(post_likes)
         user_liked = any(l[1] == uid for l in post_likes)
         c_count = comments_dict.get(p.id, 0)
-        
         u_summary = format_user_summary(p.author)
         
         result.append({
@@ -1716,19 +1702,19 @@ def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
 @app.post("/post/delete")
 def delete_post_endpoint(d: dict, db: Session=Depends(get_db)):
     pid = d.get('post_id'); uid = d.get('user_id')
-    post = db.query(Post).filter(Post.id == pid).first()
+    post = db.query(Post).filter_by(id=pid).first()
     if not post or post.user_id != uid: return {"status": "error"}
     db.query(Like).filter(Like.post_id == post.id).delete()
     db.query(Comment).filter(Comment.post_id == post.id).delete()
     db.delete(post)
-    user = db.query(User).filter(User.id == uid).first()
+    user = db.query(User).filter_by(id=uid).first()
     if user and user.xp >= 50: user.xp -= 50
     db.commit()
     return {"status": "ok"}
 
 @app.post("/profile/update_meta")
 def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avatar_url: str = Form(None), cover_url: str = Form(None), db: Session=Depends(get_db)):
-    u = db.query(User).filter(User.id == user_id).first()
+    u = db.query(User).filter_by(id=user_id).first()
     if avatar_url: u.avatar_url = avatar_url
     if cover_url: u.cover_url = cover_url
     if bio: u.bio = bio
@@ -1742,12 +1728,12 @@ def search_users(q: str, db: Session=Depends(get_db)):
 
 @app.get("/inbox/{uid}")
 def get_inbox(uid: int, db: Session=Depends(get_db)):
-    me = db.query(User).filter(User.id == uid).first()
+    me = db.query(User).filter_by(id=uid).first()
     friends_data = [{"id": f.id, "name": f.username, "avatar": f.avatar_url} for f in me.friends] if me else []
     my_groups = db.query(GroupMember).filter(GroupMember.user_id == uid).all()
     groups_data = []
     for gm in my_groups:
-        grp = db.query(ChatGroup).filter(ChatGroup.id == gm.group_id).first()
+        grp = db.query(ChatGroup).filter_by(id=gm.group_id).first()
         if grp: groups_data.append({"id": grp.id, "name": grp.name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"})
     return {"friends": friends_data, "groups": groups_data}
 
@@ -1762,14 +1748,14 @@ def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
 
 @app.post("/call/ring/dm")
 async def ring_dm(d: dict, db: Session=Depends(get_db)):
-    caller = db.query(User).get(d.get('caller_id'))
+    caller = db.query(User).filter_by(id=d.get('caller_id')).first()
     if caller: await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": caller.username, "caller_avatar": caller.avatar_url, "channel_name": d.get('channel_name'), "call_type": "dm", "target_id": d.get('target_id')}, d.get('target_id'))
     return {"status": "ok"}
     
 @app.post("/call/ring/group")
 async def ring_group(d: dict, db: Session=Depends(get_db)):
-    caller = db.query(User).get(d.get('caller_id'))
-    group = db.query(ChatGroup).get(d.get('group_id'))
+    caller = db.query(User).filter_by(id=d.get('caller_id')).first()
+    group = db.query(ChatGroup).filter_by(id=d.get('group_id')).first()
     members = db.query(GroupMember).filter_by(group_id=d.get('group_id')).all()
     for m in members:
         if m.user_id != d.get('caller_id') and caller and group:
@@ -1787,7 +1773,7 @@ def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""),
 
 @app.post("/community/join")
 def join_comm(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).get(d.get('comm_id'))
+    c = db.query(Community).filter_by(id=d.get('comm_id')).first()
     if not c or c.is_private: return {"status": "error"}
     ext = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.get('user_id')).first()
     if not ext:
@@ -1799,14 +1785,15 @@ def leave_community(cid: int, d: dict, db: Session=Depends(get_db)):
     uid = d.get('user_id')
     member = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
     if member:
-        if member.role == 'admin' and db.query(Community).get(cid).creator_id == uid:
+        comm = db.query(Community).filter_by(id=cid).first()
+        if member.role == 'admin' and comm and comm.creator_id == uid:
             return {"status": "error", "msg": "O criador não pode sair sem deletar a base."}
         db.delete(member); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/edit")
 def edit_comm(comm_id: int = Form(...), user_id: int = Form(...), avatar_url: str = Form(None), banner_url: str = Form(None), db: Session=Depends(get_db)):
-    c = db.query(Community).get(comm_id)
+    c = db.query(Community).filter_by(id=comm_id).first()
     if not c or c.creator_id != user_id: return {"status": "error"}
     if avatar_url: c.avatar_url = avatar_url
     if banner_url:
@@ -1819,7 +1806,7 @@ def edit_comm(comm_id: int = Form(...), user_id: int = Form(...), avatar_url: st
 @app.post("/community/{cid}/delete")
 def destroy_comm(cid: int, d: dict, db: Session=Depends(get_db)):
     uid = d.get('user_id')
-    c = db.query(Community).get(cid)
+    c = db.query(Community).filter_by(id=cid).first()
     if not c or c.creator_id != uid: return {"status": "error"}
     ch_ids = [ch.id for ch in db.query(CommunityChannel).filter_by(comm_id=cid).all()]
     if ch_ids: db.query(CommunityMessage).filter(CommunityMessage.channel_id.in_(ch_ids)).delete(synchronize_session=False)
@@ -1831,7 +1818,7 @@ def destroy_comm(cid: int, d: dict, db: Session=Depends(get_db)):
 
 @app.post("/community/member/promote")
 def promote_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).get(d['comm_id'])
+    c = db.query(Community).filter_by(id=d['comm_id']).first()
     admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['admin_id']).first()
     if not admin or (admin.role != 'admin' and c.creator_id != admin.user_id): return {"status": "error"}
     target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
@@ -1840,7 +1827,7 @@ def promote_member(d: dict, db: Session=Depends(get_db)):
 
 @app.post("/community/member/demote")
 def demote_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).get(d['comm_id'])
+    c = db.query(Community).filter_by(id=d['comm_id']).first()
     if c.creator_id != d['creator_id']: return {"status": "error"}
     target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
     if target and target.role == 'admin': target.role = 'member'; db.commit()
@@ -1848,7 +1835,7 @@ def demote_member(d: dict, db: Session=Depends(get_db)):
 
 @app.post("/community/member/kick")
 def kick_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).get(d['comm_id'])
+    c = db.query(Community).filter_by(id=d['comm_id']).first()
     admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['admin_id']).first()
     if not admin or (admin.role != 'admin' and c.creator_id != admin.user_id): return {"status": "error"}
     target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
@@ -1875,7 +1862,7 @@ def search_comms(uid: int, q: str = "", db: Session=Depends(get_db)):
 
 @app.post("/community/request/send")
 def send_comm_req(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).get(d.get('comm_id'))
+    c = db.query(Community).filter_by(id=d.get('comm_id')).first()
     if not c: return {"status": "error"}
     if c.is_private == 0:
         if not db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.get('user_id')).first():
@@ -1889,7 +1876,7 @@ def send_comm_req(d: dict, db: Session=Depends(get_db)):
 @app.get("/community/{cid}/requests")
 def get_comm_reqs(cid: int, uid: int, db: Session=Depends(get_db)):
     role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
-    c = db.query(Community).get(cid)
+    c = db.query(Community).filter_by(id=cid).first()
     if (not role or role.role != "admin") and (c and c.creator_id != uid): return []
     reqs = db.query(CommunityRequest).filter_by(comm_id=cid).all()
     return [{"id": r.id, "user_id": r.user.id, "username": r.user.username, "avatar": r.user.avatar_url} for r in reqs]
@@ -1899,7 +1886,7 @@ def handle_comm_req(d: dict, db: Session=Depends(get_db)):
     req = db.query(CommunityRequest).filter_by(id=d.get('req_id')).first()
     if not req: return {"status": "error"}
     role = db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=d.get('admin_id')).first()
-    c = db.query(Community).get(req.comm_id)
+    c = db.query(Community).filter_by(id=req.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != d.get('admin_id')): return {"status": "unauthorized"}
     if d.get('action') == "accept": 
         ext = db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=req.user_id).first()
@@ -1909,7 +1896,7 @@ def handle_comm_req(d: dict, db: Session=Depends(get_db)):
 
 @app.get("/community/{cid}/{uid}")
 def get_comm_details(cid: int, uid: int, db: Session=Depends(get_db)):
-    c = db.query(Community).get(cid)
+    c = db.query(Community).filter_by(id=cid).first()
     my_role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
     is_admin = my_role and my_role.role == "admin"
     channels = db.query(CommunityChannel).filter_by(comm_id=cid).all()
@@ -1921,17 +1908,17 @@ def get_comm_details(cid: int, uid: int, db: Session=Depends(get_db)):
 @app.post("/community/channel/create")
 def create_channel(comm_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
     role = db.query(CommunityMember).filter_by(comm_id=comm_id, user_id=user_id).first()
-    c = db.query(Community).get(comm_id)
+    c = db.query(Community).filter_by(id=comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != user_id): return {"status": "error"}
     db.add(CommunityChannel(comm_id=comm_id, name=name, channel_type=type, is_private=is_private, banner_url=banner_url)); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/channel/edit")
 def edit_channel(channel_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(None), db: Session=Depends(get_db)):
-    ch = db.query(CommunityChannel).get(channel_id)
+    ch = db.query(CommunityChannel).filter_by(id=channel_id).first()
     if not ch: return {"status": "error"}
     role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=user_id).first()
-    c = db.query(Community).get(ch.comm_id)
+    c = db.query(Community).filter_by(id=ch.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != user_id): return {"status": "error"}
     ch.name = name; ch.channel_type = type; ch.is_private = is_private
     if banner_url: ch.banner_url = banner_url
@@ -1941,10 +1928,10 @@ def edit_channel(channel_id: int=Form(...), user_id: int=Form(...), name: str=Fo
 @app.post("/community/channel/{chid}/delete")
 def destroy_channel(chid: int, d: dict, db: Session=Depends(get_db)):
     uid = d.get('user_id')
-    ch = db.query(CommunityChannel).get(chid)
+    ch = db.query(CommunityChannel).filter_by(id=chid).first()
     if not ch: return {"status": "error"}
     role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=uid).first()
-    c = db.query(Community).get(ch.comm_id)
+    c = db.query(Community).filter_by(id=ch.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != uid): return {"status": "error"}
     db.query(CommunityMessage).filter_by(channel_id=chid).delete()
     db.delete(ch); db.commit()
@@ -1959,6 +1946,7 @@ def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
         res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
+# HELPER WS: DM
 def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     parts = ch.split("_")
     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
@@ -1968,6 +1956,7 @@ def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     db.refresh(new_msg)
     return new_msg, rec_id
 
+# HELPER WS: COMM
 def handle_comm_message(db: Session, ch: str, uid: int, txt: str):
     chid = int(ch.split("_")[1])
     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
@@ -1976,6 +1965,7 @@ def handle_comm_message(db: Session, ch: str, uid: int, txt: str):
     db.refresh(new_msg)
     return new_msg, None
 
+# HELPER WS: GROUP
 def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     grid = int(ch.split("_")[1])
     new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
@@ -1983,7 +1973,7 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     db.commit()
     db.refresh(new_msg)
     return new_msg, None
-    
+
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
     await manager.connect(ws, ch, uid)
@@ -1991,7 +1981,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         while True:
             txt = await ws.receive_text()
             
-            # --- COMANDOS DE SINALIZAÇÃO RÁPIDA (Sem Banco de Dados) ---
             if txt == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
                 continue
@@ -2009,7 +1998,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     await manager.broadcast({"type": "sync_bg", "channel": parts[1], "bg_url": parts[2]}, "Geral")
                 continue
                 
-            # --- LÓGICA DE MENSAGENS (Usa os Helpers e o Banco de Dados) ---
             db = SessionLocal()
             try:
                 u_fresh = db.query(User).filter_by(id=uid).first()
@@ -2019,7 +2007,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 new_msg = None
                 target_dm_id = None
                 
-                # Delega o trabalho para os Helpers
                 if ch.startswith("dm_"):
                     new_msg, target_dm_id = handle_dm_message(db, ch, uid, txt)
                     if target_dm_id:
@@ -2029,7 +2016,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 elif ch.startswith("group_"):
                     new_msg, _ = handle_group_message(db, ch, uid, txt)
                 
-                # Se a mensagem foi salva com sucesso, distribui para a galera
                 if new_msg:
                     b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
                     user_data = {
@@ -2051,18 +2037,17 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         
             except Exception as e: 
                 db.rollback()
-                # BLINDAGEM: Agora o servidor avisa se algo der errado no banco!
-                logger.error(f"Erro crítico no WebSocket ao salvar mensagem: {e}") 
+                logger.error(f"Erro no WebSocket: {e}") 
             finally: 
                 db.close()
     except Exception as e:
-        logger.info(f"Conexão WS fechada pelo usuário {uid}: {e}")
+        logger.info(f"WS fechado pelo uid {uid}: {e}")
         manager.disconnect(ws, ch, uid)
 
 @app.get("/user/{target_id}")
 async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
-    target = db.query(User).filter(User.id == target_id).first()
-    viewer = db.query(User).filter(User.id == viewer_id).first()
+    target = db.query(User).filter_by(id=target_id).first()
+    viewer = db.query(User).filter_by(id=viewer_id).first()
     
     if not target or not viewer:
         return {
@@ -2087,21 +2072,11 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 
 @app.post("/profile/set_wallpaper")
 async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
-    config = db.query(UserConfig).filter_by(
-        user_id=d['user_id'], 
-        target_type=d['target_type'], 
-        target_id=d['target_id']
-    ).first()
-    
+    config = db.query(UserConfig).filter_by(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id']).first()
     if config:
         config.wallpaper_url = d['url']
     else:
-        db.add(UserConfig(
-            user_id=d['user_id'], 
-            target_type=d['target_type'], 
-            target_id=d['target_id'], 
-            wallpaper_url=d['url']
-        ))
+        db.add(UserConfig(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id'], wallpaper_url=d['url']))
     db.commit()
     return {"status": "ok"}
 
@@ -2123,7 +2098,3 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
