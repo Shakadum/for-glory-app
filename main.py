@@ -186,10 +186,24 @@ class CommunityRequest(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 class CallBackground(Base):
- class UserConfig(Base):
+    __tablename__ = "call_backgrounds"
+    id = Column(Integer, primary_key=True, index=True)
+    target_type = Column(String, index=True) 
+    target_id = Column(String, index=True) 
+    bg_url = Column(String)
 
-try: Base.metadata.create_all(bind=engine)
-except Exception as e: logger.error(f"Erro inicial BD: {e}")
+class UserConfig(Base):
+    __tablename__ = "user_configs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    target_type = Column(String) # 'dm' ou 'comm'
+    target_id = Column(String)
+    wallpaper_url = Column(String, default="")
+
+try: 
+    Base.metadata.create_all(bind=engine)
+except Exception as e: 
+    logger.error(f"Erro inicial BD: {e}")
 
 # --- APP E MANAGERS ---
 app = FastAPI(title="For Glory Cloud")
@@ -1823,10 +1837,37 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
     b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
     return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
 
+@app.post("/profile/set_wallpaper")
+async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
+    # d deve conter: user_id, target_type, target_id, url
+    config = db.query(UserConfig).filter_by(
+        user_id=d['user_id'], 
+        target_type=d['target_type'], 
+        target_id=d['target_id']
+    ).first()
+    
+    if config:
+        config.wallpaper_url = d['url']
+    else:
+        db.add(UserConfig(
+            user_id=d['user_id'], 
+            target_type=d['target_type'], 
+            target_id=d['target_id'], 
+            wallpaper_url=d['url']
+        ))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/profile/get_wallpaper")
+async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_db)):
+    config = db.query(UserConfig).filter_by(user_id=uid, target_type=type, target_id=tid).first()
+    return {"url": config.wallpaper_url if config else None}
+    
 @app.get("/agora-config")
 async def get_agora_config(): return {"app_id": AGORA_APP_ID}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
