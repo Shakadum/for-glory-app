@@ -328,17 +328,28 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .view.active{display:flex;animation:fadeIn 0.3s ease-out}
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
-#floating-call-btn { position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; background: linear-gradient(135deg, #2ecc71, #27ae60); color:white; font-size:35px; cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; box-shadow: 0 10px 25px rgba(46,204,113,0.6), inset 0 -3px 5px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.2); animation: pulse-glow 2s infinite; transition: 0.3s transform; }
-#floating-call-btn:hover { transform:scale(1.1); }
-@keyframes pulse-glow { 0% { box-shadow: 0 0 0 0 rgba(46,204,113,0.7); } 70% { box-shadow: 0 0 0 20px rgba(46,204,113,0); } 100% { box-shadow: 0 0 0 0 rgba(46,204,113,0); } }
-#expanded-call-panel { display:none; position:fixed; bottom:120px; right:40px; width:320px; background:rgba(15,20,25,0.98); border:1px solid var(--primary); border-radius:16px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8); backdrop-filter:blur(10px); animation:scaleUp 0.2s ease-out; }
-.remote-user-row { display:flex; align-items:center; gap:10px; margin-bottom:15px; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid #333;}
-.vol-slider { flex:1; accent-color: var(--primary); height:4px; }
-.call-btn-circle { background:#333; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
-.call-btn-circle:hover { transform:scale(1.1); background:#444;}
-.call-btn-circle.muted { background:#ffaa00; color:#000; box-shadow:0 0 10px rgba(255,170,0,0.5); }
-.call-btn-hangup { background:#ff5555; color:white; border:none; border-radius:30px; width:100%; padding:12px; font-size:16px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 0 10px rgba(255,85,85,0.3); margin-top:10px;}
-.call-btn-hangup:hover { background:#cc0000; }
+/* HUD DA CALL FLUTUANTE PREMIUM */
+#floating-call-btn { 
+    position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
+    background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; 
+    cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; 
+    box-shadow: 0 0 20px rgba(102,252,241,0.5), inset 0 0 10px rgba(102,252,241,0.2); 
+    border: 2px solid var(--primary); 
+    animation: radar-glow 2s infinite; transition: 0.3s transform; 
+}
+#floating-call-btn:hover { transform:scale(1.1); box-shadow: 0 0 30px rgba(102,252,241,0.8); }
+@keyframes radar-glow { 0% { box-shadow: 0 0 0 0 rgba(102,252,241,0.6); } 70% { box-shadow: 0 0 0 25px rgba(102,252,241,0); } 100% { box-shadow: 0 0 0 0 rgba(102,252,241,0); } }
+
+#expanded-call-panel { display:none; position:fixed; bottom:125px; right:40px; width:300px; background:rgba(11,12,16,0.95); border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 15px 50px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); backdrop-filter:blur(15px); animation:scaleUp 0.3s ease-out; }
+.remote-user-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; background:rgba(255,255,255,0.03); padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.05); transition:0.3s;}
+.remote-user-row:hover { background:rgba(255,255,255,0.08); border-color:var(--primary); }
+.vol-slider { flex:1; accent-color: var(--primary); height:6px; background:#333; border-radius:3px; outline:none; -webkit-appearance:none; }
+.vol-slider::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; background:var(--primary); border-radius:50%; cursor:pointer; box-shadow:0 0 10px var(--primary); }
+.call-btn-circle { background:#1f2833; color:white; border:1px solid #444; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
+.call-btn-circle:hover { transform:scale(1.1); border-color:var(--primary); color:var(--primary); }
+.call-btn-circle.muted { background:rgba(255,85,85,0.1); color:#ff5555; border-color:#ff5555; box-shadow:0 0 15px rgba(255,85,85,0.4); }
+.call-btn-hangup { background:linear-gradient(135deg, #ff5555, #cc0000); color:white; border:none; border-radius:30px; width:100%; padding:14px; font-size:15px; font-family:'Rajdhani'; font-weight:bold; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 8px 20px rgba(255,85,85,0.4); margin-top:15px; text-transform:uppercase;}
+.call-btn-hangup:hover { transform:translateY(-2px); box-shadow:0 12px 25px rgba(255,85,85,0.6); }
 .admin-action-wrap { display:flex; gap:5px; margin-left:auto; }
 .admin-action-btn { background:rgba(255,255,255,0.1); border:1px solid #555; color:white; padding:4px 8px; border-radius:8px; cursor:pointer; transition:0.2s; font-size:12px; }
 .admin-action-btn:hover { transform:scale(1.1); box-shadow:0 0 10px rgba(255,255,255,0.2); }
@@ -1170,18 +1181,16 @@ function updateUI(){
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
-function startApp(){
-    document.getElementById('modal-login').classList.add('hidden'); document.querySelector('.lang-dropdown').classList.add('hidden'); 
-    updateUI(); fetchOnlineUsers(); fetchUnread(); goView('profile', document.getElementById('nav-profile-btn'));
-    
-    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}`);
-    globalWS.onmessage = (e) => {
-        let d = JSON.parse(e.data);
-        if(d.type === 'pong') return; 
-        if(d.type === 'ping') { fetchUnread(); }
-        // NOTIFICAÇÃO SONORA E VISUAL ISOLADA (NÃO PISCA MAIS)
+// NOTIFICAÇÃO SONORA E BOLINHA VERMELHA (SEM TOAST)
         if(d.type === 'new_dm') {
+            let isDmActive = document.getElementById('view-dm').classList.contains('active');
+            if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {
+                // Já estou com a conversa aberta na tela, não notifica
+            } else { 
+                try { window.msgSound.play(); } catch(err){}
+                fetchUnread(); // Atualiza os números vermelhos apenas
+            }
+        }
             if(document.getElementById('view-dm').classList.contains('active') && currentChatType === '1v1' && currentChatId === d.sender_id) {
                 // Já estou lendo
             } else { 
@@ -1234,12 +1243,10 @@ async function initCall(typeParam, targetId) {
     if (typeParam === 'dm' || typeParam === '1v1') { 
         channelName = `call_dm_${Math.min(user.id, targetId)}_${Math.max(user.id, targetId)}`; 
         showToast("Chamando...");
-        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/dm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, target_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'group') { 
         channelName = `call_group_${targetId}`; 
         showToast("Chamando o Esquadrão...");
-        try { window.outgoingRingTone.play(); } catch(e){}
         await fetch('/call/ring/group', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caller_id:user.id, group_id:targetId, channel_name:channelName})});
     } else if (typeParam === 'channel' || typeParam === 'voice') { 
         channelName = `call_channel_${targetId}`; 
@@ -1471,7 +1478,12 @@ function connectDmWS(id, name, type) {
             let h = `<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
             b.insertAdjacentHTML('beforeend',h); b.scrollTop = b.scrollHeight;
         }
-        if(currentChatType === '1v1' && currentChatId === d.user_id) { fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); } else { fetchUnread(); }
+       let isDmActive = document.getElementById('view-dm').classList.contains('active');
+        if(isDmActive && currentChatType === '1v1' && currentChatId === d.user_id) { 
+            fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); 
+        } else { 
+            fetchUnread(); 
+        } { fetch(`/inbox/read/${d.user_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread()); } else { fetchUnread(); }
     };
 }
 
@@ -2218,3 +2230,4 @@ async def get_agora_config():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
