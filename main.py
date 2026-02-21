@@ -1831,16 +1831,21 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
     try:
         while True:
             txt = await ws.receive_text()
+            
             if txt == "ping":
-                await ws.send_text(json.dumps({"type": "pong"})); continue
-            if txt.startswith("KICK_CALL:"):
-                if txt.startswith("REJECT_CALL:"):
-                target = int(txt.split(":")[1])
-                await manager.send_personal({"type": "call_rejected"}, target)
+                await ws.send_text(json.dumps({"type": "pong"}))
                 continue
+                
+            if txt.startswith("KICK_CALL:"):
                 target = int(txt.split(":")[1])
                 await manager.broadcast({"type": "kick_call", "target_id": target}, ch)
                 continue
+                
+            if txt.startswith("REJECT_CALL:"):
+                target = int(txt.split(":")[1])
+                await manager.send_personal({"type": "call_rejected"}, target)
+                continue
+                
             db = SessionLocal()
             msg_id = None
             now_iso = datetime.utcnow().isoformat() + "Z"
@@ -1850,26 +1855,50 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     parts = ch.split("_")
                     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
                     new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
-                    db.add(new_msg); db.commit(); db.refresh(new_msg)
-                    msg_id = new_msg.id; now_iso = get_utc_iso(new_msg.timestamp)
+                    db.add(new_msg)
+                    db.commit()
+                    db.refresh(new_msg)
+                    msg_id = new_msg.id
+                    now_iso = get_utc_iso(new_msg.timestamp)
                     await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
                 elif ch.startswith("comm_"):
                     chid = int(ch.split("_")[1])
                     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
-                    db.add(new_msg); db.commit(); db.refresh(new_msg)
-                    msg_id = new_msg.id; now_iso = get_utc_iso(new_msg.timestamp)
+                    db.add(new_msg)
+                    db.commit()
+                    db.refresh(new_msg)
+                    msg_id = new_msg.id
+                    now_iso = get_utc_iso(new_msg.timestamp)
                 elif ch.startswith("group_"):
                     grid = int(ch.split("_")[1])
                     new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
-                    db.add(new_msg); db.commit(); db.refresh(new_msg)
-                    msg_id = new_msg.id; now_iso = get_utc_iso(new_msg.timestamp)
+                    db.add(new_msg)
+                    db.commit()
+                    db.refresh(new_msg)
+                    msg_id = new_msg.id
+                    now_iso = get_utc_iso(new_msg.timestamp)
+                
                 if msg_id:
                     b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
-                    user_data = {"id": msg_id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, "content": txt, "can_delete": True, "timestamp": now_iso, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']}
+                    user_data = {
+                        "id": msg_id, 
+                        "user_id": u_fresh.id, 
+                        "username": u_fresh.username, 
+                        "avatar": u_fresh.avatar_url, 
+                        "content": txt, 
+                        "can_delete": True, 
+                        "timestamp": now_iso, 
+                        "rank": b['rank'], 
+                        "color": b['color'], 
+                        "special_emblem": b['special_emblem']
+                    }
                     await manager.broadcast(user_data, ch)
-                    if ch.startswith("dm_") or ch.startswith("group_"): await manager.broadcast({"type": "ping"}, "Geral")
-            except Exception as e: db.rollback()
-            finally: db.close()
+                    if ch.startswith("dm_") or ch.startswith("group_"): 
+                        await manager.broadcast({"type": "ping"}, "Geral")
+            except Exception as e: 
+                db.rollback()
+            finally: 
+                db.close()
     except Exception:
         manager.disconnect(ws, ch, uid)
 
@@ -1976,6 +2005,7 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
