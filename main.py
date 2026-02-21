@@ -35,23 +35,21 @@ cloudinary.config(
     secure=True
 )
 
-# --- BANCO DE DADOS (PRIORIDADE NEON / POSTGRESQL) ---
-# Puxa a URL configurada no painel do Render
+# --- BANCO DE DADOS (PRIORIDADE ABSOLUTA: NEON) ---
+# Aqui o sistema vai sempre preferir a variável de ambiente DATABASE_URL que você configurou no Render
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Se por acaso não achar a variável, usa o SQLite apenas como quebra-galho local
+# Fallback apenas se a variável não for encontrada de jeito nenhum
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///./for_glory_fallback.db"
+    DATABASE_URL = "sqlite:///./for_glory_v7.db"
 
-# O SQLAlchemy exige que a URL comece com 'postgresql://', mas o Neon as vezes dá 'postgres://'
+# Correção do prefixo exigido pelo SQLAlchemy para o Neon
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Conecta ao banco de dados correto
 if "sqlite" in DATABASE_URL:
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
 else:
-    # Configuração otimizada e blindada para bancos em nuvem como o Neon
     engine = create_engine(DATABASE_URL, pool_size=15, max_overflow=30, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -272,7 +270,6 @@ class JoinCommData(BaseModel): user_id: int; comm_id: int
 class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
 class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
 class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
-class ActionData(BaseModel): user_id: int
 
 def get_db():
     db = SessionLocal()
@@ -679,6 +676,14 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <input id="bio-update" class="inp" placeholder="Bio" data-i18n="bio_placeholder">
         <button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button>
         <button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button>
+    </div>
+</div>
+
+<div id="modal-ranks" class="modal hidden">
+    <div class="modal-box" style="max-height: 80vh; overflow-y: auto;">
+        <h2 style="color:var(--primary); font-family:'Rajdhani';">📋 TODAS AS PATENTES</h2>
+        <div id="ranks-list" style="display:flex; flex-direction:column; gap:10px; text-align:left; margin-top:15px;"></div>
+        <button onclick="document.getElementById('modal-ranks').classList.add('hidden')" class="btn-main" style="margin-top:20px;" data-i18n="cancel">FECHAR</button>
     </div>
 </div>
 
@@ -1174,7 +1179,7 @@ let isMicMuted = false;
 async function toggleMuteCall() { 
     if(rtc.localAudioTrack) { 
         isMicMuted = !isMicMuted;
-        await rtc.localAudioTrack.setEnabled(!isMicMuted); 
+        await rtc.localAudioTrack.setMuted(isMicMuted); 
         let btn = document.getElementById('btn-mute-call'); 
         if(isMicMuted) { btn.classList.add('muted'); btn.innerHTML = '🔇'; } 
         else { btn.classList.remove('muted'); btn.innerHTML = '🎤'; } 
@@ -1342,7 +1347,58 @@ function goView(v, btnElem){
     if(v === 'inbox') loadInbox(); if(v === 'mycomms') loadMyComms(); if(v === 'explore') loadPublicComms(); if(v === 'history') loadMyHistory(); if(v === 'feed') loadFeed();
 }
 
-async function toggleRecord(type) { let btn=document.getElementById(`btn-mic-${type}`); let inpId=type==='dm'?'dm-msg':(type==='comm'?'comm-msg':`comment-inp-${type.split('-')[1]}`); let inp=document.getElementById(inpId); if(mediaRecorders[type]&&mediaRecorders[type].state==='recording'){mediaRecorders[type].stop();btn.classList.remove('recording');clearInterval(recordTimers[type]);if(inp){inp.placeholder=t('audio_proc');inp.disabled=false;}return;} try{ let stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false,sampleRate:48000}});let options={};if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')){options={mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:128000};} mediaRecorders[type]=new MediaRecorder(stream,options);audioChunks[type]=[];mediaRecorders[type].ondataavailable=e=>{if(e.data.size>0)audioChunks[type].push(e.data);}; mediaRecorders[type].onstop=async()=>{ let blob=new Blob(audioChunks[type],{type:'audio/webm'});let file=new File([blob],"radio.webm",{type:'audio/webm'}); try{ let res=await uploadToCloudinary(file);let audioMsg="[AUDIO]"+res.secure_url; if(type==='dm'&&dmWS){dmWS.send(audioMsg);}else if(type==='comm'&&commWS){commWS.send(audioMsg);}else if(type.startsWith('comment-')){ let pid=type.split('-')[1];await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:audioMsg})});lastFeedHash="";loadFeed();} }catch(err){} stream.getTracks().forEach(t=>t.stop());if(inp){inp.placeholder="";} }; mediaRecorders[type].start();btn.classList.add('recording'); if(inp){inp.disabled=true;recordSeconds[type]=0;inp.placeholder=`${t('recording')} 00:00`;recordTimers[type]=setInterval(()=>{recordSeconds[type]++;let mins=String(Math.floor(recordSeconds[type]/60)).padStart(2,'0');let secs=String(recordSeconds[type]%60).padStart(2,'0');inp.placeholder=`${t('recording')} ${mins}:${secs} ${t('click_to_send')}`;},1000);} }catch(e){showToast("Mic Blocked!");} }
+async function toggleRecord(type) { 
+    let btn=document.getElementById(`btn-mic-${type}`); 
+    let inpId=type==='dm'?'dm-msg':(type==='comm'?'comm-msg':`comment-inp-${type.split('-')[1]}`); 
+    let inp=document.getElementById(inpId); 
+    
+    if(mediaRecorders[type]&&mediaRecorders[type].state==='recording'){
+        mediaRecorders[type].stop();
+        btn.classList.remove('recording');
+        clearInterval(recordTimers[type]);
+        if(inp){inp.placeholder=t('audio_proc');inp.disabled=true;}
+        return;
+    } 
+    try{ 
+        let stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false,sampleRate:48000}});
+        let options={};
+        if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')){options={mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:128000};} 
+        mediaRecorders[type]=new MediaRecorder(stream,options);
+        audioChunks[type]=[];
+        mediaRecorders[type].ondataavailable=e=>{if(e.data.size>0)audioChunks[type].push(e.data);}; 
+        
+        mediaRecorders[type].onstop=async()=>{ 
+            let blob=new Blob(audioChunks[type],{type:'audio/webm'});
+            let file=new File([blob],"radio.webm",{type:'audio/webm'}); 
+            try{ 
+                let res=await uploadToCloudinary(file);
+                let audioMsg="[AUDIO]"+res.secure_url; 
+                if(type==='dm'&&dmWS){dmWS.send(audioMsg);}
+                else if(type==='comm'&&commWS){commWS.send(audioMsg);}
+                else if(type.startsWith('comment-')){ 
+                    let pid=type.split('-')[1];
+                    await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:audioMsg})});
+                    lastFeedHash="";loadFeed();
+                } 
+            }catch(err){ showToast("Falha ao enviar áudio."); } 
+            stream.getTracks().forEach(t=>t.stop());
+            if(inp){ inp.disabled=false; inp.placeholder= t(type==='comm'?'base_msg_placeholder':'msg_placeholder'); } 
+        }; 
+        
+        mediaRecorders[type].start();
+        btn.classList.add('recording'); 
+        if(inp){
+            inp.disabled=true;recordSeconds[type]=0;inp.placeholder=`${t('recording')} 00:00`;
+            recordTimers[type]=setInterval(()=>{
+                recordSeconds[type]++;
+                let mins=String(Math.floor(recordSeconds[type]/60)).padStart(2,'0');
+                let secs=String(recordSeconds[type]%60).padStart(2,'0');
+                inp.placeholder=`${t('recording')} ${mins}:${secs} ${t('click_to_send')}`;
+            },1000);
+        } 
+    }catch(e){showToast("Mic Blocked!");} 
+}
+
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let hData=await hist.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){}}
 async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){}}
 
@@ -1427,7 +1483,32 @@ async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannel
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){}}
 async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; width:fit-content; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
-async function uploadToCloudinary(file){let limiteMB=100;if(file.size>(limiteMB*1024*1024))return Promise.reject();let resType=(file.type.startsWith('video')||file.type.startsWith('audio'))?'video':'image';let url=`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;let fd=new FormData();fd.append('file',file);fd.append('upload_preset',UPLOAD_PRESET);return new Promise((res,rej)=>{let x=new XMLHttpRequest();x.open('POST',url,true);x.upload.onprogress=(e)=>{if(e.lengthComputable&&document.getElementById('progress-bar')){let p=Math.round((e.loaded/e.total)*100);document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-text').innerText=p+'%';}};x.onload=()=>{if(x.status===200)res(JSON.parse(x.responseText));else{rej();}};x.onerror=()=>rej();x.send(fd)});}
+
+async function uploadToCloudinary(file){
+    let limiteMB=100;
+    if(file.size>(limiteMB*1024*1024)) return Promise.reject();
+    let resType=(file.type.startsWith('video')||file.type.startsWith('audio'))?'video':'image';
+    let url=`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;
+    let fd=new FormData();
+    fd.append('file',file);
+    fd.append('upload_preset',UPLOAD_PRESET);
+    return new Promise((res,rej)=>{
+        let x=new XMLHttpRequest();
+        x.open('POST',url,true);
+        x.upload.onprogress=(e)=>{if(e.lengthComputable&&document.getElementById('progress-bar')){let p=Math.round((e.loaded/e.total)*100);document.getElementById('progress-bar').style.width=p+'%';if(document.getElementById('progress-text')) document.getElementById('progress-text').innerText=p+'%';}};
+        x.onload=()=>{
+            if(x.status===200) res(JSON.parse(x.responseText));
+            else {
+                console.error("ERRO CLOUDINARY:", x.responseText);
+                alert("Falha no Cloudinary: O Upload Preset 'for_glory_preset' pode estar configurado errado (precisa ser UNSIGNED) ou foi deletado.");
+                rej();
+            }
+        };
+        x.onerror=()=> { showToast("Sem conexão com Cloudinary"); rej(); };
+        x.send(fd);
+    });
+}
+
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c=await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){}finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){}finally{btn.disabled=false;}}
 function clearSearch(){document.getElementById('search-input').value='';document.getElementById('search-results').innerHTML='';}
@@ -1436,6 +1517,7 @@ async function searchUsers(){let q=document.getElementById('search-input').value
 </body>
 </html>
 """
+
 @app.get("/", response_class=HTMLResponse)
 async def get(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
@@ -1886,8 +1968,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     db.refresh(new_msg)
                     msg_id = new_msg.id
                     now_iso = get_utc_iso(new_msg.timestamp)
-                    if u_fresh: 
-                        await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
+                    if u_fresh: await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
                 elif ch.startswith("comm_"):
                     chid = int(ch.split("_")[1])
                     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
@@ -1932,8 +2013,9 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
 @app.get("/user/{target_id}")
 async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
     target = db.query(User).filter(User.id == target_id).first()
-    viewer = db.query(User).filter(User.id == viewer_id).first()
+   viewer = db.query(User).filter(User.id == viewer_id).first()
     
+    # Blindagem caso o usuário tenha sido apagado (Evita tela branca)
     if not target or not viewer:
         return {
             "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", 
@@ -1993,4 +2075,3 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
