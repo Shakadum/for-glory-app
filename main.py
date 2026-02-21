@@ -414,7 +414,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .comment-row { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; animation: fadeIn 0.3s; align-items:flex-start; }
 .comment-av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid #444; cursor:pointer; }
 
-.styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
+.styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
 .styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
@@ -1072,9 +1072,16 @@ async function acceptCall() {
 async function connectToAgora(channelName, typeParam) {
     window.currentAgoraChannel = channelName; 
     
-    // Atualiza HUD inicial
     document.getElementById('call-active-profile').style.display = 'none';
     document.getElementById('call-hud-status').innerText = "CHAMANDO...";
+    
+    // Define quem pode mudar o fundo
+    let bgAction = document.getElementById('call-bg-action');
+    if (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') {
+        bgAction.style.display = 'block'; // Todos podem mudar no privado/grupo
+    } else {
+        bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; // Só Admin na Base
+    }
     
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
@@ -1152,6 +1159,9 @@ async function renderCallPanel() {
     let lastUser = null;
     
     for(let uid in rtc.remoteUsers) {
+        // Ignora você mesmo caso a plataforma tente espelhar (bug de 2 desconhecidos)
+        if (String(uid) === String(user.id)) continue;
+
         count++; 
         if(!window.callUsersCache[uid]) {
             try {
@@ -1163,27 +1173,22 @@ async function renderCallPanel() {
         let uData = window.callUsersCache[uid];
         lastUser = uData;
         let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
-        // Slider oninput para responder na hora
         list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" oninput="changeRemoteVol(${uid}, this.value)"></div>`;
     }
     
     let profDiv = document.getElementById('call-active-profile');
     let st = document.getElementById('call-hud-status');
     
-    if(count === 1 && lastUser) {
+    if(count > 0 && lastUser) {
         profDiv.style.display = 'block';
         document.getElementById('call-active-avatar').src = lastUser.avatar;
         document.getElementById('call-active-name').innerText = lastUser.name;
-    } else {
-        profDiv.style.display = 'none';
-    }
-    
-    if(count === 0) {
-        list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando na escuta...</p>`;
-        st.innerText = "CHAMANDO...";
-    } else {
         st.innerText = "EM CHAMADA";
         if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    } else {
+        profDiv.style.display = 'none';
+        list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando na escuta...</p>`;
+        st.innerText = "CHAMANDO...";
     }
 }
 
@@ -1431,7 +1436,7 @@ function connectCommWS(chid){if(commWS)commWS.close();let p=location.protocol===
 async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannelId!==chid);activeChannelId=chid;window.currentCommType=type;document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';if(btnElem){document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));btnElem.classList.add('active');}let inpForm=document.getElementById('comm-input-form');let inp=document.getElementById('comm-msg');let clip=document.getElementById('btn-comm-clip');let emj=document.getElementById('btn-comm-emoji');let mic=document.getElementById('btn-comm-mic');inp.disabled=false;clip.style.display='flex';emj.style.display='flex';mic.style.display='flex';inpForm.style.display='flex';let cp=document.getElementById('expanded-call-panel');cp.style.backgroundImage='none';document.getElementById('call-bg-action').style.display='none';if(changingChannel&&commWS){commWS.close();commWS=null;}if(type==='voice'){inpForm.style.display='none';document.getElementById('comm-chat-list').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;if(window.currentCommIsAdmin){document.getElementById('call-bg-action').style.display='block';}try{let r=await fetch(`/call/bg/channel/${chid}`);let res=await r.json();if(res.bg_url){cp.style.backgroundImage=`url('${res.bg_url}')`;}}catch(e){}}else{if(type==='media'){inp.disabled=true;inp.placeholder=t('media_only');emj.style.display='none';mic.style.display='none';}else if(type==='text'){inp.placeholder=t('base_msg_placeholder');clip.style.display='none';mic.style.display='flex';}else{inp.placeholder=t('base_msg_placeholder');}if(changingChannel){document.getElementById('comm-chat-list').innerHTML='';}await fetchCommMessages(chid);if(!commWS||commWS.readyState!==WebSocket.OPEN){connectCommWS(chid);}}}
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){}}
-async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
+async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
 async function uploadToCloudinary(file){let limiteMB=100;if(file.size>(limiteMB*1024*1024))return Promise.reject();let resType=(file.type.startsWith('video')||file.type.startsWith('audio'))?'video':'image';let url=`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resType}/upload`;let fd=new FormData();fd.append('file',file);fd.append('upload_preset',UPLOAD_PRESET);return new Promise((res,rej)=>{let x=new XMLHttpRequest();x.open('POST',url,true);x.upload.onprogress=(e)=>{if(e.lengthComputable&&document.getElementById('progress-bar')){let p=Math.round((e.loaded/e.total)*100);document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-text').innerText=p+'%';}};x.onload=()=>{if(x.status===200)res(JSON.parse(x.responseText));else{rej();}};x.onerror=()=>rej();x.send(fd)});}
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c=await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){}finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){}finally{btn.disabled=false;}}
@@ -1625,19 +1630,6 @@ async def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avat
 async def search_users(q: str, db: Session=Depends(get_db)):
     users = db.query(User).filter(User.username.ilike(f"%{q}%")).limit(10).all()
     return [{"id": u.id, "username": u.username, "avatar_url": u.avatar_url} for u in users]
-
-@app.post("/call/bg/set")
-async def set_call_bg(d: dict, db: Session=Depends(get_db)):
-    bg = db.query(CallBackground).filter_by(target_type=d['target_type'], target_id=d['target_id']).first()
-    if bg: bg.bg_url = d['bg_url']
-    else: db.add(CallBackground(target_type=d['target_type'], target_id=d['target_id'], bg_url=d['bg_url']))
-    db.commit()
-    return {"status": "ok"}
-
-@app.get("/call/bg/{target_type}/{target_id}")
-async def get_call_bg(target_type: str, target_id: str, db: Session=Depends(get_db)):
-    bg = db.query(CallBackground).filter_by(target_type=target_type, target_id=target_id).first()
-    return {"bg_url": bg.bg_url if bg else None}
 
 @app.get("/inbox/{uid}")
 async def get_inbox(uid: int, db: Session=Depends(get_db)):
@@ -1929,6 +1921,32 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
     except Exception:
         manager.disconnect(ws, ch, uid)
 
+@app.get("/user/{target_id}")
+async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
+    target = db.query(User).filter(User.id == target_id).first()
+    viewer = db.query(User).filter(User.id == viewer_id).first()
+    
+    if not target or not viewer:
+        return {
+            "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", 
+            "bio": "Perdido em combate.", "rank": "Recruta", "color": "#888", "special_emblem": "", 
+            "medals": [], "percent": 0, "next_xp": 100, "next_rank": "Soldado", "posts": [], 
+            "friend_status": "none", "request_id": None
+        }
+        
+    posts = db.query(Post).filter(Post.user_id == target_id).order_by(Post.timestamp.desc()).all()
+    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
+    status = "friends" if target in viewer.friends else "none"
+    req_id = None
+    if status == "none":
+        sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
+        received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
+        if sent: status = "pending_sent"
+        if received: status = "pending_received"; req_id = received.id
+        
+    b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
+    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
+
 @app.post("/profile/set_wallpaper")
 async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
     config = db.query(UserConfig).filter_by(
@@ -1967,4 +1985,3 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
