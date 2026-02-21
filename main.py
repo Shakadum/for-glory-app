@@ -2013,9 +2013,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
 @app.get("/user/{target_id}")
 async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
     target = db.query(User).filter(User.id == target_id).first()
-   viewer = db.query(User).filter(User.id == viewer_id).first()
+    viewer = db.query(User).filter(User.id == viewer_id).first()
     
-    # Blindagem caso o usuário tenha sido apagado (Evita tela branca)
     if not target or not viewer:
         return {
             "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", 
@@ -2075,3 +2074,4 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
