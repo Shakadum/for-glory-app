@@ -233,8 +233,8 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 def get_user_badges(xp, user_id, role):
-    def format_user_summary(user: User):
-"""Helper para padronizar o retorno de dados do usuário e evitar repetição (DRY)."""
+def format_user_summary(user: User):
+    """Helper para padronizar o retorno de dados do usuário e evitar repetição (DRY)."""
     if not user:
         return {
             "id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
@@ -2123,6 +2123,7 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
