@@ -9,8 +9,8 @@ from typing import List
 from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text, inspect
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text, inspect, func
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session, joinedload
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
 from fastapi.middleware.cors import CORSMiddleware
@@ -233,6 +233,22 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 def get_user_badges(xp, user_id, role):
+    def format_user_summary(user: User):
+    """Helper para padronizar o retorno de dados do usuário e evitar repetição (DRY)."""
+    if not user:
+        return {
+            "id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
+            "rank": "Recruta", "color": "#888", "special_emblem": ""
+        }
+    b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
+    return {
+        "id": user.id,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "rank": b['rank'],
+        "color": b['color'],
+        "special_emblem": b['special_emblem']
+    }
     tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
     for i, t in enumerate(tiers):
@@ -1668,14 +1684,33 @@ def get_comments(post_id: int, db: Session=Depends(get_db)):
 
 @app.get("/posts")
 def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
-    posts = db.query(Post).order_by(Post.timestamp.desc()).limit(limit).all()
+    # Usa joinedload para carregar o autor junto com o post na mesma consulta (Evita N+1)
+    posts = db.query(Post).options(joinedload(Post.author)).order_by(Post.timestamp.desc()).limit(limit).all()
+    
+    # Busca todos os likes e comentários relevantes em bulk (massa) para performance
+    post_ids = [p.id for p in posts]
+    likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all()
+    comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all()
+    
+    comments_dict = dict(comments_count)
+    
     result = []
     for p in posts:
-        like_count = db.query(Like).filter(Like.post_id == p.id).count()
-        user_liked = db.query(Like).filter(Like.post_id == p.id, Like.user_id == uid).first() is not None
-        comment_count = db.query(Comment).filter(Comment.post_id == p.id).count()
-        b = get_user_badges(p.author.xp, p.author.id, getattr(p.author, 'role', 'membro'))
-        result.append({"id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, "author_name": p.author.username, "author_avatar": p.author.avatar_url, "author_rank": b['rank'], "rank_color": b['color'], "special_emblem": b['special_emblem'], "author_id": p.author.id, "likes": like_count, "user_liked": user_liked, "comments": comment_count})
+        # Lógica em memória (super rápido, não toca no banco)
+        post_likes = [l for l in likes_bulk if l[0] == p.id]
+        like_count = len(post_likes)
+        user_liked = any(l[1] == uid for l in post_likes)
+        c_count = comments_dict.get(p.id, 0)
+        
+        u_summary = format_user_summary(p.author)
+        
+        result.append({
+            "id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, 
+            "author_name": u_summary["username"], "author_avatar": u_summary["avatar_url"], 
+            "author_rank": u_summary["rank"], "rank_color": u_summary["color"], 
+            "special_emblem": u_summary["special_emblem"], "author_id": p.author_id, 
+            "likes": like_count, "user_liked": user_liked, "comments": c_count
+        })
     return result
 
 @app.post("/post/delete")
@@ -1924,6 +1959,31 @@ def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
         res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
     return res
 
+def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
+    parts = ch.split("_")
+    rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
+    new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+    return new_msg, rec_id
+
+def handle_comm_message(db: Session, ch: str, uid: int, txt: str):
+    chid = int(ch.split("_")[1])
+    new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+    return new_msg, None
+
+def handle_group_message(db: Session, ch: str, uid: int, txt: str):
+    grid = int(ch.split("_")[1])
+    new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+    return new_msg, None
+    
 @app.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
     await manager.connect(ws, ch, uid)
@@ -1931,83 +1991,72 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         while True:
             txt = await ws.receive_text()
             
+            # --- COMANDOS DE SINALIZAÇÃO RÁPIDA (Sem Banco de Dados) ---
             if txt == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
                 continue
-                
             if txt.startswith("KICK_CALL:"):
                 target = int(txt.split(":")[1])
                 await manager.broadcast({"type": "kick_call", "target_id": target}, ch)
                 continue
-                
             if txt.startswith("CALL_SIGNAL:"):
                 parts = txt.split(":")
-                target = int(parts[1])
-                action = parts[2]
-                channel = parts[3]
-                await manager.send_personal({"type": f"call_{action}", "channel": channel}, target)
+                await manager.send_personal({"type": f"call_{parts[2]}", "channel": parts[3]}, int(parts[1]))
                 continue
-                
             if txt.startswith("SYNC_BG:"):
                 parts = txt.split(":", 2)
                 if len(parts) == 3:
                     await manager.broadcast({"type": "sync_bg", "channel": parts[1], "bg_url": parts[2]}, "Geral")
                 continue
                 
+            # --- LÓGICA DE MENSAGENS (Usa os Helpers e o Banco de Dados) ---
             db = SessionLocal()
-            msg_id = None
-            now_iso = datetime.utcnow().isoformat() + "Z"
             try:
-                u_fresh = db.query(User).filter(User.id == uid).first()
-                if ch.startswith("dm_"):
-                    parts = ch.split("_")
-                    rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
-                    new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
-                    db.add(new_msg)
-                    db.commit()
-                    db.refresh(new_msg)
-                    msg_id = new_msg.id
-                    now_iso = get_utc_iso(new_msg.timestamp)
-                    if u_fresh: await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
-                elif ch.startswith("comm_"):
-                    chid = int(ch.split("_")[1])
-                    new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
-                    db.add(new_msg)
-                    db.commit()
-                    db.refresh(new_msg)
-                    msg_id = new_msg.id
-                    now_iso = get_utc_iso(new_msg.timestamp)
-                elif ch.startswith("group_"):
-                    grid = int(ch.split("_")[1])
-                    new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
-                    db.add(new_msg)
-                    db.commit()
-                    db.refresh(new_msg)
-                    msg_id = new_msg.id
-                    now_iso = get_utc_iso(new_msg.timestamp)
+                u_fresh = db.query(User).filter_by(id=uid).first()
+                if not u_fresh:
+                    continue
+
+                new_msg = None
+                target_dm_id = None
                 
-                if msg_id and u_fresh:
+                # Delega o trabalho para os Helpers
+                if ch.startswith("dm_"):
+                    new_msg, target_dm_id = handle_dm_message(db, ch, uid, txt)
+                    if target_dm_id:
+                        await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, target_dm_id)
+                elif ch.startswith("comm_"):
+                    new_msg, _ = handle_comm_message(db, ch, uid, txt)
+                elif ch.startswith("group_"):
+                    new_msg, _ = handle_group_message(db, ch, uid, txt)
+                
+                # Se a mensagem foi salva com sucesso, distribui para a galera
+                if new_msg:
                     b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
                     user_data = {
-                        "id": msg_id, 
+                        "id": new_msg.id, 
                         "user_id": u_fresh.id, 
                         "username": u_fresh.username, 
                         "avatar": u_fresh.avatar_url, 
                         "content": txt, 
                         "can_delete": True, 
-                        "timestamp": now_iso, 
+                        "timestamp": get_utc_iso(new_msg.timestamp), 
                         "rank": b['rank'], 
                         "color": b['color'], 
                         "special_emblem": b['special_emblem']
                     }
                     await manager.broadcast(user_data, ch)
+                    
                     if ch.startswith("dm_") or ch.startswith("group_"): 
                         await manager.broadcast({"type": "ping"}, "Geral")
+                        
             except Exception as e: 
                 db.rollback()
+                # BLINDAGEM: Agora o servidor avisa se algo der errado no banco!
+                logger.error(f"Erro crítico no WebSocket ao salvar mensagem: {e}") 
             finally: 
                 db.close()
-    except Exception:
+    except Exception as e:
+        logger.info(f"Conexão WS fechada pelo usuário {uid}: {e}")
         manager.disconnect(ws, ch, uid)
 
 @app.get("/user/{target_id}")
@@ -2067,11 +2116,12 @@ async def get_agora_config():
 
 @app.get("/users/basic/{uid}")
 async def get_basic_user(uid: int, db: Session=Depends(get_db)):
-    u = db.query(User).get(uid)
+    u = db.query(User).filter_by(id=uid).first()
     if u: return {"name": u.username, "avatar": u.avatar_url}
     return {"name": "Desconhecido", "avatar": "https://ui-avatars.com/api/?name=?"}
     
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
