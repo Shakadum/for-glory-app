@@ -186,11 +186,7 @@ class CommunityRequest(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 class CallBackground(Base):
-    __tablename__ = "call_backgrounds"
-    id = Column(Integer, primary_key=True, index=True)
-    target_type = Column(String, index=True) 
-    target_id = Column(String, index=True) 
-    bg_url = Column(String)
+ class UserConfig(Base):
 
 try: Base.metadata.create_all(bind=engine)
 except Exception as e: logger.error(f"Erro inicial BD: {e}")
@@ -1322,6 +1318,21 @@ async def toggle_stealth(d: dict, db: Session=Depends(get_db)):
         return {"is_invisible": u.is_invisible}
     return {"status": "error"}
 
+@app.post("/profile/set_wallpaper")
+async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
+    config = db.query(UserConfig).filter_by(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id']).first()
+    if config:
+        config.wallpaper_url = d['url']
+    else:
+        db.add(UserConfig(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id'], wallpaper_url=d['url']))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/profile/get_wallpaper")
+async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_db)):
+    config = db.query(UserConfig).filter_by(user_id=uid, target_type=type, target_id=tid).first()
+    return {"url": config.wallpaper_url if config else None}
+    
 @app.get("/notifications/{uid}")
 async def get_notifications(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
@@ -1818,3 +1829,4 @@ async def get_agora_config(): return {"app_id": AGORA_APP_ID}
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
