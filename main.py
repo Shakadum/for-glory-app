@@ -1886,7 +1886,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     db.refresh(new_msg)
                     msg_id = new_msg.id
                     now_iso = get_utc_iso(new_msg.timestamp)
-                    if u_fresh: await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
+                    if u_fresh: 
+                        await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, rec_id)
                 elif ch.startswith("comm_"):
                     chid = int(ch.split("_")[1])
                     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
@@ -1904,7 +1905,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     msg_id = new_msg.id
                     now_iso = get_utc_iso(new_msg.timestamp)
                 
-               if msg_id and u_fresh:
+                if msg_id and u_fresh:
                     b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
                     user_data = {
                         "id": msg_id, 
@@ -1992,3 +1993,4 @@ async def get_basic_user(uid: int, db: Session=Depends(get_db)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
