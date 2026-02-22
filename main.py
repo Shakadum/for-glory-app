@@ -1941,22 +1941,28 @@ def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
 def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     parts = ch.split("_")
     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
-  new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
-    db.add(new_msg); db.commit(); db.refresh(new_msg)
+    new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
     return new_msg, rec_id
 
 # --- HELPER WS: COMM ---
 def handle_comm_message(db: Session, ch: str, uid: int, txt: str):
     chid = int(ch.split("_")[1])
     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
-    db.add(new_msg); db.commit(); db.refresh(new_msg)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
     return new_msg, None
 
 # --- HELPER WS: GROUP ---
 def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     grid = int(ch.split("_")[1])
     new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
-    db.add(new_msg); db.commit(); db.refresh(new_msg)
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
     return new_msg, None
 
 @app.websocket("/ws/{ch}/{uid}")
@@ -1971,12 +1977,16 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 continue
                 
             if txt.startswith("KICK_CALL:"):
-                await manager.broadcast({"type": "kick_call", "target_id": int(txt.split(":")[1])}, ch)
+                target = int(txt.split(":")[1])
+                await manager.broadcast({"type": "kick_call", "target_id": target}, ch)
                 continue
                 
             if txt.startswith("CALL_SIGNAL:"):
                 parts = txt.split(":")
-                await manager.send_personal({"type": f"call_{parts[2]}", "channel": parts[3]}, int(parts[1]))
+                target = int(parts[1])
+                action = parts[2]
+                channel = parts[3]
+                await manager.send_personal({"type": f"call_{action}", "channel": channel}, target)
                 continue
                 
             if txt.startswith("SYNC_BG:"):
@@ -2002,9 +2012,11 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     new_msg, _ = handle_group_message(db, ch, uid, txt)
                 
                 if new_msg:
+                    b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
                     user_data = {
                         "id": new_msg.id, "user_id": u_fresh.id, "username": u_fresh.username, "avatar": u_fresh.avatar_url, 
-                        "content": txt, "can_delete": True, "timestamp": get_utc_iso(new_msg.timestamp), **format_user_summary(u_fresh)
+                        "content": txt, "can_delete": True, "timestamp": get_utc_iso(new_msg.timestamp), 
+                        "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']
                     }
                     await manager.broadcast(user_data, ch)
                     if ch.startswith("dm_") or ch.startswith("group_"): 
@@ -2040,3 +2052,4 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
