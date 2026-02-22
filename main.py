@@ -17,6 +17,7 @@ from jose import jwt, JWTError
 from collections import Counter
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import status
 
 # ----------------------------------------------------------------------
 # CONFIGURAÇÕES DE SEGURANÇA
@@ -3044,6 +3045,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
