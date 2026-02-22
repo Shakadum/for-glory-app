@@ -550,8 +550,16 @@ async def upload_file(
     current_user: User = Depends(get_current_active_user)
 ):
     # Validações simples
-    if file.size > 100 * 1024 * 1024:
-        raise HTTPException(400, "Arquivo muito grande (máx 100MB)")
+# UploadFile pode não ter .size dependendo do servidor/versão. Calcula de forma segura.
+try:
+    file.file.seek(0, os.SEEK_END)
+    size = file.file.tell()
+    file.file.seek(0)
+except Exception:
+    size = None
+
+if size is not None and size > 100 * 1024 * 1024:
+    raise HTTPException(status_code=400, detail="Arquivo muito grande (máx 100MB)")
     allowed = ["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm", "audio/webm", "audio/mpeg"]
     if file.content_type not in allowed:
         raise HTTPException(400, "Tipo de arquivo não permitido")
@@ -2629,7 +2637,13 @@ function startApp(){
     
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
     let token = localStorage.getItem('token');
+    // --- WebSocket global (notificações / chamadas) ---
+function connectGlobalWS(){
+    try{ if(globalWS) globalWS.close(); }catch(e){}
+    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let token = localStorage.getItem('token');
     globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}?token=${token}`);
+
     globalWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
         if(d.type === 'pong') return; 
@@ -2644,11 +2658,11 @@ function startApp(){
             if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
             else { safePlaySound(window.msgSound); fetchUnread(); }
         }
-        
+
         if(d.type === 'kick_call' && d.target_id === user.id) {
             showToast("Você foi removido da chamada."); leaveCall();
         }
-        
+
         if(d.type === 'call_accepted') {
             stopSounds();
             connectToAgora(d.channel, window.pendingCallType);
@@ -2664,7 +2678,7 @@ function startApp(){
             document.getElementById('modal-incoming-call').classList.add('hidden'); 
             stopSounds();
         }
-        
+
         if(d.type === 'incoming_call') {
             window.pendingCallerId = d.caller_id;
             document.getElementById('incoming-call-name').innerText = d.caller_name;
@@ -2674,8 +2688,19 @@ function startApp(){
             safePlaySound(window.ringtone);
         }
     };
-    globalWS.onclose = () => { setTimeout(() => { if(user) startApp(); }, 5000); };
-    setInterval(()=>{ if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } }, 20000);
+
+    globalWS.onclose = () => { 
+        // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
+        setTimeout(() => { if(user) connectGlobalWS(); }, 4000); 
+    };
+}
+connectGlobalWS();
+
+if(!window._globalPingInterval){
+    window._globalPingInterval = setInterval(()=>{ 
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } 
+    }, 20000);
+}
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
 
@@ -2952,7 +2977,22 @@ async function openCommunity(cid, keepInfoOpen=false){
             addBtn.innerHTML=`<button class="glass-btn" style="width:100%;border-color:#2ecc71;color:#2ecc71;font-size2ecc71;color:#2ecc71;font-size:15px;letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ ${t('create_channel')}</button>`;
             let reqR=await authFetch(`/community/${cid}/requests?nocache=${new Date().getTime()}`);
             let reqs=await reqR.json();
-            if((reqs||[]).length>0){reqCont.style.display='block';reqList.innerHTML='';reqs.forEach(rq=>{reqList.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;"><img src="${rq.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReq(${rq.id}, 'accept')">✔</button><button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 're}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReqject')">✕</button></div>`;});}else{reqCont.style.display='none';}
+            if((reqs||[]).length>0){
+    reqCont.style.display='block';
+    reqList.innerHTML='';
+    reqs.forEach(rq=>{
+        reqList.innerHTML += `
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;margin-bottom:8px;">
+                <img src="${rq.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">
+                <span style="color:white;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rq.username}</span>
+                <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReq(${rq.id}, 'accept')">✔</button>
+                <button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 'reject')">✕</button>
+            </div>
+        `;
+    });
+}else{
+    reqCont.style.display='none';
+}
         }else{addBtn.innerHTML='';reqCont.style.display='none';}
         let cb=document.getElementById('comm-channels-bar');cb.innerHTML='';
         if((d.channels||[]).length>0){
@@ -3018,11 +3058,19 @@ async function fetchCommMessages(chid){
 }
 
 function connectCommWS(chid){
-    if(commWS && commWS.readyState===WebSocket.OPEN) commWS.close();
-    let proto=location.protocol==='https:'?'wss':'ws';
-    commWS=new WebSocket(`${proto}://${location.host}/ws/community/${chid}?token=${localStorage.getItem('token')}`);
-    commWS.onmessage=()=>{ fetchCommMessages(chid); };
-    commWS.onclose=()=>{ setTimeout(()=>{ if(activeChannelId===chid) connectCommWS(chid); },3000); };
+    if(commWS) { try{ commWS.close(); }catch(e){} }
+    let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let token = localStorage.getItem('token');
+    // Usa o mesmo endpoint genérico /ws/{ch}/{uid}
+    let ch = `comm_${chid}`;
+    commWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
+    commWS.onmessage = () => { 
+        // Atualiza o chat do canal ativo
+        if(activeChannelId === chid) fetchCommMessages(chid); 
+    };
+    commWS.onclose = () => { 
+        setTimeout(() => { if(user && activeChannelId === chid) connectCommWS(chid); }, 3000);
+    };
 }
 
 async function joinChannel(chid, chtype, btn){
@@ -3045,13 +3093,18 @@ async function joinChannel(chid, chtype, btn){
 }
 
 async function sendCommMsg(){
-    let inp=document.getElementById('comm-msg-input');
-    let msg=inp.value.trim();
-    if(!msg||!activeChannelId)return;
-    inp.value='';
+    let inp = document.getElementById('comm-msg');
+    let msg = (inp ? inp.value.trim() : '');
+    if(!msg || !activeChannelId) return;
+    inp.value = '';
     try{
-        await authFetch(`/community/channel/${activeChannelId}/send`,{method:'POST',body:JSON.stringify({content:msg})});
-    }catch(e){ console.error(e); }
+        if(commWS && commWS.readyState === WebSocket.OPEN){
+            commWS.send(msg);
+        } else {
+            // fallback: tenta reconectar e enviar via HTTP
+            await authFetch(`/community/channel/${activeChannelId}/send`, {method:'POST', body: JSON.stringify({content: msg})});
+        }
+    }catch(e){ console.error(e); showToast("Erro ao enviar."); }
 }
 
 async function uploadCommImage(){
@@ -3068,21 +3121,51 @@ async function uploadCommImage(){
 
 async function openPublicProfile(uid){
     try{
-        let r=await fetch(`/profile/${uid}`);
-        if(!r.ok)return;
-        let d=await r.json();
-        let modal=document.getElementById('modal-profile');
-        document.getElementById('pub-avatar').src=d.avatar_url||'';
-        document.getElementById('pub-name').innerText=d.username||'';
-        document.getElementById('pub-bio').innerText=d.bio||'';
-        document.getElementById('pub-rank').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.rank_color);
-        let actionsDiv=document.getElementById('pub-actions');
-        if(uid===user.id){
-            actionsDiv.innerHTML='';
-        }else{
-            actionsDiv.innerHTML=`<button class="btn-main" onclick="sendFriendReq(${uid})" style="margin-top:0;">${t('add_friend')}</button><button class="btn-main" onclick="openDM(${uid},'${d.username}')" style="margin-top:10px;background:transparent;border:1px solid var(--primary);">💬 DM</button>`;
+        // Usa a rota do backend que existe: /user/{target_id}?viewer_id={user_id}
+        let r = await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);
+        if(!r.ok) return;
+        let d = await r.json();
+
+        document.getElementById('pub-avatar').src = d.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(d.username||'U')}&background=111&color=66fcf1`;
+        document.getElementById('pub-cover').src = d.cover_url || "https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY";
+        document.getElementById('pub-name').innerText = d.username || '';
+        document.getElementById('pub-bio').innerText = d.bio || '';
+        document.getElementById('pub-rank').innerHTML = formatRankInfo(d.rank, d.special_emblem, d.rank_color);
+        renderMedals('pub-medals-box', d.medals || [], true);
+
+        // grid de posts
+        let grid = document.getElementById('pub-grid');
+        grid.innerHTML = '';
+        (d.posts || []).forEach(p => {
+            grid.innerHTML += (p.media_type === 'video')
+                ? `<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls playsinline preload="metadata"></video>`
+                : `<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;
+        });
+
+        // ações
+        let actionsDiv = document.getElementById('pub-actions');
+        if(uid === user.id){
+            actionsDiv.innerHTML = '';
+        } else {
+            let fs = d.friend_status || 'none';
+            let reqId = d.request_id;
+            let btns = [];
+            if(fs === 'friends'){
+                btns.push(`<button class="btn-main" style="margin-top:0;background:transparent;border:1px solid #ff5555;color:#ff5555;" onclick="unfriend(${uid})">💔 Desfazer amizade</button>`);
+                btns.push(`<button class="btn-main" style="margin-top:0;" onclick="openChat(${uid}, '${(d.username||'DM').replace(/'/g, "\\'")}', '1v1')">💬 DM</button>`);
+            } else if(fs === 'pending_received' && reqId){
+                btns.push(`<button class="btn-main" style="margin-top:0;" onclick="handleReq(${reqId}, 'accept')">✔ Aceitar</button>`);
+                btns.push(`<button class="btn-main" style="margin-top:0;background:transparent;border:1px solid #ff5555;color:#ff5555;" onclick="handleReq(${reqId}, 'reject')">✕ Recusar</button>`);
+            } else if(fs === 'pending_sent'){
+                btns.push(`<button class="btn-main" style="margin-top:0;opacity:0.7;" disabled>📩 Solicitação enviada</button>`);
+            } else {
+                btns.push(`<button class="btn-main" style="margin-top:0;" onclick="sendRequest(${uid})">➕ Recrutar aliado</button>`);
+                btns.push(`<button class="btn-main" style="margin-top:0;background:transparent;border:1px solid var(--primary);" onclick="openChat(${uid}, '${(d.username||'DM').replace(/'/g, "\\'")}', '1v1')">💬 DM</button>`);
+            }
+            actionsDiv.innerHTML = btns.join('');
         }
-        modal.classList.remove('hidden');
+
+        goView('public-profile');
     }catch(e){ console.error(e); }
 }
 
@@ -3098,7 +3181,7 @@ async function submitPost(){
     let file=document.getElementById('file-upload').files[0];
     let caption=document.getElementById('caption-upload').value.trim();
     if(!file&&!caption)return;
-    let btn=document.getElementById('btn-submit-post');
+    let btn=document.getElementById('btn-pub');
     btn.disabled=true;btn.innerText='⏳ POSTANDO...';
     try{
         let url=null;
