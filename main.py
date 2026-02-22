@@ -168,7 +168,7 @@ class User(Base):
     password_hash = Column(String)
     xp = Column(Integer, default=0)
     avatar_url = Column(String, default="https://ui-avatars.com/api/?name=Soldado&background=1f2833&color=66fcf1&bold=true")
-    cover_url = Column(String, default="https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY")
+    cover_url = Column(String, default="https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY")
     bio = Column(String, default="Recruta do For Glory")
     is_invisible = Column(Integer, default=0)
     role = Column(String, default="membro")
@@ -1757,7 +1757,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 CANCELAR</button>
 </div>
 
-<div id="modal-login" class="modal">
+<div id="modal-login" class="modal hidden">
     <div class="modal-box">
         <h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1>
         <div id="login-form">
@@ -1930,7 +1930,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div id="content-area">
         <div id="view-profile" class="view">
             <div class="profile-header-container">
-                <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
+                <img id="p-cover" src="" class="profile-cover" onerror="this.src='https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
                     <img id="p-avatar" src="" class="profile-pic-lg" onclick="document.getElementById('modal-profile').classList.remove('hidden')" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
                     <div id="my-status-dot" class="status-dot status-dot-lg online"></div>
@@ -2077,7 +2077,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <div id="view-public-profile" class="view">
             <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;" data-i18n="back">⬅ Voltar</button>
             <div class="profile-header-container">
-                <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
+                <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
                     <img id="pub-avatar" src="" class="profile-pic-lg" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
                     <div id="pub-status-dot" class="status-dot status-dot-lg"></div>
@@ -2193,6 +2193,7 @@ function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; r
 function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
     document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag}`;
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -2200,8 +2201,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
         else el.innerText = t(k);
     });
+
+    // Checar token na URL (reset de senha)
     checkToken();
-    // Auto-login se já tiver token válido
+
+    // Tentar auto-login com token salvo
     const savedToken = localStorage.getItem('token');
     if (savedToken) {
         try {
@@ -2217,9 +2221,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch(e) {}
         localStorage.removeItem('token');
     }
-    // Sem token válido: mostrar tela de login
-    document.getElementById('modal-login').classList.remove('hidden');
+
+    // Sem token — mostrar login
+    showLoginScreen();
 });
+
+function showLoginScreen() {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('modal-login').classList.remove('hidden');
+    toggleAuth('login');
+}
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
 var activeCommId=null, activeChannelId=null;
@@ -2279,7 +2290,7 @@ async function authFetch(url, options = {}) {
         localStorage.removeItem('token');
         user = null;
         showToast('⚠️ Sessão expirada. Faça login novamente.');
-        document.getElementById('modal-login').classList.remove('hidden');
+        showLoginScreen();
         throw new Error('Unauthorized');
     }
     return res;
@@ -2577,9 +2588,9 @@ async function unfriend(fid) {
     }
 }
 
-async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); av = data.secure_url; } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { name:n, desc:d, is_priv:parseInt(p), avatar_url:av, banner_url:ban }; let r=await authFetch('/community/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){console.error(err);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
+async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); av = data.secure_url; } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { name:n, desc:d, is_priv:parseInt(p), avatar_url:av, banner_url:ban }; let r=await authFetch('/community/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){console.error(err);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
 async function submitEditComm(){let avFile=document.getElementById('edit-comm-avatar').files[0];let banFile=document.getElementById('edit-comm-banner').files[0];if(!avFile&&!banFile)return showToast("Selecione algo.");let btn=document.getElementById('btn-save-comm');btn.disabled=true;btn.innerText="ENVIANDO...";try{let au=null; let bu=null; if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload = { comm_id: activeCommId, avatar_url: au, banner_url: bu }; let r=await authFetch('/community/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-comm').classList.add('hidden');showToast("Base Atualizada!");openCommunity(activeCommId, true);loadMyComms();}}catch(e){console.error(e);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('save');}}
-async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { comm_id: activeCommId, name:n, type:tType, is_private:parseInt(p), banner_url:ban }; let r=await authFetch('/community/channel/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId, true);}}catch(err){console.error(err);}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
+async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { comm_id: activeCommId, name:n, type:tType, is_private:parseInt(p), banner_url:ban }; let r=await authFetch('/community/channel/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId, true);}}catch(err){console.error(err);}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
 async function toggleStealth(){try{let r=await authFetch('/profile/stealth', {method:'POST'}); if(r.ok){let d=await r.json(); user.is_invisible=d.is_invisible; updateStealthUI(); fetchOnlineUsers();}}catch(e){ console.error(e); }}
 function updateStealthUI(){let btn=document.getElementById('btn-stealth');let myDot=document.getElementById('my-status-dot');if(user.is_invisible){btn.innerText=t('stealth_on');btn.style.borderColor="#ffaa00";btn.style.color="#ffaa00";myDot.classList.remove('online');}else{btn.innerText=t('stealth_off');btn.style.borderColor="rgba(102, 252, 241, 0.3)";btn.style.color="var(--primary)";myDot.classList.add('online');}}
 async function requestReset(){let email=document.getElementById('f-email').value;if(!email)return showToast("Erro!");try{let r=await fetch('/auth/forgot-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})}); showToast("Enviado!"); toggleAuth('login');}catch(e){console.error(e);showToast("Erro");}}
@@ -2606,7 +2617,7 @@ function updateUI(){
     if(!user) return;
     let safeAvatar = user.avatar_url; if(!safeAvatar || safeAvatar.includes("undefined")) safeAvatar = `https://ui-avatars.com/api/?name=${user.username}&background=1f2833&color=66fcf1&bold=true`;
     document.getElementById('nav-avatar').src = safeAvatar; document.getElementById('p-avatar').src = safeAvatar;
-    let pCover = document.getElementById('p-cover'); pCover.src = user.cover_url || "https://via.placeholder.com/600x200/0b0c10/66fcf1?text=FOR+GLORY"; pCover.style.display = 'block';
+    let pCover = document.getElementById('p-cover'); pCover.src = user.cover_url || "https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY"; pCover.style.display = 'block';
     document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     let missingXP = user.next_xp - user.xp;
@@ -2615,7 +2626,7 @@ function updateUI(){
 }
 
 function startApp(){
-    document.getElementById('modal-login').classList.add('hidden'); document.querySelector('.lang-dropdown').classList.add('hidden'); document.getElementById('app').style.display = 'flex'; 
+    document.getElementById('modal-login').classList.add('hidden'); document.getElementById('app').style.display = 'flex'; 
     updateUI(); fetchOnlineUsers(); fetchUnread(); goView('profile', document.getElementById('nav-profile-btn'));
     
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -2670,7 +2681,7 @@ function startApp(){
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
 
-function logout(){ localStorage.removeItem('token'); user = null; document.getElementById('app').style.display = 'none'; document.getElementById('modal-login').classList.remove('hidden'); toggleAuth('login'); }
+function logout(){ localStorage.removeItem('token'); user = null; if(syncInterval) clearInterval(syncInterval); if(globalWS) globalWS.close(); showLoginScreen(); }
 function goView(v, btnElem){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
@@ -3279,5 +3290,4 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
 
