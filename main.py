@@ -578,7 +578,7 @@ def forgot_password(d: ForgotPasswordData, db: Session = Depends(get_db)):
     if user:
         token = create_reset_token(user.email)
         # Por enquanto, apenas loga o link (futuramente enviar e-mail)
-        logger.info(f"RESGATE: https://seuapp.onrender.com/?token={token}")
+        logger.info(f"RESGATE: https://for-glory.onrender.com/?token={token}")
     return {"status": "ok"}
 
 @app.post("/auth/reset-password")
@@ -3035,6 +3035,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
