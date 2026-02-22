@@ -48,6 +48,9 @@ def get_password_hash(password):
             password = password_bytes[:72].decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
+def get_password_hash(password):
+    logger.info(f"get_password_hash recebeu senha de {len(password)} caracteres")
+
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.password_hash:
@@ -3051,3 +3054,4 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
