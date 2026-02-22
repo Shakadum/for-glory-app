@@ -2,6 +2,7 @@ import uvicorn
 import json
 import os
 import logging
+import hashlib
 from typing import List, Optional
 from fastapi import FastAPI, WebSocket, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
@@ -40,37 +41,33 @@ def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
+    # Garante que a senha não ultrapasse 72 bytes (limite do bcrypt)
+    if isinstance(password, str):
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password = password_bytes[:72].decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
-
-import hashlib
 
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
-    if not user:
-        logger.warning(f"Usuário {username} não encontrado")
-        return False
-    if not user.password_hash:
-        logger.warning(f"Usuário {username} com password_hash vazio")
+    if not user or not user.password_hash:
         return False
 
-    logger.info(f"Hash de {username}: {user.password_hash[:20]}...")  # log parcial
-
-    # Tenta bcrypt
+    # Tenta bcrypt apenas se o hash parecer bcrypt
     if user.password_hash.startswith("$2b$"):
         try:
             if verify_password(password, user.password_hash):
                 return user
-        except Exception as e:
-            logger.error(f"Erro ao verificar bcrypt para {username}: {e}")
+        except Exception:
+            pass  # Falha na verificação bcrypt, continua para SHA256
 
-    # Tenta SHA256
+    # Tenta SHA256 (legado)
     if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
-        logger.info(f"Atualizando senha de {username} de SHA256 para bcrypt")
+        # Atualiza para bcrypt
         user.password_hash = get_password_hash(password)
         db.commit()
         return user
 
-    logger.warning(f"Nenhum método válido para {username}")
     return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -89,7 +86,7 @@ def get_db():
         yield db
     finally:
         db.close()
-        
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -605,7 +602,8 @@ def reset_password(d: ResetPasswordData, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(404, "Usuário não encontrado")
     new_hash = get_password_hash(d.new_password)
-    print(f"Novo hash: {new_hash}")  # ou logger.info
+    # Log para debug (pode ser removido depois)
+    logger.info(f"Novo hash gerado para {email}")
     user.password_hash = new_hash
     db.commit()
     return {"status": "ok"}
@@ -2187,6 +2185,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
         else el.innerText = t(k);
     });
+    checkToken(); // Garante que o token seja capturado ao carregar a página
 });
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
@@ -2450,7 +2449,7 @@ async function doRegister(){ let btn=document.querySelector('#register-form .btn
 function formatMsgTime(iso){ if(!iso) return ""; let d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${t('at')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatRankInfo(rank, special, color){ return `${special ? `<span class="special-badge">${special}</span>` : ''}${rank ? `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>` : ''}`; }
 function initEmojis(){ let g=document.getElementById('emoji-grid'); if(!g)return; EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
-function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } } checkToken();
+function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } }
 function closeUpload(){ document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value=''; document.getElementById('caption-upload').value=''; }
 function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-picker').style.display='flex'; }
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
@@ -3052,15 +3051,3 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
-
