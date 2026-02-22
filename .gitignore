@@ -1,0 +1,21 @@
+# env / secrets
+.env
+
+# venv
+.venv/
+venv/
+
+# python cache
+__pycache__/
+*.pyc
+
+# pytest cache
+.pytest_cache/
+
+# local sqlite
+dev.db
+*.db
+
+# editor / OS
+.vscode/
+.DS_Store
