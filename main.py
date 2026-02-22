@@ -1547,7 +1547,7 @@ html_content = r"""<!DOCTYPE html>
 :root{--primary:#66fcf1;--dark-bg:#0b0c10;--card-bg:#1f2833;--glass:rgba(31, 40, 51, 0.7);--border:rgba(102,252,241,0.15)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;scrollbar-width:thin;scrollbar-color:var(--primary) #111}
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
-#app{display:flex;flex:1;overflow:hidden;position:relative}
+#app{display:none;flex:1;overflow:hidden;position:relative}
 
 .lang-dropdown { position:absolute; top:15px; right:15px; z-index:9999; }
 .lang-btn { background:rgba(11,12,16,0.6); color:white; border:1px solid var(--primary); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:bold; font-family:'Rajdhani'; backdrop-filter:blur(5px); display:flex; align-items:center; gap:5px; transition:0.3s; }
@@ -1668,7 +1668,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .search-glass input { background: transparent; border: none; color: white; outline: none; flex: 1; padding: 10px 0; font-size: 15px; }
 
 .btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
 .modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s;max-height:90vh;overflow-y:auto; scrollbar-width:thin;}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
@@ -2192,7 +2192,7 @@ try {
 function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
 function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
     document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag}`;
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -2200,7 +2200,25 @@ document.addEventListener("DOMContentLoaded", () => {
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
         else el.innerText = t(k);
     });
-    checkToken(); // Garante que o token seja capturado ao carregar a página
+    checkToken();
+    // Auto-login se já tiver token válido
+    const savedToken = localStorage.getItem('token');
+    if (savedToken) {
+        try {
+            const payload = JSON.parse(atob(savedToken.split('.')[1]));
+            if (Date.now() < payload.exp * 1000) {
+                const me = await fetch('/users/me', { headers: { 'Authorization': `Bearer ${savedToken}` } });
+                if (me.ok) {
+                    user = await me.json();
+                    startApp();
+                    return;
+                }
+            }
+        } catch(e) {}
+        localStorage.removeItem('token');
+    }
+    // Sem token válido: mostrar tela de login
+    document.getElementById('modal-login').classList.remove('hidden');
 });
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
@@ -2597,7 +2615,7 @@ function updateUI(){
 }
 
 function startApp(){
-    document.getElementById('modal-login').classList.add('hidden'); document.querySelector('.lang-dropdown').classList.add('hidden'); 
+    document.getElementById('modal-login').classList.add('hidden'); document.querySelector('.lang-dropdown').classList.add('hidden'); document.getElementById('app').style.display = 'flex'; 
     updateUI(); fetchOnlineUsers(); fetchUnread(); goView('profile', document.getElementById('nav-profile-btn'));
     
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -2652,7 +2670,7 @@ function startApp(){
     syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
 
-function logout(){location.reload()}
+function logout(){ localStorage.removeItem('token'); user = null; document.getElementById('app').style.display = 'none'; document.getElementById('modal-login').classList.remove('hidden'); toggleAuth('login'); }
 function goView(v, btnElem){
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
@@ -3006,7 +3024,6 @@ function closeComm(){goView('mycomms',document.querySelectorAll('.nav-btn')[3]);
 
 window.currentEditChannelId=null;
 function openEditChannelModal(id,name,type,priv){window.currentEditChannelId=id;document.getElementById('edit-ch-name').value=name;document.getElementById('edit-ch-type').value=type;document.getElementById('edit-ch-priv').value=priv;document.getElementById('modal-edit-channel').classList.remove('hidden');}
-async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: '').classList.remove('hidden');}
 async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringifyPOST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
 
 async function fetchCommMessages(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
@@ -3262,3 +3279,5 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
