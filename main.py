@@ -40,7 +40,7 @@ class TokenData(BaseModel):
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-# ========== FUNÇÃO CORRIGIDA ==========
+# ========== FUNÇÃO CORRIGIDA (APENAS UMA) ==========
 def get_password_hash(password):
     # Garante que a senha não ultrapasse 72 bytes (limite do bcrypt)
     if isinstance(password, str):
@@ -49,26 +49,37 @@ def get_password_hash(password):
             password = password_bytes[:72].decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
+# ========== FUNÇÃO DE AUTENTICAÇÃO COM LOGS ==========
 def authenticate_user(db: Session, username: str, password: str):
+    logger.info(f"🔍 Tentativa de login para usuário: {username}")
     user = db.query(User).filter(User.username == username).first()
-    if not user or not user.password_hash:
+    if not user:
+        logger.warning(f"❌ Usuário {username} não encontrado")
         return False
-
-    # Tenta bcrypt apenas se o hash parecer bcrypt
+    if not user.password_hash:
+        logger.warning(f"❌ Usuário {username} com password_hash vazio")
+        return False
+    logger.info(f"🔑 Hash armazenado: {user.password_hash[:50]}...")
+    
+    # Tenta bcrypt
     if user.password_hash.startswith("$2b$"):
         try:
             if verify_password(password, user.password_hash):
+                logger.info("✅ Senha correta (bcrypt)")
                 return user
-        except Exception:
-            pass  # Falha na verificação bcrypt, continua para SHA256
-
+            else:
+                logger.warning("❌ Senha incorreta (bcrypt)")
+        except Exception as e:
+            logger.error(f"⚠️ Erro ao verificar bcrypt: {e}")
+    
     # Tenta SHA256 (legado)
     if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
-        # Atualiza para bcrypt
+        logger.info("🔄 Senha correta (SHA256) - atualizando para bcrypt")
         user.password_hash = get_password_hash(password)
         db.commit()
         return user
-
+    
+    logger.warning("❌ Nenhum método válido")
     return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -554,6 +565,7 @@ def register(d: RegisterData, db: Session = Depends(get_db)):
     if db.query(User).filter_by(username=d.username).first():
         raise HTTPException(400, "Username already exists")
     hashed = get_password_hash(d.password)
+    logger.info(f"Hash gerado para {d.username}: {hashed[:50]}...")
     db.add(User(
         username=d.username,
         email=d.email,
@@ -2844,8 +2856,21 @@ async function uploadDMImage(){let f=document.getElementById('dm-file').files[0]
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
-async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
-async function joinCommunity(cid){try{let r=await authFetch('/community/join', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
+async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width: r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function joinCommunity(cid){try{let r=await authFetch('/community/_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function joinCommunity(cid){try{let r=await authFetch('/community/join', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cjoin', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
+async function requestCommJoin(cid){try{let r=await authFetch('/community/request/send', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
+async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await authFetch(`/community/${cid}/leave`, {method:'POST'}); let res=await r.json(); if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
+
+async function openCommunity(cid, keepInfoOpen=false){
+    activeCommId=cid;goView('comm-dashboard');
+    let infoArea = document.getElementById('comm-info-area');
+    let chatArea = document.getElementById('comm-chat-area');
+    let isInfoOpen = infoArea.style.display === 'flex';
+    if(!keepInfoOpen && !isInfoOpen) { infoArea.style.display='none'; chatArea.style.display='flex'; }
+    
+    try{
+        let r=await authFetch(`/community/${cid}?nocache=${new Dateid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
 async function requestCommJoin(cid){try{let r=await authFetch('/community/request/send', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
 async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await authFetch(`/community/${cid}/leave`, {method:'POST'}); let res=await r.json(); if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
 
@@ -2859,6 +2884,8 @@ async function openCommunity(cid, keepInfoOpen=false){
     try{
         let r=await authFetch(`/community/${cid}?nocache=${new Date().getTime()}`);
         let d=await r.json();
+        document.getElementById('active-comm-name').innerText=d.name;let().getTime()}`);
+        let d=await r.json();
         document.getElementById('active-comm-name').innerText=d.name;let headerBg=d.banner_url?`url('${d.banner_url}')`:'none';
         document.getElementById('comm-header').style.backgroundImage=headerBg;document.getElementById('c-info-av').src=d.avatar_url;
         document.getElementById('c-info-banner').style.backgroundImage=headerBg;document.getElementById('c-info-name').innerText=d.name;document.getElementById('c-info-desc').innerText=d.description;
@@ -2867,45 +2894,97 @@ async function openCommunity(cid, keepInfoOpen=false){
         (d.members||[]).forEach(m=>{
             let roleBadge=m.id===d.creator_id?t('creator'):(m.role==='admin'?t('admin'):t('member'));
             let actions='<div class="admin-action-wrap">';
-            if(d.is_admin&&m.id!==d.creator_id&&m.role!=='admin'){actions+=`<button title="${t('promote')}" class="admin-action-btn success" onclick="promoteMember(${cid}, ${m.id})">🔼</button>`;}
+            if(d.is_admin&&m.id!==d.creator_id&&m.role!=='admin headerBg=d.banner_url?`url('${d.banner_url}')`:'none';
+        document.getElementById('comm-header').style.backgroundImage=headerBg;document.getElementById('c-info-av').src=d.avatar_url;
+        document.getElementById('c-info-banner').style.backgroundImage=headerBg;document.getElementById('c-info-name').innerText=d.name;document.getElementById('c-info-desc').innerText=d.description;
+        window.currentCommIsAdmin=d.is_admin||d.creator_id===user.id;
+        let mHtml="";
+        (d.members||[]).forEach(m=>{
+            let roleBadge=m.id===d.creator_id?t('creator'):(m.role==='admin'?t('admin'):t('member'));
+            let actions='<div class="admin-action-wrap">';
+            if(d.is_admin&&m.id!==d.creator_id&&m.role!'){actions+=`<button title="${t('promote')}" class="admin-action-btn success" onclick="promoteMember(${cid}, ${m.id})">🔼</button>`;}
             if(d.creator_id===user.id&&m.id!==d.creator_id&&m.role==='admin'){actions+=`<button title="${t('demote')}" class="admin-action-btn danger" onclick="demoteMember(${cid}, ${m.id})">🔽</button>`;}
+            if((d.is_admin||d.creator_id===user.id)&&m.id!==d.creator_id&&(d.creator_id===user.id||m.role!=='admin')){actions+=`<button title="${t('kick')}" class="admin-action-btn danger" onclick="kickMember(${cid}, ${m=='admin'){actions+=`<button title="${t('promote')}" class="admin-action-btn success" onclick="promoteMember(${cid}, ${m.id})">🔼</button>`;}
+            if(d.creator_id===user.id&&m.id!==d.creator_id&&m.role==='admin'){actions+=`<button title="${t('demote')}" class="admin-action-btn danger" onclick="demoteMember(${cid}, ${m.id})">.id})">❌</button>`;}
+            actions+='</div>';
+            mHtml+=`<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px;transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout🔽</button>`;}
             if((d.is_admin||d.creator_id===user.id)&&m.id!==d.creator_id&&(d.creator_id===user.id||m.role!=='admin')){actions+=`<button title="${t('kick')}" class="admin-action-btn danger" onclick="kickMember(${cid}, ${m.id})">❌</button>`;}
             actions+='</div>';
-            mHtml+=`<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px;transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${actions}</div>`;
+            mHtml+=`<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #333;border-radius:10px;transition:0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${actions}</div>`;
         });
         document.getElementById('c-info-members').innerHTML=mHtml;
         let addBtn=document.getElementById('c-info-admin-btn');let reqCont=document.getElementById('c-info-requests-container');let reqList=document.getElementById('c-info-requests');let delCont=document.getElementById('c-info-destroy-btn');
-        if(d.creator_id===user.id){delCont.innerHTML=`<button class="glass-btn" style="width:100%;margin-bottom:10px;color:#2ecc71;border-color:#2ecc71;" onclick="document.getElementById('modal-edit-comm').classList.remove('hidden')">✏️ EDITAR BASE</button><button class="glass-btn danger-btn" onclick="window.deleteTarget={type:'base', id:${cid}}; document.getElementById('modal-delete').classList.remove('hidden');">${t('destroy_base')}</button>`;}else{delCont.innerHTML=`<button class="glass-btn danger-btn" onclick="leaveCommunity(${cid})">🚪 SAIR DA BASE</button>`;}
+        if(d.creator_id===user.id){delCont.innerHTML=`<button class="glass-btn" style="width:100%;margin-bottom:10px;color:#2ecc71;05)'" onmouseout="this.style.background='transparent'"><img src="${m.avatar}" onclick="openPublicProfile(${m.id})" style="width:35px;height:35px;border-radius:50%;object-fit:cover;border:1px solid #555;cursor:pointer;"> <span style="color:white;flex:1;font-weight:bold;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="openPublicProfile(${m.id})">${m.name}</span> <span class="ch-badge" style="color:${m.role==='admin'||m.id===d.creator_id?'var(--primary)':'#888'}">${roleBadge}</span>${actions}</div>`;
+        });
+        document.getElementById('c-info-members').innerHTML=mHtml;
+        let addBtn=document.getElementById('c-info-admin-btn');let reqCont=document.getElementById('c-info-requests-container');let reqList=document.getElementById('c-info-requests');let delCont=document.getElementById('c-info-destroy-btn');
+        if(d.creator_id===user.id){delCont.innerHTML=`<button class="glass-btn" style="width:100%;margin-bottom:10px;color:#2ecc71;border-color:#2ecc71;" onclick="document.getElementById('modal-edit-comm').classList.removeborder-color:#2ecc71;" onclick="document.getElementById('modal-edit-comm').classList.remove('hidden')">✏️ EDITAR BASE</button><button class="glass-btn danger-btn" onclick="window.deleteTarget={type:'base', id:${cid}}; document.getElementById('modal-delete').classList.remove('hidden');">${t('destroy_base')}</button>`;}else{delCont.innerHTML=`<button class="glass-btn danger-btn" onclick="leaveCommunity(${cid})">🚪 SAIR DA BASE</button>`;}
         if(d.is_admin||d.creator_id===user.id){
-            addBtn.innerHTML=`<button class="glass-btn" style="width:100%;border-color:#2ecc71;color:#2ecc71;font-size:15px;letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ ${t('create_channel')}</button>`;
+            addBtn.innerHTML=`<button class="glass-btn" style="width:100%;border-color:#('hidden')">✏️ EDITAR BASE</button><button class="glass-btn danger-btn" onclick="window.deleteTarget={type:'base', id:${cid}}; document.getElementById('modal-delete').classList.remove('hidden');">${t('destroy_base')}</button>`;}else{delCont.innerHTML=`<button class="glass-btn danger-btn" onclick="leaveCommunity(${cid})">🚪 SAIR DA BASE</button>`;}
+        if(d.is_admin||d.creator_id===user.id){
+            addBtn.innerHTML=`<button class="glass-btn" style="width:100%;border-color:#2ecc71;color:#2ecc71;font-size2ecc71;color:#2ecc71;font-size:15px;letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ ${t('create_channel')}</button>`;
+            let reqR=await authFetch(`/community/${cid:15px;letter-spacing:2px;" onclick="document.getElementById('modal-create-channel').classList.remove('hidden')">+ ${t('create_channel')}</button>`;
             let reqR=await authFetch(`/community/${cid}/requests?nocache=${new Date().getTime()}`);
             let reqs=await reqR.json();
-            if((reqs||[]).length>0){reqCont.style.display='block';reqList.innerHTML='';reqs.forEach(rq=>{reqList.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;"><img src="${rq.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReq(${rq.id}, 'accept')">✔</button><button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 'reject')">✕</button></div>`;});}else{reqCont.style.display='none';}
+            if((reqs||[]).length>0){reqCont.style.display='block';reqList.innerHTML='';reqs.forEach(rq=>{reqList.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;"><img src="${rq.avatar}/requests?nocache=${new Date().getTime()}`);
+            let reqs=await reqR.json();
+            if((reqs||[]).length>0){reqCont.style.display='block';reqList.innerHTML='';reqs.forEach(rq=>{reqList.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:10px;"><img src="${rq.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReq(${rq.id}, 'accept')">✔</button><button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 're}" style="width:30px;height:30px;border-radius:50%;"><span style="color:white;flex:1;">${rq.username}</span><button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleCommReqject')">✕</button></div>`;});}else{reqCont.style.display='none';}
+        }else{addBtn.innerHTML='';reqCont.style.display='none';}
+        let cb=document.getElementById('comm-channels-bar');cb.innerHTML='';
+        if((d.channels||[]).length>0){
+            let sortedChannels=d.channels.sort((a,b)=>{if(a.name.toLowerCase()==='geral')return -1;if(b.name.toLowerCase()==='geral')return 1;return 0;(${rq.id}, 'accept')">✔</button><button class="glass-btn" style="padding:5px 10px;flex:none;border-color:#ff5555;color:#ff5555;" onclick="handleCommReq(${rq.id}, 'reject')">✕</button></div>`;});}else{reqCont.style.display='none';}
         }else{addBtn.innerHTML='';reqCont.style.display='none';}
         let cb=document.getElementById('comm-channels-bar');cb.innerHTML='';
         if((d.channels||[]).length>0){
             let sortedChannels=d.channels.sort((a,b)=>{if(a.name.toLowerCase()==='geral')return -1;if(b.name.toLowerCase()==='geral')return 1;return 0;});
             sortedChannels.forEach(ch=>{
+                let bgStyle=ch.banner_url?`background-image:linear-gradient(rgba(0,0,0,0.6), rgba(});
+            sortedChannels.forEach(ch=>{
                 let bgStyle=ch.banner_url?`background-image:linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('${ch.banner_url}');border:none;`:'';let icon=ch.type==='voice'?'🎙️ ':'';
+                let editBtn=(d.is_admin||d.creator_id===user.id)?`<span style="margin-left0,0,0,0.6)), url('${ch.banner_url}');border:none;`:'';let icon=ch.type==='voice'?'🎙️ ':'';
                 let editBtn=(d.is_admin||d.creator_id===user.id)?`<span style="margin-left:5px;font-size:11px;cursor:pointer;opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>`:'';
+                cb.innerHTML+=`<button class="channel-btn" style="${bgStyle}" onclick:5px;font-size:11px;cursor:pointer;opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>`:'';
                 cb.innerHTML+=`<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`;
+            });
+            if(!keepInfoOpen && !isInfoOpen) { joinChannel(sortedChannels[0].id,sortedChannels="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`;
             });
             if(!keepInfoOpen && !isInfoOpen) { joinChannel(sortedChannels[0].id,sortedChannels[0].type,cb.children[0]); }
         }else{document.getElementById('comm-chat-list').innerHTML="";}
     }catch(e){ console.error(e); }
 }
 
+async function promoteMember(cid,tid){try{let payload={comm_id:cid,target_id:tid};let r=await[0].type,cb.children[0]); }
+        }else{document.getElementById('comm-chat-list').innerHTML="";}
+    }catch(e){ console.error(e); }
+}
+
 async function promoteMember(cid,tid){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/promote', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}
 async function demoteMember(cid,tid){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/demote', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}
-async function kickMember(cid,tid){if(confirm("Tem certeza que deseja expulsar?")){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/kick', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}}
+async function kickMember(cid,tid){if(confirm("Tem certeza que deseja expulsar authFetch('/community/member/promote', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}
+async function demoteMember(cid,tid){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/demote', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}
+async function kickMember(cid,tid){if(confirm("Tem certeza que dese?")){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/kick', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}}
+function showCommInfo(){document.getElementById('comm-chat-area').style.display='none';document.getElementById('comm-info-area').style.display='flex';}
+function closeComm(){goView('mycomms',document.querySelectorAll('.nav-btn')[3]);if(commWS)commWS.close();}
+
+window.currentEditChannelId=null;
+function openEditChannelModal(id,name,type,priv){window.currentEditChannelId=id;document.getElementById('edit-ch-name').value=name;document.getElementById('edit-ch-type').value=type;document.getElementById('edit-ch-priv').value=priv;document.getElementById('modal-edit-channelja expulsar?")){try{let payload={comm_id:cid,target_id:tid};let r=await authFetch('/community/member/kick', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){await openCommunity(cid, true);}}catch(e){ console.error(e); }}}
 function showCommInfo(){document.getElementById('comm-chat-area').style.display='none';document.getElementById('comm-info-area').style.display='flex';}
 function closeComm(){goView('mycomms',document.querySelectorAll('.nav-btn')[3]);if(commWS)commWS.close();}
 
 window.currentEditChannelId=null;
 function openEditChannelModal(id,name,type,priv){window.currentEditChannelId=id;document.getElementById('edit-ch-name').value=name;document.getElementById('edit-ch-type').value=type;document.getElementById('edit-ch-priv').value=priv;document.getElementById('modal-edit-channel').classList.remove('hidden');}
-async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
+async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: '').classList.remove('hidden');}
+async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringifyPOST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
 
-async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){ console.error(e); }}
+async function fetchCommMessages(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
+
+async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO] timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){ console.error(e); }}
+
+function connectCommWS(chid) {
+    if (commWS) commWS.close();
+    let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let token = localStorage.getItem('token');
+    commWS = new WebSocket(`${protocol}//catch(e){ console.error(e); }}
 
 function connectCommWS(chid) {
     if (commWS) commWS.close();
@@ -2924,14 +3003,41 @@ function connectCommWS(chid) {
         let d = JSON.parse(e.data);
         let b = document.getElementById('comm-chat-list');
         let m = parseInt(d.user_id) === parseInt(user.id);
+        let c = d.content${location.host}/ws/comm_${chid}/${user.id}?token=${token}`);
+    commWS.onclose = () => {
+        setTimeout(() => {
+            if (activeChannelId === chid && document.getElementById('comm-chat-area').style.display === 'flex' && window.currentCommType !== 'voice') {
+                fetchCommMessages(chid);
+                connectCommWS(chid);
+            }
+        }, 2000);
+    };
+    commWS.onmessage = (e) => {
+        let d = JSON.parse(e.data);
+        let b = document.getElementById('comm-chat-list');
+        let m = parseInt(d.user_id) === parseInt(user.id);
         let c = d.content;
+        if (d.type === 'ping' || d.type === 'pong') return;
+        if (c.startsWith('[CALL_BG]')) { return; }
+        let prefix = 'comm_msg';
+        let msgId = `${prefix}-${d.id}`;
+       ;
         if (d.type === 'ping' || d.type === 'pong') return;
         if (c.startsWith('[CALL_BG]')) { return; }
         let prefix = 'comm_msg';
         let msgId = `${prefix}-${d.id}`;
         if (!document.getElementById(msgId)) {
             let delBtn = '';
+            let timeHtml = d.timestamp if (!document.getElementById(msgId)) {
+            let delBtn = '';
             let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
+            if (c === '[DELETED]') {
+                c = `<span class="msg-deleted">${t('deleted_msg')}</span>`;
+            } else {
+                if (c.startsWith('[AUDIO]')) {
+                    c = `<audio controls src="${c.replace('[AUDIO]', '')}" style="max-width:200px;height:40px;outline:none;"></audio>`;
+                } else if (c.startsWith('http') && c.includes('cloudinary')) {
+                    ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
             if (c === '[DELETED]') {
                 c = `<span class="msg-deleted">${t('deleted_msg')}</span>`;
             } else {
@@ -2944,7 +3050,16 @@ function connectCommWS(chid) {
                         c = `<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;
                     }
                 }
+                delBtn if (c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
+                        c = `<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;
+                    } else {
+                        c = `<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;
+                    }
+                }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
+            }
+            let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
+                <img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1' = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
             }
             let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                 <img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
@@ -2956,6 +3071,33 @@ function connectCommWS(chid) {
             b.insertAdjacentHTML('beforeend', h);
             b.scrollTop = b.scrollHeight;
         }
+    };
+">
+                <div>
+                    <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
+                    <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
+                </div>
+            </div>`;
+            b.insertAdjacentHTML('beforeend', h);
+            b.scrollTop = b.scrollHeight;
+        }
+   }
+
+async function joinChannel(chid, type, btnElem) {
+    let changingChannel = (activeChannelId !== chid);
+    activeChannelId = chid;
+    window.currentCommType = type;
+    document.getElementById('comm-info-area').style.display = 'none';
+    document.getElementById('comm-chat-area').style.display = 'flex';
+    if (btnElem) {
+        document.querySelectorAll('.channel-btn').forEach(b => b.classList.remove('active'));
+        btnElem.classList.add('active');
+    }
+    let inpForm = document.getElementById('comm-input-form');
+    let inp = document.getElementById('comm-msg');
+    let clip = document.getElementById('btn-comm-clip');
+    let emj = document.getElementById('btn-comm-emoji');
+    let mic = document.getElementById('btn-comm-mic');
     };
 }
 
@@ -2973,7 +3115,21 @@ async function joinChannel(chid, type, btnElem) {
     let inp = document.getElementById('comm-msg');
     let clip = document.getElementById('btn-comm-clip');
     let emj = document.getElementById('btn-comm-emoji');
-    let mic = document.getElementById('btn-comm-mic');
+    let mic = document.getElementById('btn-comm-mic inp.disabled = false;
+    clip.style.display = 'flex';
+    emj.style.display = 'flex';
+    mic.style.display = 'flex';
+    inpForm.style.display = 'flex';
+    let cp = document.getElementById('expanded-call-panel');
+    cp.style.backgroundImage = 'none';
+    document.getElementById('call-bg-action').style.display = 'none';
+    if (changingChannel && commWS) {
+        commWS.close();
+        commWS = null;
+    }
+    if (type === 'voice') {
+        inpForm.style.display = 'none';
+        document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center');
     inp.disabled = false;
     clip.style.display = 'flex';
     emj.style.display = 'flex';
@@ -2988,7 +3144,19 @@ async function joinChannel(chid, type, btnElem) {
     }
     if (type === 'voice') {
         inpForm.style.display = 'none';
-        document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;
+        document.getElementById('comm-chat-list').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;just;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclickify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel',="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;
+        if (window.currentCommIsAdmin) {
+            document.getElementById('call-bg-action').style.display = 'block';
+        }
+        try {
+            let r = await fetch(`/call/bg/channel/${chid}`);
+            let res = await r.json();
+            if (res.bg_url) {
+                cp.style.backgroundImage = `url('${res.bg_url}')`;
+            }
+        } catch (e) { console.error(e); }
+    } else {
+        if (type === ' ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;
         if (window.currentCommIsAdmin) {
             document.getElementById('call-bg-action').style.display = 'block';
         }
@@ -3011,6 +3179,17 @@ async function joinChannel(chid, type, btnElem) {
             mic.style.display = 'flex';
         } else {
             inp.placeholder = t('base_msg_placeholder');
+       media') {
+            inp.disabled = true;
+            inp.placeholder = t('media_only');
+            emj.style.display = 'none';
+            mic.style.display = 'none';
+        } else if (type === 'text') {
+            inp.placeholder = t('base_msg_placeholder');
+            clip.style.display = 'none';
+            mic.style.display = 'flex';
+        } else {
+            inp.placeholder = t('base_msg_placeholder');
         }
         if (changingChannel) {
             document.getElementById('comm-chat-list').innerHTML = '';
@@ -3022,19 +3201,49 @@ async function joinChannel(chid, type, btnElem) {
     }
 }
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
-async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(commWS) commWS.send(data.secure_url); }catch(e){ console.error(e); }}
+async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try }
+        if (changingChannel) {
+            document.getElementById('comm-chat-list').innerHTML = '';
+        }
+        await fetchCommMessages(chid);
+        if (!commWS || commWS.readyState !== WebSocket.OPEN) {
+            connectCommWS(chid);
+        }
+    }
+}
+function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
+async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(commWS) commWS.send(data.secure_url); }catch(e){{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(commWS) commWS.send(data.secure_url); }catch(e){ console.error(e); }}
 
-async function openPublicProfile(uid){try{let r=await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<div style="display:flex; justify-content:center; align-items:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
+async function openPublicProfile(uid){try{let r=await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById(' console.error(e); }}
+
+async function openPublicProfile(uid){try{let r=await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<div style="display:flex; justify-content:center; align-itemsab.innerHTML=`<div style="display:flex; justify-content:center; align-items:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${tv1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
 
 async function uploadToCloudinary(file){
     // Não usado mais – substituído por upload via backend
     return Promise.reject("Use /upload");
 }
 
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); let payload={ caption: cap, content_url: data.secure_url, media_type: data.resource_type }; let r=await authFetch('/post/create_from_url', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(c){let formData = new FormData(); formData.append('file', c); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); cu = data.secure_url; } let payload={ avatar_url: au, cover_url: cu, bio: b }; let r=await authFetch('/profile/update_meta', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
+
+async function uploadToCloudinary(file){
+    // Não usado mais – substituído por upload via backend
+    return Promise.reject("Use /upload");
+}
+
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); let payload={ caption: cap, content_url: data.secure_url, media_type: data.resource_type }; let r=await authFetch('/post/create_from_url', {method:'POST', body:JSON');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); let payload={ caption: cap, content_url: data.secure_url, media_type: data.resource_type }; let r=await authFetch('/post/create_from_url', {method:'POST', body:JSON.stringify(p.stringify(payload)}); if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
+async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementByIdayload)}); if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
+async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let formData = new FormData(); formData.append('file', f); let res =('bio-update').value;let au=null,cu=null;if(f){let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(c){let formData = new FormData(); formData.append('file', c); let res = await authFetch('/upload', { method: 'POST', body: formData, await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(c){let formData = new FormData(); formData.append('file', c); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: headers: {} }); let data = await res.json(); cu = data.secure_url; } let payload={ avatar_url: au, cover_url: cu, bio: b }; let r=await authFetch('/profile/update_meta', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
+function clearSearch(){document.getElementById('search-input'). {} }); let data = await res.json(); cu = data.secure_url; } let payload={ avatar_url: au, cover_url: cu, bio: b }; let r=await authFetch('/profile/update_meta', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
 function clearSearch(){document.getElementById('search-input').value='';document.getElementById('search-results').innerHTML='';}
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
+async function searchUsers(){let q=document.getElementById('search-input').value;if(!qvalue='';document.getElementById('search-results').innerHTML='';}
+async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime())return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
+</script>
+</body>
+</html>
+"""
+
+# ----------------------------------------------------------------------
+# ROTA PRINCIPALu.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
 </script>
 </body>
 </html>
