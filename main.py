@@ -1,22 +1,19 @@
 import uvicorn
 import json
 import hashlib
-import random
 import os
 import logging
-import threading
-from typing import List
-from fastapi import FastAPI, WebSocket, Request, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from typing import List, Optional
+from fastapi import FastAPI, WebSocket, Depends, HTTPException, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, text, inspect, func
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table, or_, and_, func, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session, joinedload
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
 from fastapi.middleware.cors import CORSMiddleware
 import cloudinary
 import cloudinary.uploader
-from fastapi_mail import FastMail, ConnectionConfig
 from jose import jwt, JWTError
 from collections import Counter
 
@@ -29,18 +26,16 @@ AGORA_APP_ID = os.environ.get("AGORA_APP_ID", "")
 ALGORITHM = "HS256"
 
 cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_NAME'), 
-    api_key=os.environ.get('CLOUDINARY_KEY'), 
-    api_secret=os.environ.get('CLOUDINARY_SECRET'), 
+    cloud_name=os.environ.get('CLOUDINARY_NAME', 'dqa0q3qlx'), 
+    api_key=os.environ.get('CLOUDINARY_KEY', ''), 
+    api_secret=os.environ.get('CLOUDINARY_SECRET', ''), 
     secure=True
 )
 
-# --- BANCO DE DADOS (PRIORIDADE ABSOLUTA: NEON) ---
+# --- BANCO DE DADOS (NEON / POSTGRESQL) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./for_glory_v7.db"
-
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -189,14 +184,47 @@ class UserConfig(Base):
     __tablename__ = "user_configs"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-    target_type = Column(String)
+    target_type = Column(String) 
     target_id = Column(String)
     wallpaper_url = Column(String, default="")
 
-try: 
-    Base.metadata.create_all(bind=engine)
-except Exception as e: 
-    logger.error(f"Erro inicial BD: {e}")
+try: Base.metadata.create_all(bind=engine)
+except Exception as e: logger.error(f"Erro inicial BD: {e}")
+
+# --- MODELOS PYDANTIC (FASTAPI SEGURO) ---
+class LoginData(BaseModel): username: str; password: str
+class RegisterData(BaseModel): username: str; email: str; password: str
+class ForgotPasswordData(BaseModel): email: str
+class ResetPasswordData(BaseModel): token: str; new_password: str
+class ReadData(BaseModel): uid: int 
+class UserIdData(BaseModel): user_id: int
+
+class CreatePostData(BaseModel): user_id: int; caption: str; content_url: str; media_type: str
+class ToggleLikeData(BaseModel): post_id: int; user_id: int
+class DeletePostData(BaseModel): post_id: int; user_id: int
+class CommentData(BaseModel): user_id: int; post_id: int; text: str
+class DelCommentData(BaseModel): comment_id: int; user_id: int
+class DeleteMsgData(BaseModel): msg_id: int; type: str; user_id: int
+
+class FriendReqData(BaseModel): target_id: int; sender_id: int
+class UnfriendData(BaseModel): user_id: int; friend_id: int
+class RequestActionData(BaseModel): request_id: int; action: str
+
+class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
+
+class CreateCommData(BaseModel): user_id: int; name: str; desc: str; is_priv: int; avatar_url: str; banner_url: str
+class EditCommData(BaseModel): comm_id: int; user_id: int; avatar_url: Optional[str] = None; banner_url: Optional[str] = None
+class JoinCommData(BaseModel): user_id: int; comm_id: int
+class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
+class CommMemberActionData(BaseModel): comm_id: int; admin_id: Optional[int] = None; creator_id: Optional[int] = None; target_id: int
+
+class CreateChannelData(BaseModel): comm_id: int; user_id: int; name: str; type: str; is_private: int; banner_url: Optional[str] = None
+class EditChannelData(BaseModel): channel_id: int; user_id: int; name: str; type: str; is_private: int; banner_url: Optional[str] = None
+
+class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
+class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
+class SetWallpaperData(BaseModel): user_id: Optional[int] = None; target_type: str; target_id: str; url: Optional[str] = None; bg_url: Optional[str] = None
+class UpdateProfileData(BaseModel): user_id: int; bio: Optional[str] = None; avatar_url: Optional[str] = None; cover_url: Optional[str] = None
 
 # --- APP E MANAGERS ---
 app = FastAPI(title="For Glory Cloud")
@@ -229,6 +257,18 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+def get_db():
+    db = SessionLocal()
+    try: yield db
+    finally: db.close()
+
+def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
+def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
+def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
+def verify_reset_token(token: str):
+    try: p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]); return p.get("sub") if p.get("type") == "reset" else None
+    except JWTError: return None
+
 def get_user_badges(xp, user_id, role):
     tiers = [(0, "Recruta", 100, "#888888"), (100, "Soldado", 300, "#2ecc71"), (300, "Cabo", 600, "#27ae60"), (600, "3º Sargento", 1000, "#3498db"), (1000, "2º Sargento", 1500, "#2980b9"), (1500, "1º Sargento", 2500, "#9b59b6"), (2500, "Subtenente", 4000, "#8e44ad"), (4000, "Tenente", 6000, "#f1c40f"), (6000, "Capitão", 10000, "#f39c12"), (10000, "Major", 15000, "#e67e22"), (15000, "Tenente-Coronel", 25000, "#e74c3c"), (25000, "Coronel", 50000, "#c0392b"), (50000, "General ⭐", 50000, "#FFD700")]
     rank = tiers[0][1]; color = tiers[0][3]; next_xp = tiers[0][2]; next_rank = tiers[1][1]
@@ -247,50 +287,11 @@ def get_user_badges(xp, user_id, role):
     return {"rank": rank, "color": color, "next_xp": next_xp, "next_rank": next_rank, "percent": percent, "special_emblem": special_emblem, "medals": medals}
 
 def format_user_summary(user: User):
-    if not user:
-        return {
-            "id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
-            "rank": "Recruta", "color": "#888", "special_emblem": ""
-        }
+    if not user: return {"id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "rank": "Recruta", "color": "#888", "special_emblem": ""}
     b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
-    return {
-        "id": user.id,
-        "username": user.username,
-        "avatar_url": user.avatar_url,
-        "rank": b['rank'],
-        "color": b['color'],
-        "special_emblem": b['special_emblem']
-    }
+    return {"id": user.id, "username": user.username, "avatar_url": user.avatar_url, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']}
 
-def get_utc_iso(dt): return dt.isoformat() + "Z" if dt else ""
-def create_reset_token(email: str): return jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(minutes=30), "type": "reset"}, SECRET_KEY, algorithm=ALGORITHM)
-def verify_reset_token(token: str):
-    try: p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]); return p.get("sub") if p.get("type") == "reset" else None
-    except JWTError: return None
-
-class LoginData(BaseModel): username: str; password: str
-class RegisterData(BaseModel): username: str; email: str; password: str
-class FriendReqData(BaseModel): target_id: int; sender_id: int = 0
-class RequestActionData(BaseModel): request_id: int; action: str
-class DeletePostData(BaseModel): post_id: int; user_id: int
-class ForgotPasswordData(BaseModel): email: EmailStr
-class ResetPasswordData(BaseModel): token: str; new_password: str
-class CommentData(BaseModel): user_id: int; post_id: int; text: str
-class DelCommentData(BaseModel): comment_id: int; user_id: int
-class CreateGroupData(BaseModel): name: str; creator_id: int; member_ids: List[int]
-class ReadData(BaseModel): uid: int 
-class JoinCommData(BaseModel): user_id: int; comm_id: int
-class HandleCommReqData(BaseModel): req_id: int; action: str; admin_id: int
-class CallRingDMData(BaseModel): caller_id: int; target_id: int; channel_name: str
-class CallRingGroupData(BaseModel): caller_id: int; group_id: int; channel_name: str
-
-def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
-
-def criptografar(s): return hashlib.sha256(s.encode()).hexdigest()
-
+# --- FRONTEND (HTML/JS) ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -329,24 +330,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .rank-badge{font-size: 9px; font-weight: bold; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 6px; border: 1px solid; display: inline-block; margin-left: 4px; vertical-align: middle; line-height:1;}
 .special-badge{font-size: 9px; color: #0b0c10; font-weight: bold; text-transform: uppercase; background: linear-gradient(45deg, #FFD700, #ff8c00); padding: 2px 6px; border-radius: 6px; display: inline-block; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 5px rgba(255,165,0,0.5); line-height:1;}
 
-#floating-call-btn { 
-    position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; 
-    background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; 
-    cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; 
-    box-shadow: 0 0 20px rgba(102,252,241,0.5), inset 0 0 10px rgba(102,252,241,0.2); 
-    border: 2px solid var(--primary); 
-    animation: radar-glow 2s infinite; transition: 0.3s transform; 
-}
+#floating-call-btn { position:fixed; bottom:40px; right:40px; width:70px; height:70px; border-radius:50%; background: linear-gradient(135deg, #1f2833, #0b0c10); color:var(--primary); font-size:35px; cursor:pointer; display:none; z-index:9998; align-items:center; justify-content:center; box-shadow: 0 0 20px rgba(102,252,241,0.5), inset 0 0 10px rgba(102,252,241,0.2); border: 2px solid var(--primary); animation: radar-glow 2s infinite; transition: 0.3s transform; }
 #floating-call-btn:hover { transform:scale(1.1); box-shadow: 0 0 30px rgba(102,252,241,0.8); }
 @keyframes radar-glow { 0% { box-shadow: 0 0 0 0 rgba(102,252,241,0.6); } 70% { box-shadow: 0 0 0 25px rgba(102,252,241,0); } 100% { box-shadow: 0 0 0 0 rgba(102,252,241,0); } }
 
-#expanded-call-panel { 
-    display:none; position:fixed; bottom:125px; right:40px; width:320px; 
-    background-color: rgba(15, 20, 25, 0.95); background-size: cover; background-position: center;
-    border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; 
-    box-shadow:0 20px 60px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); 
-    animation:scaleUp 0.3s ease-out; overflow:hidden;
-}
+#expanded-call-panel { display:none; position:fixed; bottom:125px; right:40px; width:320px; background-color: rgba(15, 20, 25, 0.95); background-size: cover; background-position: center; border:1px solid var(--primary); border-radius:20px; z-index:9999; padding:20px; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.9), 0 0 20px rgba(102,252,241,0.2); animation:scaleUp 0.3s ease-out; overflow:hidden;}
 #expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 0; }
 #expanded-call-panel > * { position: relative; z-index: 1; }
 
@@ -355,20 +343,17 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .call-avatar { width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; }
 .call-name { flex:1; color:white; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .call-kick-btn { background:rgba(255,85,85,0.1); border:1px solid rgba(255,85,85,0.4); color:#ff5555; padding:6px; border-radius:8px; cursor:pointer; transition:0.2s; display:flex; align-items:center; justify-content:center; }
-.call-kick-btn:hover { background:rgba(255,85,85,0.3); box-shadow:0 0 10px rgba(255,85,85,0.5); transform:scale(1.1); }
 
 .vol-slider { width: 70px; accent-color: var(--primary); height:4px; background:#333; border-radius:2px; outline:none; cursor:pointer;}
 .call-btn-circle { background:#1f2833; color:white; border:1px solid #444; border-radius:50%; width:45px; height:45px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; }
 .call-btn-circle:hover { transform:scale(1.1); border-color:var(--primary); color:var(--primary); box-shadow:0 0 15px rgba(102,252,241,0.3); }
 .call-btn-circle.muted { background:rgba(255,85,85,0.1); color:#ff5555; border-color:#ff5555; box-shadow:0 0 15px rgba(255,85,85,0.4); }
 .call-btn-hangup { background:linear-gradient(135deg, #ff5555, #cc0000); color:white; border:none; border-radius:30px; width:100%; padding:14px; font-size:15px; font-family:'Rajdhani'; font-weight:bold; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow:0 8px 20px rgba(255,85,85,0.4); margin-top:10px; text-transform:uppercase;}
-.call-btn-hangup:hover { transform:translateY(-2px); box-shadow:0 12px 25px rgba(255,85,85,0.6); }
 
 .admin-action-wrap { display:flex; gap:5px; margin-left:auto; flex-shrink:0; }
 .admin-action-btn { background:rgba(255,255,255,0.1); border:1px solid #555; color:white; padding:4px 8px; border-radius:8px; cursor:pointer; transition:0.2s; font-size:12px; }
 .admin-action-btn:hover { transform:scale(1.1); box-shadow:0 0 10px rgba(255,255,255,0.2); }
 .admin-action-btn.danger { color:#ff5555; border-color:rgba(255,85,85,0.5); }
-.admin-action-btn.danger:hover { box-shadow:0 0 10px rgba(255,85,85,0.4); background:rgba(255,85,85,0.1); }
 .admin-action-btn.success { color:#2ecc71; border-color:rgba(46,204,113,0.5); }
 
 #feed-container{flex:1;overflow-y:auto;padding:20px 0;padding-bottom:100px;display:flex;flex-direction:column;align-items:center; gap:20px;}
@@ -395,12 +380,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .styled-select { appearance: none; background: rgba(255,255,255,0.05) url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2366fcf1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 15px top 50%; background-size: 12px auto; border: 1px solid #444; border-radius: 12px; color: white; padding: 14px 40px 14px 15px; font-size: 15px; width: 100%; margin-bottom: 10px; cursor: pointer; transition: 0.3s; }
 .styled-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 10px rgba(102,252,241,0.2); }
-.styled-select option { background: var(--dark-bg); color: white; padding: 10px; }
 
 .chat-input-area, .comment-input-area { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); flex-wrap: nowrap; width: 100%; box-sizing: border-box; padding:15px; background:rgba(11,12,16,0.95); flex-shrink:0;}
 .chat-msg, .comment-inp { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 20px; padding: 12px 15px; color: white; outline: none; font-size: 14px; transition:0.3s;}
 .chat-msg:focus, .comment-inp:focus { border-color: var(--primary); }
-.chat-msg:disabled { opacity:0.8; background:rgba(255,85,85,0.1); cursor:not-allowed; border-color: #ff5555; color: #ff5555; font-weight:bold;}
 .btn-send-msg { background: var(--primary); border: none; flex: 0 0 45px !important; width: 45px !important; height: 45px !important; border-radius: 12px; font-weight: bold; color: #0b0c10; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; }
 .icon-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #888; flex: 0 0 35px; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; transition:0.2s;}
 .icon-btn.recording { color: #ff5555; animation: pulse 1s infinite; transform: scale(1.2); }
@@ -412,14 +395,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .msg-bubble{padding:10px 16px;border-radius:18px;background:#2b343f;color:#e0e0e0;word-break:break-word;font-size:15px; position:relative; min-width:80px;}
 .msg-row.mine .msg-bubble{background:linear-gradient(135deg,#1d4e4f,#133638);color:white;border:1px solid rgba(102,252,241,0.2)}
 .del-msg-btn { font-size:12px; cursor:pointer; color:#ff5555; opacity:0.6; position:absolute; bottom:-15px; right:5px; transition:0.2s; }
-.del-msg-btn:hover { opacity:1; transform:scale(1.2); }
 .msg-time { display:block; font-size:10px; color:rgba(255,255,255,0.5); text-align:right; margin-top:4px; font-family:'Inter', sans-serif;}
 .msg-deleted { font-style: italic; color: #ffaa00; background: rgba(255,170,0,0.1); padding: 5px 10px; border-radius: 8px; font-size: 13px; display: inline-block; border: 1px dashed rgba(255,170,0,0.5); }
 
 .chat-box-centered { width: 100%; max-width: 600px; height: 85vh; margin: auto; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-
 .comm-card { background:rgba(0,0,0,0.4); border:1px solid #444; border-radius:16px; padding:20px 15px; text-align:center; cursor:pointer; transition:0.3s; display:flex; flex-direction:column; align-items:center; box-shadow:0 4px 15px rgba(0,0,0,0.2); position:relative; overflow:hidden;}
-.comm-card:hover { border-color:var(--primary); transform:translateY(-5px); box-shadow:0 8px 25px rgba(102,252,241,0.15); }
+.comm-card:hover { border-color:var(--primary); transform:translateY(-5px); }
 .comm-avatar { width:70px; height:70px; border-radius:20px; object-fit:cover; margin-bottom:12px; border:2px solid #555; position:relative; z-index:2; }
 .comm-layout { flex-direction:column; height:100%; background:var(--dark-bg); overflow:hidden;}
 
@@ -429,8 +410,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #active-comm-name { font-size: 22px; text-transform: uppercase; color: var(--primary); font-family: 'Rajdhani', sans-serif; font-weight: bold; letter-spacing: 2px; flex:1; text-align:center; padding: 5px 10px; text-shadow: 0 0 10px rgba(102,252,241,0.3), 0 2px 5px rgba(0,0,0,1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
 .comm-channels-bar { padding: 12px 15px; background: #0b0c10; display: flex; gap: 10px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; background-size: cover; background-position: center; position: relative; overflow:hidden; text-shadow: 0 1px 3px rgba(0,0,0,0.8); display:flex; align-items:center; gap:5px;}
-.channel-btn:hover { border-color: var(--primary); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
+.channel-btn { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-weight: bold; font-family: 'Inter', sans-serif; font-size: 13px; transition: 0.3s; flex-shrink:0; background-size: cover; background-position: center; position: relative; overflow:hidden; display:flex; align-items:center; gap:5px;}
 .channel-btn.active { border-color: var(--primary); box-shadow: 0 0 12px rgba(102,252,241,0.6); transform:scale(1.05); color:var(--primary); }
 
 .profile-header-container{position:relative;width:100%;height:220px;margin-bottom:60px}
@@ -440,8 +420,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 .glass-btn { background: rgba(102, 252, 241, 0.08); border: 1px solid rgba(102, 252, 241, 0.3); color: var(--primary); padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: 'Inter', sans-serif; transition: 0.3s; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; flex: 1; text-align:center;}
 .glass-btn:hover { background: rgba(102, 252, 241, 0.15); box-shadow: 0 0 10px rgba(102,252,241,0.2); }
-.danger-btn { color: #ff5555 !important; border-color: rgba(255, 85, 85, 0.3) !important; background: rgba(255, 85, 85, 0.08) !important; margin-top: 20px; width: 100%; }
-.danger-btn:hover { background: rgba(255, 85, 85, 0.2) !important; box-shadow: 0 0 10px rgba(255,85,85,0.2) !important; }
+.danger-btn { color: #ff5555 !important; border-color: rgba(255, 85, 85, 0.3) !important; background: rgba(255, 85, 85, 0.08) !important; width: 100%; }
 
 .search-glass { display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333; border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%; align-items:center;}
 .search-glass input { background: transparent; border: none; color: white; outline: none; flex: 1; padding: 10px 0; font-size: 15px; }
@@ -862,7 +841,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
                 <div id="pub-emblems" style="margin-bottom:10px;"></div>
                 <p id="pub-bio" style="color:#888;margin:10px 0 20px 0;">...</p>
                 <div id="pub-medals-box" style="text-align:center;"></div>
-                <div id="pub-actions" style="margin-bottom:20px; display:flex; justify-content:center; gap:10px;"></div>
+                <div id="pub-actions" style="margin-bottom:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;"></div>
                 <div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;max-width:500px;margin:0 auto;"></div>
             </div>
         </div>
@@ -1114,7 +1093,7 @@ async function uploadCallBg(inputElem){
     showToast("Aplicando fundo tático...");
     try{
         let c = await uploadToCloudinary(inputElem.files[0]);
-        await fetch('/call/bg/set',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target_type: 'call', target_id: window.currentAgoraChannel, bg_url: c.secure_url}) });
+        await fetch('/call/bg/set',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id: user.id, target_type: 'call', target_id: window.currentAgoraChannel, url: c.secure_url}) });
         document.getElementById('expanded-call-panel').style.backgroundImage=`url('${c.secure_url}')`;
         showToast("Fundo alterado!");
         if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + c.secure_url); }
@@ -1198,8 +1177,8 @@ function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?"))
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
-async function doLogin(){ let btn=document.querySelector('#login-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ CONECTANDO..."; btn.disabled=true; try{ let r=await fetch('/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('l-user').value, password: document.getElementById('l-pass').value})}); if(!r.ok) throw new Error("Erro"); user=await r.json(); startApp(); }catch(e){ showToast("❌ Codinome/Senha incorretos."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
-async function doRegister(){ let btn=document.querySelector('#register-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ REGISTRANDO..."; btn.disabled=true; try{ let r=await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})}); if(!r.ok) throw new Error("Erro"); showToast("✔ Registrado! Faça login."); toggleAuth('login'); }catch(e){ showToast("❌ Erro. Usuário ou e-mail já existe."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
+async function doLogin(){ let btn=document.querySelector('#login-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ CONECTANDO..."; btn.disabled=true; try{ let r=await fetch('/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('l-user').value, password: document.getElementById('l-pass').value})}); if(!r.ok) throw new Error("Erro"); user=await r.json(); startApp(); }catch(e){ console.error(e); showToast("❌ Codinome/Senha incorretos."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
+async function doRegister(){ let btn=document.querySelector('#register-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ REGISTRANDO..."; btn.disabled=true; try{ let r=await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})}); if(!r.ok) throw new Error("Erro"); showToast("✔ Registrado! Faça login."); toggleAuth('login'); }catch(e){ console.error(e); showToast("❌ Erro. Usuário ou e-mail já existe."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
 function formatMsgTime(iso){ if(!iso) return ""; let d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${t('at')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatRankInfo(rank, special, color){ return `${special ? `<span class="special-badge">${special}</span>` : ''}${rank ? `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>` : ''}`; }
 function initEmojis(){ let g=document.getElementById('emoji-grid'); if(!g)return; EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
@@ -1209,7 +1188,7 @@ function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-pi
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
 
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && user){ fetchUnread(); fetchOnlineUsers(); if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId); } });
-async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){} }
+async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
 function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
 
 async function fetchUnread(){
@@ -1228,7 +1207,7 @@ async function fetchUnread(){
         if(document.getElementById('view-mycomms').classList.contains('active')) {
             document.querySelectorAll('.comm-card').forEach(card => { let cid = card.getAttribute('data-id'); let dot = card.querySelector('.req-dot'); if(d.comms.by_comm[cid]) { if(dot) dot.style.display='block'; } else { if(dot) dot.style.display='none'; } });
         }
-    } catch(e) {}
+    } catch(e) { console.error(e); }
 }
 
 async function loadInbox(){
@@ -1242,22 +1221,32 @@ async function loadInbox(){
             b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
         });
         updateStatusDots();
-    } catch(e) {}
+    } catch(e) { console.error(e); }
 }
 
-async function openCreateGroupModal(){ try{ let r=await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){} }
-async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){} }
-async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await fetch(`/friend/requests?uid=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){} }
-async function sendRequest(tid){try{let r=await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})});if(r.ok){openPublicProfile(tid);}}catch(e){}}
-async function handleReq(rid,act){try{let r=await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');}}catch(e){}}
-async function handleCommReq(rid,act){try{let r=await fetch('/community/request/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({req_id:rid,action:act,admin_id:user.id})});if(r.ok){showToast("Membro atualizado!");fetchUnread();await openCommunity(activeCommId);showCommInfo();}}catch(e){}}
-async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let c=await uploadToCloudinary(avFile);av=c.secure_url;}if(banFile){let c=await uploadToCloudinary(banFile);ban=c.secure_url;}let fd=new FormData();fd.append('user_id',user.id);fd.append('name',n);fd.append('desc',d);fd.append('is_priv',p);fd.append('avatar_url',av);fd.append('banner_url',ban);let r=await fetch('/community/create',{method:'POST',body:fd});if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
-async function submitEditComm(){let avFile=document.getElementById('edit-comm-avatar').files[0];let banFile=document.getElementById('edit-comm-banner').files[0];if(!avFile&&!banFile)return showToast("Selecione algo.");let btn=document.getElementById('btn-save-comm');btn.disabled=true;btn.innerText="ENVIANDO...";try{let fd=new FormData();fd.append('comm_id',activeCommId);fd.append('user_id',user.id);if(avFile){let c=await uploadToCloudinary(avFile);fd.append('avatar_url',c.secure_url);}if(banFile){let c=await uploadToCloudinary(banFile);fd.append('banner_url',c.secure_url);}let r=await fetch('/community/edit',{method:'POST',body:fd});if(r.ok){document.getElementById('modal-edit-comm').classList.add('hidden');showToast("Base Atualizada!");openCommunity(activeCommId);loadMyComms();}}catch(e){showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('save');}}
-async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let c=await uploadToCloudinary(banFile);ban=c.secure_url;}let fd=new FormData();fd.append('comm_id',activeCommId);fd.append('user_id',user.id);fd.append('name',n);fd.append('type',tType);fd.append('is_private',p);fd.append('banner_url',ban);let r=await fetch('/community/channel/create',{method:'POST',body:fd});if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId);}}catch(err){}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
-async function toggleStealth(){try{let r=await fetch('/profile/stealth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});if(r.ok){let d=await r.json();user.is_invisible=d.is_invisible;updateStealthUI();fetchOnlineUsers();}}catch(e){}}
+async function openCreateGroupModal(){ try{ let r=await fetch(`/inbox/${user.id}?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
+async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
+async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await fetch(`/friend/requests?uid=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
+async function sendRequest(tid){try{let r=await fetch('/friend/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_id:tid,sender_id:user.id})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
+async function handleReq(rid,act){try{let r=await fetch('/friend/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');}}catch(e){ console.error(e); }}
+async function handleCommReq(rid,act){try{let r=await fetch('/community/request/handle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({req_id:rid,action:act,admin_id:user.id})});if(r.ok){showToast("Membro atualizado!");fetchUnread();await openCommunity(activeCommId);showCommInfo();}}catch(e){ console.error(e); }}
+
+async function unfriend(fid) {
+    if(confirm("Desfazer amizade com este soldado?")) {
+        try {
+            let r = await fetch('/friend/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id: user.id, friend_id: fid})});
+            if(r.ok) { showToast("Amizade desfeita."); openPublicProfile(fid); loadInbox(); }
+        } catch(e) { console.error(e); }
+    }
+}
+
+async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let c=await uploadToCloudinary(avFile);av=c.secure_url;}if(banFile){let c=await uploadToCloudinary(banFile);ban=c.secure_url;}let payload={user_id:user.id,name:n,desc:d,is_priv:parseInt(p),avatar_url:av,banner_url:ban};let r=await fetch('/community/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){console.error(err);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
+async function submitEditComm(){let avFile=document.getElementById('edit-comm-avatar').files[0];let banFile=document.getElementById('edit-comm-banner').files[0];if(!avFile&&!banFile)return showToast("Selecione algo.");let btn=document.getElementById('btn-save-comm');btn.disabled=true;btn.innerText="ENVIANDO...";try{let au=null; let bu=null; if(avFile){let c=await uploadToCloudinary(avFile);au=c.secure_url;}if(banFile){let c=await uploadToCloudinary(banFile);bu=c.secure_url;}let payload={comm_id:activeCommId,user_id:user.id,avatar_url:au,banner_url:bu};let r=await fetch('/community/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){document.getElementById('modal-edit-comm').classList.add('hidden');showToast("Base Atualizada!");openCommunity(activeCommId);loadMyComms();}}catch(e){console.error(e);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('save');}}
+async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://via.placeholder.com/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let c=await uploadToCloudinary(banFile);ban=c.secure_url;}let payload={comm_id:activeCommId,user_id:user.id,name:n,type:tType,is_private:parseInt(p),banner_url:ban};let r=await fetch('/community/channel/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId);}}catch(err){console.error(err);}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
+async function toggleStealth(){try{let payload={user_id:user.id};let r=await fetch('/profile/stealth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){let d=await r.json();user.is_invisible=d.is_invisible;updateStealthUI();fetchOnlineUsers();}}catch(e){ console.error(e); }}
 function updateStealthUI(){let btn=document.getElementById('btn-stealth');let myDot=document.getElementById('my-status-dot');if(user.is_invisible){btn.innerText=t('stealth_on');btn.style.borderColor="#ffaa00";btn.style.color="#ffaa00";myDot.classList.remove('online');}else{btn.innerText=t('stealth_off');btn.style.borderColor="rgba(102, 252, 241, 0.3)";btn.style.color="var(--primary)";myDot.classList.add('online');}}
-async function requestReset(){let email=document.getElementById('f-email').value;if(!email)return showToast("Erro!");try{let r=await fetch('/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});showToast("Enviado!");toggleAuth('login');}catch(e){showToast("Erro");}}
-async function doResetPassword(){let newPass=document.getElementById('new-pass').value;if(!newPass)return showToast("Erro!");try{let r=await fetch('/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:window.resetToken,new_password:newPass})});if(r.ok){showToast("Alterada!");toggleAuth('login');}else{showToast("Link expirado.");}}catch(e){showToast("Erro");}}
+async function requestReset(){let email=document.getElementById('f-email').value;if(!email)return showToast("Erro!");try{let r=await fetch('/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});showToast("Enviado!");toggleAuth('login');}catch(e){console.error(e);showToast("Erro");}}
+async function doResetPassword(){let newPass=document.getElementById('new-pass').value;if(!newPass)return showToast("Erro!");try{let r=await fetch('/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:window.resetToken,new_password:newPass})});if(r.ok){showToast("Alterada!");toggleAuth('login');}else{showToast("Link expirado.");}}catch(e){console.error(e);showToast("Erro");}}
 
 function renderMedals(boxId, medalsData, isPublic = false) {
     let box = document.getElementById(boxId); 
@@ -1384,7 +1373,7 @@ async function toggleRecord(type) {
                     await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:audioMsg})});
                     lastFeedHash="";loadFeed();
                 } 
-            }catch(err){ showToast("Falha ao enviar áudio."); } 
+            }catch(err){ console.error(err); showToast("Falha ao enviar áudio."); } 
             stream.getTracks().forEach(t=>t.stop());
             if(inp){ inp.disabled=false; inp.placeholder= t(type==='comm'?'base_msg_placeholder':'msg_placeholder'); } 
         }; 
@@ -1400,36 +1389,41 @@ async function toggleRecord(type) {
                 inp.placeholder=`${t('recording')} ${mins}:${secs} ${t('click_to_send')}`;
             },1000);
         } 
-    }catch(e){showToast("Mic Blocked!");} 
+    }catch(e){ console.error(e); showToast("Mic Blocked!");} 
 }
 
-async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let hData=await hist.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){}}
-async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){}}
+async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let hData=await hist.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
+async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
-document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:id,user_id:user.id})});if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await fetch('/comment/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comment_id:id,user_id:user.id})});if(r.ok){lastFeedHash="";loadFeed();}}else if(tp==='base'){let r=await fetch(`/community/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});if(r.ok){closeComm();}}else if(tp==='channel'){let r=await fetch(`/community/channel/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await fetch('/message/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({msg_id:id,type:mainType,user_id:user.id})});let res=await r.json();if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){}};
+document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await fetch('/post/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:id,user_id:user.id})});if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await fetch('/comment/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comment_id:id,user_id:user.id})});if(r.ok){lastFeedHash="";loadFeed();}}else if(tp==='base'){let r=await fetch(`/community/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await fetch(`/community/channel/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await fetch('/message/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({msg_id:id,type:mainType,user_id:user.id})});let res=await r.json();if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
-async function updateProfileState() { try { let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) {} }
-async function toggleLike(pid,btn){try{let r=await fetch('/post/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})});if(r.ok){let d=await r.json();let icon=btn.querySelector('.icon');let count=btn.querySelector('.count');if(d.liked){btn.classList.add('liked');icon.innerText="❤️";}else{btn.classList.remove('liked');icon.innerText="🤍";}count.innerText=d.count;lastFeedHash="";}}catch(e){}}
+async function updateProfileState() { try { let r = await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) { console.error(e); } }
+async function toggleLike(pid,btn){try{let r=await fetch('/post/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id})});if(r.ok){let d=await r.json();let icon=btn.querySelector('.icon');let count=btn.querySelector('.count');if(d.liked){btn.classList.add('liked');icon.innerText="❤️";}else{btn.classList.remove('liked');icon.innerText="🤍";}count.innerText=d.count;lastFeedHash="";}}catch(e){ console.error(e); }}
 async function toggleComments(pid){let sec=document.getElementById(`comments-${pid}`);if(sec.style.display==='block'){sec.style.display='none';}else{sec.style.display='block';loadComments(pid);}}
-async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){}}
-async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){}}
-async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
+async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
+async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){ console.error(e); }}
+async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){ console.error(e); }}
 function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
     if (c.startsWith('[CALL_BG]')) { return; }
     let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
 async function openChat(id,name,type){let changingChat=(currentChatId!==id||currentChatType!==type);currentChatId=id;currentChatType=type;document.getElementById('dm-header-name').innerText=name;goView('dm');if(type==='1v1'){await fetch(`/inbox/read/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});fetchUnread();}if(changingChat){document.getElementById('dm-list').innerHTML='';}await fetchChatMessages(id,type);if(changingChat||!dmWS||dmWS.readyState!==WebSocket.OPEN){connectDmWS(id,name,type);}}
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
-async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(dmWS)dmWS.send(c.secure_url);}catch(e){}}
-async function loadMyComms(){try{let r=await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`);let d=await r.json();let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){}}
-async function loadPublicComms(){try{let r=await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){}}
+async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(dmWS)dmWS.send(c.secure_url);}catch(e){ console.error(e); }}
+async function loadMyComms(){try{let r=await fetch(`/communities/list/${user.id}?nocache=${new Date().getTime()}`);let d=await r.json();let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
+async function loadPublicComms(){try{let r=await fetch(`/communities/search?uid=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
-async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`);let d=await r.json();let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){}}
-async function joinCommunity(cid){try{let r=await fetch('/community/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,comm_id:cid})});if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}}catch(e){}}
-async function requestCommJoin(cid){try{let r=await fetch('/community/request/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,comm_id:cid})});if(r.ok){showToast("Enviado.");}}catch(e){}}
-async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await fetch(`/community/${cid}/leave`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});let res=await r.json();if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){}}}
+async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await fetch(`/communities/search?uid=${user.id}&q=${q}&nocache=${new Date().getTime()}`);let d=await r.json();let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function joinCommunity(cid){try{let r=await fetch('/community/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,comm_id:cid})});if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}}catch(e){ console.error(e); }}
+async function requestCommJoin(cid){try{let r=await fetch('/community/request/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,comm_id:cid})});if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
+async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await fetch(`/community/${cid}/leave`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id})});let res=await r.json();if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
 
 async function openCommunity(cid){
-    activeCommId=cid;goView('comm-dashboard');document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';
+    activeCommId=cid;goView('comm-dashboard');
+    let infoArea = document.getElementById('comm-info-area');
+    let chatArea = document.getElementById('comm-chat-area');
+    let isInfoOpen = infoArea.style.display === 'flex';
+    if(!isInfoOpen) { infoArea.style.display='none'; chatArea.style.display='flex'; }
+    
     try{
         let r=await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`);let d=await r.json();
         document.getElementById('active-comm-name').innerText=d.name;let headerBg=d.banner_url?`url('${d.banner_url}')`:'none';
@@ -1462,31 +1456,32 @@ async function openCommunity(cid){
                 let editBtn=(d.is_admin||d.creator_id===user.id)?`<span style="margin-left:5px;font-size:11px;cursor:pointer;opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>`:'';
                 cb.innerHTML+=`<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`;
             });
-            joinChannel(sortedChannels[0].id,sortedChannels[0].type,cb.children[0]);
+            if(!isInfoOpen) { joinChannel(sortedChannels[0].id,sortedChannels[0].type,cb.children[0]); }
         }else{document.getElementById('comm-chat-list').innerHTML="";}
-    }catch(e){}
+    }catch(e){ console.error(e); }
 }
 
-async function promoteMember(cid,tid){try{let r=await fetch('/community/member/promote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,admin_id:user.id,target_id:tid})});if(r.ok){openCommunity(cid);}}catch(e){}}
-async function demoteMember(cid,tid){try{let r=await fetch('/community/member/demote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,creator_id:user.id,target_id:tid})});if(r.ok){openCommunity(cid);}}catch(e){}}
-async function kickMember(cid,tid){if(confirm("Tem certeza que deseja expulsar?")){try{let r=await fetch('/community/member/kick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,admin_id:user.id,target_id:tid})});if(r.ok){openCommunity(cid);}}catch(e){}}}
+async function promoteMember(cid,tid){try{let r=await fetch('/community/member/promote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,admin_id:user.id,target_id:tid})});if(r.ok){await openCommunity(cid);}}catch(e){ console.error(e); }}
+async function demoteMember(cid,tid){try{let r=await fetch('/community/member/demote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,creator_id:user.id,target_id:tid})});if(r.ok){await openCommunity(cid);}}catch(e){ console.error(e); }}
+async function kickMember(cid,tid){if(confirm("Tem certeza que deseja expulsar?")){try{let r=await fetch('/community/member/kick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comm_id:cid,admin_id:user.id,target_id:tid})});if(r.ok){await openCommunity(cid);}}catch(e){ console.error(e); }}}
 function showCommInfo(){document.getElementById('comm-chat-area').style.display='none';document.getElementById('comm-info-area').style.display='flex';}
 function closeComm(){goView('mycomms',document.querySelectorAll('.nav-btn')[3]);if(commWS)commWS.close();}
 
 window.currentEditChannelId=null;
 function openEditChannelModal(id,name,type,priv){window.currentEditChannelId=id;document.getElementById('edit-ch-name').value=name;document.getElementById('edit-ch-type').value=type;document.getElementById('edit-ch-priv').value=priv;document.getElementById('modal-edit-channel').classList.remove('hidden');}
-async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let fd=new FormData();fd.append('channel_id',window.currentEditChannelId);fd.append('user_id',user.id);fd.append('name',n);fd.append('type',tType);fd.append('is_private',p);if(banFile){let c=await uploadToCloudinary(banFile);fd.append('banner_url',c.secure_url);}let r=await fetch('/community/channel/edit',{method:'POST',body:fd});if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId);}}catch(e){}finally{btn.disabled=false;btn.innerText=t('save');}}
+async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let c=await uploadToCloudinary(banFile);bu=c.secure_url;}let payload={channel_id:window.currentEditChannelId,user_id:user.id,name:n,type:tType,is_private:parseInt(p),banner_url:bu};let r=await fetch('/community/channel/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
 
-async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){}}
+async function fetchCommMessages(chid){let list=document.getElementById('comm-chat-list');try{let r=await fetch(`/community/channel/${chid}/messages?nocache=${new Date().getTime()}`);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){ console.error(e); }}
 
 function connectCommWS(chid){if(commWS)commWS.close();let p=location.protocol==='https:'?'wss:':'ws:';commWS=new WebSocket(`${p}//${location.host}/ws/comm_${chid}/${user.id}`);commWS.onclose=()=>{setTimeout(()=>{if(activeChannelId===chid&&document.getElementById('comm-chat-area').style.display==='flex'&&window.currentCommType!=='voice'){fetchCommMessages(chid);connectCommWS(chid);}},2000);};commWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('comm-chat-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
     if (c.startsWith('[CALL_BG]')) { return; }
     let prefix='comm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;}};}
 
-async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannelId!==chid);activeChannelId=chid;window.currentCommType=type;document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';if(btnElem){document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));btnElem.classList.add('active');}let inpForm=document.getElementById('comm-input-form');let inp=document.getElementById('comm-msg');let clip=document.getElementById('btn-comm-clip');let emj=document.getElementById('btn-comm-emoji');let mic=document.getElementById('btn-comm-mic');inp.disabled=false;clip.style.display='flex';emj.style.display='flex';mic.style.display='flex';inpForm.style.display='flex';let cp=document.getElementById('expanded-call-panel');cp.style.backgroundImage='none';document.getElementById('call-bg-action').style.display='none';if(changingChannel&&commWS){commWS.close();commWS=null;}if(type==='voice'){inpForm.style.display='none';document.getElementById('comm-chat-list').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;if(window.currentCommIsAdmin){document.getElementById('call-bg-action').style.display='block';}try{let r=await fetch(`/call/bg/channel/${chid}`);let res=await r.json();if(res.bg_url){cp.style.backgroundImage=`url('${res.bg_url}')`;}}catch(e){}}else{if(type==='media'){inp.disabled=true;inp.placeholder=t('media_only');emj.style.display='none';mic.style.display='none';}else if(type==='text'){inp.placeholder=t('base_msg_placeholder');clip.style.display='none';mic.style.display='flex';}else{inp.placeholder=t('base_msg_placeholder');}if(changingChannel){document.getElementById('comm-chat-list').innerHTML='';}await fetchCommMessages(chid);if(!commWS||commWS.readyState!==WebSocket.OPEN){connectCommWS(chid);}}}
+async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannelId!==chid);activeChannelId=chid;window.currentCommType=type;document.getElementById('comm-info-area').style.display='none';document.getElementById('comm-chat-area').style.display='flex';if(btnElem){document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));btnElem.classList.add('active');}let inpForm=document.getElementById('comm-input-form');let inp=document.getElementById('comm-msg');let clip=document.getElementById('btn-comm-clip');let emj=document.getElementById('btn-comm-emoji');let mic=document.getElementById('btn-comm-mic');inp.disabled=false;clip.style.display='flex';emj.style.display='flex';mic.style.display='flex';inpForm.style.display='flex';let cp=document.getElementById('expanded-call-panel');cp.style.backgroundImage='none';document.getElementById('call-bg-action').style.display='none';if(changingChannel&&commWS){commWS.close();commWS=null;}if(type==='voice'){inpForm.style.display='none';document.getElementById('comm-chat-list').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;"><div style="font-size:50px;margin-bottom:20px;text-shadow:0 0 20px var(--primary);">🎙️</div><h3 style="color:white;font-family:'Rajdhani';font-size:28px;margin:0;">CANAL DE VOZ</h3><p style="color:#aaa;font-size:14px;max-width:250px;">O áudio está rodando em segundo plano. Você pode minimizar o aplicativo ou ir para outras abas.</p><button onclick="initCall('channel', ${chid})" class="btn-main" style="width:auto;padding:15px 40px;font-size:18px;box-shadow:0 10px 20px rgba(102,252,241,0.3);border-radius:30px;">${t('join_call')}</button></div>`;if(window.currentCommIsAdmin){document.getElementById('call-bg-action').style.display='block';}try{let r=await fetch(`/call/bg/channel/${chid}`);let res=await r.json();if(res.bg_url){cp.style.backgroundImage=`url('${res.bg_url}')`;}}catch(e){ console.error(e); }}else{if(type==='media'){inp.disabled=true;inp.placeholder=t('media_only');emj.style.display='none';mic.style.display='none';}else if(type==='text'){inp.placeholder=t('base_msg_placeholder');clip.style.display='none';mic.style.display='flex';}else{inp.placeholder=t('base_msg_placeholder');}if(changingChannel){document.getElementById('comm-chat-list').innerHTML='';}await fetchCommMessages(chid);if(!commWS||commWS.readyState!==WebSocket.OPEN){connectCommWS(chid);}}}
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
-async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){}}
-async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; width:fit-content; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){}}
+async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){ console.error(e); }}
+
+async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;max-width:180px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button> <button class="glass-btn danger-btn" style="padding:10px; margin:0;" onclick="unfriend(${uid})">❌ Desfazer</button>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
 
 async function uploadToCloudinary(file){
     let limiteMB=100;
@@ -1502,31 +1497,24 @@ async function uploadToCloudinary(file){
         x.upload.onprogress=(e)=>{if(e.lengthComputable&&document.getElementById('progress-bar')){let p=Math.round((e.loaded/e.total)*100);document.getElementById('progress-bar').style.width=p+'%';if(document.getElementById('progress-text')) document.getElementById('progress-text').innerText=p+'%';}};
         x.onload=()=>{
             if(x.status===200) res(JSON.parse(x.responseText));
-            else {
-                console.error("ERRO CLOUDINARY:", x.responseText);
-                alert("Falha no Cloudinary: O Upload Preset 'for_glory_preset' pode estar configurado errado (precisa ser UNSIGNED) ou foi deletado.");
-                rej();
-            }
+            else { console.error("ERRO CLOUDINARY:", x.responseText); alert("Falha no Cloudinary: O Upload Preset 'for_glory_preset' precisa estar como UNSIGNED no painel do Cloudinary!"); rej(); }
         };
         x.onerror=()=> { showToast("Sem conexão com Cloudinary"); rej(); };
         x.send(fd);
     });
 }
 
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c=await uploadToCloudinary(f);let fd=new FormData();fd.append('user_id',user.id);fd.append('caption',cap);fd.append('content_url',c.secure_url);fd.append('media_type',c.resource_type);let r=await fetch('/post/create_from_url',{method:'POST',body:fd});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){}finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let fd=new FormData();fd.append('user_id',user.id);if(au)fd.append('avatar_url',au);if(cu)fd.append('cover_url',cu);if(b)fd.append('bio',b);let r=await fetch('/profile/update_meta',{method:'POST',body:fd});if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){}finally{btn.disabled=false;}}
+async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let c=await uploadToCloudinary(f);let payload={user_id:user.id,caption:cap,content_url:c.secure_url,media_type:c.resource_type};let r=await fetch('/post/create_from_url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
+async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let r=await uploadToCloudinary(f);au=r.secure_url}if(c){let r=await uploadToCloudinary(c);cu=r.secure_url}let payload={user_id:user.id,avatar_url:au,cover_url:cu,bio:b};let r=await fetch('/profile/update_meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
 function clearSearch(){document.getElementById('search-input').value='';document.getElementById('search-results').innerHTML='';}
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`});updateStatusDots();}catch(e){}}
+async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
 </script>
 </body>
 </html>
 """
 
 @app.get("/", response_class=HTMLResponse)
-async def get(response: Response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+def get():
     return HTMLResponse(content=html_content)
 
 @app.get("/users/online")
@@ -1537,9 +1525,8 @@ def get_online_users(db: Session=Depends(get_db)):
     return [u[0] for u in visible_users]
 
 @app.post("/profile/stealth")
-def toggle_stealth(d: dict, db: Session=Depends(get_db)):
-    uid = d.get("uid")
-    u = db.query(User).filter_by(id=uid).first()
+def toggle_stealth(d: UserIdData, db: Session=Depends(get_db)):
+    u = db.query(User).filter_by(id=d.user_id).first()
     if u:
         u.is_invisible = 1 if u.is_invisible == 0 else 0
         db.commit()
@@ -1550,20 +1537,17 @@ def toggle_stealth(d: dict, db: Session=Depends(get_db)):
 def get_notifications(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
     pm_counts = Counter([str(u[0]) for u in unread_pms])
-    total_dms = sum(pm_counts.values())
     
     my_comms = db.query(Community).filter(Community.creator_id == uid).all()
     my_admin_roles = db.query(CommunityMember).filter_by(user_id=uid, role="admin").all()
     admin_comm_ids = set([c.id for c in my_comms] + [r.comm_id for r in my_admin_roles])
     
-    total_reqs = 0
     req_counts = {}
     if admin_comm_ids:
         pending_reqs = db.query(CommunityRequest.comm_id).filter(CommunityRequest.comm_id.in_(list(admin_comm_ids))).all()
         req_counts = Counter([str(r[0]) for r in pending_reqs])
-        total_reqs = sum(req_counts.values())
     
-    return {"dms": {"total": total_dms, "by_sender": dict(pm_counts)}, "comms": {"total": total_reqs, "by_comm": dict(req_counts)}}
+    return {"dms": {"total": sum(pm_counts.values()), "by_sender": dict(pm_counts)}, "comms": {"total": sum(req_counts.values()), "by_comm": dict(req_counts)}}
 
 @app.get("/inbox/unread/{uid}")
 def get_unread(uid: int, db: Session=Depends(get_db)):
@@ -1580,13 +1564,8 @@ def mark_read(sender_id: int, d: ReadData, db: Session=Depends(get_db)):
 @app.post("/auth/forgot-password")
 def forgot_password(d: ForgotPasswordData, db: Session=Depends(get_db)):
     user = db.query(User).filter_by(email=d.email).first()
-    if not user: return {"status": "ok"} 
-    token = create_reset_token(user.email)
-    reset_link = f"https://for-glory.onrender.com/?token={token}"
-    logger.info("="*60)
-    logger.info(f"🚨 CHAVE DE RESGATE GERADA! COPIE O LINK ABAIXO NO NAVEGADOR: 🚨")
-    logger.info(f"{reset_link}")
-    logger.info("="*60)
+    if user:
+        logger.info(f"RESGATE: https://for-glory.onrender.com/?token={create_reset_token(user.email)}")
     return {"status": "ok"}
 
 @app.post("/auth/reset-password")
@@ -1602,9 +1581,7 @@ def reset_password(d: ResetPasswordData, db: Session=Depends(get_db)):
 @app.post("/register")
 def reg(d: RegisterData, db: Session=Depends(get_db)):
     if db.query(User).filter_by(username=d.username).first(): raise HTTPException(400, "User existe")
-    is_first = db.query(User).count() == 0
-    role = "fundador" if is_first else "membro"
-    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0, is_invisible=0, role=role))
+    db.add(User(username=d.username, email=d.email, password_hash=criptografar(d.password), xp=0, is_invisible=0, role="fundador" if db.query(User).count() == 0 else "membro"))
     db.commit()
     return {"status":"ok"}
 
@@ -1616,45 +1593,40 @@ def log(d: LoginData, db: Session=Depends(get_db)):
     return {"id":u.id, "username":u.username, "avatar_url":u.avatar_url, "cover_url":u.cover_url, "bio":u.bio, "xp": u.xp, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "medals": b['medals'], "is_invisible": getattr(u, 'is_invisible', 0)}
 
 @app.post("/post/create_from_url")
-def create_post_url(user_id: int = Form(...), caption: str = Form(""), content_url: str = Form(...), media_type: str = Form(...), db: Session=Depends(get_db)):
-    db.add(Post(user_id=user_id, content_url=content_url, media_type=media_type, caption=caption))
-    user = db.query(User).filter_by(id=user_id).first()
+def create_post_url(d: CreatePostData, db: Session=Depends(get_db)):
+    db.add(Post(user_id=d.user_id, content_url=d.content_url, media_type=d.media_type, caption=d.caption))
+    user = db.query(User).filter_by(id=d.user_id).first()
     if user: user.xp += 50 
     db.commit()
     return {"status":"ok"}
 
 @app.post("/post/like")
-def toggle_like(d: dict, db: Session=Depends(get_db)):
-    post_id = d.get('post_id'); user_id = d.get('user_id')
-    existing = db.query(Like).filter(Like.post_id==post_id, Like.user_id==user_id).first()
+def toggle_like(d: ToggleLikeData, db: Session=Depends(get_db)):
+    existing = db.query(Like).filter_by(post_id=d.post_id, user_id=d.user_id).first()
     if existing: db.delete(existing); liked = False
-    else: db.add(Like(post_id=post_id, user_id=user_id)); liked = True
+    else: db.add(Like(post_id=d.post_id, user_id=d.user_id)); liked = True
     db.commit()
-    count = db.query(Like).filter(Like.post_id==post_id).count()
-    return {"liked": liked, "count": count}
+    return {"liked": liked, "count": db.query(Like).filter_by(post_id=d.post_id).count()}
 
 @app.post("/post/comment")
 def add_comment(d: CommentData, db: Session=Depends(get_db)):
-    c = Comment(user_id=d.user_id, post_id=d.post_id, text=d.text)
-    db.add(c); db.commit()
+    db.add(Comment(user_id=d.user_id, post_id=d.post_id, text=d.text)); db.commit()
     return {"status": "ok"}
 
 @app.post("/comment/delete")
-def del_comment(d: dict, db: Session=Depends(get_db)):
-    cid = d.get('comment_id'); uid = d.get('user_id')
-    c = db.query(Comment).filter_by(id=cid).first()
-    if c and c.user_id == uid: db.delete(c); db.commit()
+def del_comment(d: DelCommentData, db: Session=Depends(get_db)):
+    c = db.query(Comment).filter_by(id=d.comment_id).first()
+    if c and c.user_id == d.user_id: db.delete(c); db.commit()
     return {"status": "ok"}
 
 @app.post("/message/delete")
-def delete_msg(d: dict, db: Session=Depends(get_db)):
-    msg_id = d.get('msg_id'); msg_type = d.get('type'); uid = d.get('user_id')
+def delete_msg(d: DeleteMsgData, db: Session=Depends(get_db)):
     msg = None
-    if msg_type == 'dm': msg = db.query(PrivateMessage).filter_by(id=msg_id).first()
-    elif msg_type == 'comm': msg = db.query(CommunityMessage).filter_by(id=msg_id).first()
-    elif msg_type == 'group': msg = db.query(GroupMessage).filter_by(id=msg_id).first()
+    if d.type == 'dm': msg = db.query(PrivateMessage).filter_by(id=d.msg_id).first()
+    elif d.type == 'comm': msg = db.query(CommunityMessage).filter_by(id=d.msg_id).first()
+    elif d.type == 'group': msg = db.query(GroupMessage).filter_by(id=d.msg_id).first()
     
-    if msg and msg.sender_id == uid:
+    if msg and msg.sender_id == d.user_id:
         if (datetime.utcnow() - msg.timestamp).total_seconds() > 300: return {"status": "timeout", "msg": "Tempo limite (5min) excedido."}
         msg.content = "[DELETED]"
         db.commit()
@@ -1663,61 +1635,47 @@ def delete_msg(d: dict, db: Session=Depends(get_db)):
 
 @app.get("/post/{post_id}/comments")
 def get_comments(post_id: int, db: Session=Depends(get_db)):
-    comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.timestamp.asc()).all()
-    res = []
-    for c in comments:
-        b = get_user_badges(c.author.xp, c.author.id, getattr(c.author, 'role', 'membro'))
-        res.append({"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, "author_rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']})
-    return res
+    comments = db.query(Comment).filter_by(post_id=post_id).order_by(Comment.timestamp.asc()).all()
+    return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, **format_user_summary(c.author)} for c in comments]
 
 @app.get("/posts")
 def get_posts(uid: int, limit: int = 50, db: Session=Depends(get_db)):
     posts = db.query(Post).options(joinedload(Post.author)).order_by(Post.timestamp.desc()).limit(limit).all()
     post_ids = [p.id for p in posts]
-    
-    likes_bulk = []
-    comments_dict = {}
-    if post_ids:
-        likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all()
-        comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all()
-        comments_dict = dict(comments_count)
+    likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all() if post_ids else []
+    comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all() if post_ids else []
+    comments_dict = dict(comments_count)
     
     result = []
     for p in posts:
         post_likes = [l for l in likes_bulk if l[0] == p.id]
-        like_count = len(post_likes)
-        user_liked = any(l[1] == uid for l in post_likes)
-        c_count = comments_dict.get(p.id, 0)
-        u_summary = format_user_summary(p.author)
-        
+        u_sum = format_user_summary(p.author)
         result.append({
             "id": p.id, "content_url": p.content_url, "media_type": p.media_type, "caption": p.caption, 
-            "author_name": u_summary["username"], "author_avatar": u_summary["avatar_url"], 
-            "author_rank": u_summary["rank"], "rank_color": u_summary["color"], 
-            "special_emblem": u_summary["special_emblem"], "author_id": p.author_id, 
-            "likes": like_count, "user_liked": user_liked, "comments": c_count
+            "author_name": u_sum["username"], "author_avatar": u_sum["avatar_url"], "author_rank": u_sum["rank"], 
+            "rank_color": u_sum["color"], "special_emblem": u_sum["special_emblem"], "author_id": p.author_id, 
+            "likes": len(post_likes), "user_liked": any(l[1] == uid for l in post_likes), "comments": comments_dict.get(p.id, 0)
         })
     return result
 
 @app.post("/post/delete")
-def delete_post_endpoint(d: dict, db: Session=Depends(get_db)):
-    pid = d.get('post_id'); uid = d.get('user_id')
-    post = db.query(Post).filter_by(id=pid).first()
-    if not post or post.user_id != uid: return {"status": "error"}
-    db.query(Like).filter(Like.post_id == post.id).delete()
-    db.query(Comment).filter(Comment.post_id == post.id).delete()
+def delete_post_endpoint(d: DeletePostData, db: Session=Depends(get_db)):
+    post = db.query(Post).filter_by(id=d.post_id).first()
+    if not post or post.user_id != d.user_id: return {"status": "error"}
+    db.query(Like).filter_by(post_id=post.id).delete()
+    db.query(Comment).filter_by(post_id=post.id).delete()
     db.delete(post)
-    user = db.query(User).filter_by(id=uid).first()
+    user = db.query(User).filter_by(id=d.user_id).first()
     if user and user.xp >= 50: user.xp -= 50
     db.commit()
     return {"status": "ok"}
 
 @app.post("/profile/update_meta")
-def update_prof_meta(user_id: int = Form(...), bio: str = Form(None), avatar_url: str = Form(None), cover_url: str = Form(None), db: Session=Depends(get_db)):
-    u = db.query(User).filter_by(id=user_id).first()
-    if avatar_url: u.avatar_url = avatar_url
-    if cover_url: u.cover_url = cover_url
-    if bio: u.bio = bio
+def update_prof_meta(d: UpdateProfileData, db: Session=Depends(get_db)):
+    u = db.query(User).filter_by(id=d.user_id).first()
+    if d.avatar_url: u.avatar_url = d.avatar_url
+    if d.cover_url: u.cover_url = d.cover_url
+    if d.bio: u.bio = d.bio
     db.commit()
     return {"status":"ok"}
 
@@ -1730,84 +1688,129 @@ def search_users(q: str, db: Session=Depends(get_db)):
 def get_inbox(uid: int, db: Session=Depends(get_db)):
     me = db.query(User).filter_by(id=uid).first()
     friends_data = [{"id": f.id, "name": f.username, "avatar": f.avatar_url} for f in me.friends] if me else []
-    my_groups = db.query(GroupMember).filter(GroupMember.user_id == uid).all()
-    groups_data = []
-    for gm in my_groups:
-        grp = db.query(ChatGroup).filter_by(id=gm.group_id).first()
-        if grp: groups_data.append({"id": grp.id, "name": grp.name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"})
+    my_groups = db.query(GroupMember).filter_by(user_id=uid).all()
+    groups_data = [{"id": gm.group_id, "name": db.query(ChatGroup).filter_by(id=gm.group_id).first().name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"} for gm in my_groups if db.query(ChatGroup).filter_by(id=gm.group_id).first()]
     return {"friends": friends_data, "groups": groups_data}
 
 @app.get("/dms/{target_id}")
 def get_dms(target_id: int, uid: int, db: Session=Depends(get_db)):
     msgs = db.query(PrivateMessage).filter(or_(and_(PrivateMessage.sender_id == uid, PrivateMessage.receiver_id == target_id),and_(PrivateMessage.sender_id == target_id, PrivateMessage.receiver_id == uid))).order_by(PrivateMessage.timestamp.asc()).limit(100).all()
-    res = []
-    for m in msgs:
-        b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
-    return res
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300, **format_user_summary(m.sender)} for m in msgs]
+
+@app.post("/friend/request")
+def send_req(d: FriendReqData, db: Session=Depends(get_db)):
+    me = db.query(User).filter_by(id=d.sender_id).first()
+    target = db.query(User).filter_by(id=d.target_id).first()
+    if not me or not target: return {"status": "error"}
+    if target in me.friends: return {"status": "already_friends"}
+    existing = db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id==d.sender_id, FriendRequest.receiver_id==d.target_id),and_(FriendRequest.sender_id==d.target_id, FriendRequest.receiver_id==d.sender_id))).first()
+    if existing: return {"status": "pending"}
+    db.add(FriendRequest(sender_id=d.sender_id, receiver_id=d.target_id)); db.commit()
+    return {"status": "sent"}
+
+@app.get("/friend/requests")
+def get_reqs(uid: int, db: Session=Depends(get_db)):
+    reqs = db.query(FriendRequest).filter_by(receiver_id=uid).all()
+    requests_data = [{"id": r.id, "username": db.query(User).filter_by(id=r.sender_id).first().username} for r in reqs]
+    me = db.query(User).filter_by(id=uid).first()
+    friends_data = [{"id": f.id, "username": f.username, "avatar": f.avatar_url} for f in me.friends] if me else []
+    return {"requests": requests_data, "friends": friends_data}
+
+@app.post("/friend/handle")
+def handle_req(d: RequestActionData, db: Session=Depends(get_db)):
+    req = db.query(FriendRequest).filter_by(id=d.request_id).first()
+    if not req: return {"status": "error"}
+    if d.action == 'accept':
+        u1 = db.query(User).filter_by(id=req.sender_id).first()
+        u2 = db.query(User).filter_by(id=req.receiver_id).first()
+        u1.friends.append(u2); u2.friends.append(u1)
+    db.delete(req); db.commit()
+    return {"status": "ok"}
+
+@app.post("/friend/remove")
+def remove_friend(d: UnfriendData, db: Session = Depends(get_db)):
+    me = db.query(User).filter_by(id=d.user_id).first()
+    other = db.query(User).filter_by(id=d.friend_id).first()
+    if not me or not other: raise HTTPException(404, "Usuário não encontrado")
+    if other in me.friends: me.friends.remove(other)
+    if me in other.friends: other.friends.remove(me)
+    db.query(FriendRequest).filter(or_(and_(FriendRequest.sender_id == d.user_id, FriendRequest.receiver_id == d.friend_id), and_(FriendRequest.sender_id == d.friend_id, FriendRequest.receiver_id == d.user_id))).delete(synchronize_session=False)
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/user/{target_id}")
+async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(get_db)):
+    target = db.query(User).filter_by(id=target_id).first()
+    viewer = db.query(User).filter_by(id=viewer_id).first()
+    if not target or not viewer: return {"username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", "bio": "Perdido em combate.", "rank": "Recruta", "color": "#888", "special_emblem": "", "medals": [], "percent": 0, "next_xp": 100, "next_rank": "Soldado", "posts": [], "friend_status": "none", "request_id": None}
+    posts = db.query(Post).filter_by(user_id=target_id).order_by(Post.timestamp.desc()).all()
+    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
+    status = "friends" if target in viewer.friends else "none"
+    req_id = None
+    if status == "none":
+        sent = db.query(FriendRequest).filter_by(sender_id=viewer_id, receiver_id=target_id).first()
+        received = db.query(FriendRequest).filter_by(sender_id=target_id, receiver_id=viewer_id).first()
+        if sent: status = "pending_sent"
+        if received: status = "pending_received"; req_id = received.id
+    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "posts": posts_data, "friend_status": status, "request_id": req_id, **format_user_summary(target)}
 
 @app.post("/call/ring/dm")
-async def ring_dm(d: dict, db: Session=Depends(get_db)):
-    caller = db.query(User).filter_by(id=d.get('caller_id')).first()
-    if caller: await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": caller.username, "caller_avatar": caller.avatar_url, "channel_name": d.get('channel_name'), "call_type": "dm", "target_id": d.get('target_id')}, d.get('target_id'))
+async def ring_dm(d: CallRingDMData, db: Session=Depends(get_db)):
+    caller = db.query(User).filter_by(id=d.caller_id).first()
+    if caller: await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": caller.username, "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "dm", "target_id": d.target_id}, d.target_id)
     return {"status": "ok"}
     
 @app.post("/call/ring/group")
-async def ring_group(d: dict, db: Session=Depends(get_db)):
-    caller = db.query(User).filter_by(id=d.get('caller_id')).first()
-    group = db.query(ChatGroup).filter_by(id=d.get('group_id')).first()
-    members = db.query(GroupMember).filter_by(group_id=d.get('group_id')).all()
-    for m in members:
-        if m.user_id != d.get('caller_id') and caller and group:
-            await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": f"{caller.username} (Grp: {group.name})", "caller_avatar": caller.avatar_url, "channel_name": d.get('channel_name'), "call_type": "group", "target_id": d.get('group_id')}, m.user_id)
+async def ring_group(d: CallRingGroupData, db: Session=Depends(get_db)):
+    caller = db.query(User).filter_by(id=d.caller_id).first()
+    group = db.query(ChatGroup).filter_by(id=d.group_id).first()
+    if not caller or not group: return {"status": "error"}
+    for m in db.query(GroupMember).filter_by(group_id=d.group_id).all():
+        if m.user_id != d.caller_id: await manager.send_personal({"type": "incoming_call", "caller_id": caller.id, "caller_name": f"{caller.username} (Grp: {group.name})", "caller_avatar": caller.avatar_url, "channel_name": d.channel_name, "call_type": "group", "target_id": d.group_id}, m.user_id)
     return {"status": "ok"}
 
 @app.post("/community/create")
-def create_comm(user_id: int=Form(...), name: str=Form(...), desc: str=Form(""), is_priv: int=Form(0), avatar_url: str=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
-    c = Community(name=name, description=desc, avatar_url=avatar_url, banner_url=banner_url, is_private=is_priv, creator_id=user_id)
+def create_comm(d: CreateCommData, db: Session=Depends(get_db)):
+    c = Community(name=d.name, description=d.desc, avatar_url=d.avatar_url, banner_url=d.banner_url, is_private=d.is_priv, creator_id=d.user_id)
     db.add(c); db.commit(); db.refresh(c)
-    db.add(CommunityMember(comm_id=c.id, user_id=user_id, role="admin"))
-    db.add(CommunityChannel(comm_id=c.id, name="geral", channel_type="livre", is_private=0, banner_url=banner_url))
+    db.add(CommunityMember(comm_id=c.id, user_id=d.user_id, role="admin"))
+    db.add(CommunityChannel(comm_id=c.id, name="geral", channel_type="livre", is_private=0, banner_url=d.banner_url))
     db.commit()
     return {"status": "ok"}
 
 @app.post("/community/join")
-def join_comm(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=d.get('comm_id')).first()
+def join_comm(d: JoinCommData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
     if not c or c.is_private: return {"status": "error"}
-    ext = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.get('user_id')).first()
-    if not ext:
-        db.add(CommunityMember(comm_id=c.id, user_id=d.get('user_id'), role="member")); db.commit()
+    if not db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.user_id).first():
+        db.add(CommunityMember(comm_id=c.id, user_id=d.user_id, role="member")); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/{cid}/leave")
-def leave_community(cid: int, d: dict, db: Session=Depends(get_db)):
-    uid = d.get('user_id')
-    member = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
+def leave_community(cid: int, d: UserIdData, db: Session=Depends(get_db)):
+    member = db.query(CommunityMember).filter_by(comm_id=cid, user_id=d.user_id).first()
     if member:
         comm = db.query(Community).filter_by(id=cid).first()
-        if member.role == 'admin' and comm and comm.creator_id == uid:
-            return {"status": "error", "msg": "O criador não pode sair sem deletar a base."}
+        if member.role == 'admin' and comm and comm.creator_id == d.user_id: return {"status": "error", "msg": "O criador não pode sair sem deletar a base."}
         db.delete(member); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/edit")
-def edit_comm(comm_id: int = Form(...), user_id: int = Form(...), avatar_url: str = Form(None), banner_url: str = Form(None), db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=comm_id).first()
-    if not c or c.creator_id != user_id: return {"status": "error"}
-    if avatar_url: c.avatar_url = avatar_url
-    if banner_url:
-        c.banner_url = banner_url
+def edit_comm(d: EditCommData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
+    if not c or c.creator_id != d.user_id: return {"status": "error"}
+    if d.avatar_url: c.avatar_url = d.avatar_url
+    if d.banner_url:
+        c.banner_url = d.banner_url
         geral_ch = db.query(CommunityChannel).filter_by(comm_id=c.id, name="geral").first()
-        if geral_ch: geral_ch.banner_url = banner_url
+        if geral_ch: geral_ch.banner_url = d.banner_url
     db.commit()
     return {"status": "ok"}
 
 @app.post("/community/{cid}/delete")
-def destroy_comm(cid: int, d: dict, db: Session=Depends(get_db)):
-    uid = d.get('user_id')
+def destroy_comm(cid: int, d: UserIdData, db: Session=Depends(get_db)):
     c = db.query(Community).filter_by(id=cid).first()
-    if not c or c.creator_id != uid: return {"status": "error"}
+    if not c or c.creator_id != d.user_id: return {"status": "error"}
     ch_ids = [ch.id for ch in db.query(CommunityChannel).filter_by(comm_id=cid).all()]
     if ch_ids: db.query(CommunityMessage).filter(CommunityMessage.channel_id.in_(ch_ids)).delete(synchronize_session=False)
     db.query(CommunityChannel).filter_by(comm_id=cid).delete()
@@ -1817,60 +1820,53 @@ def destroy_comm(cid: int, d: dict, db: Session=Depends(get_db)):
     return {"status": "ok"}
 
 @app.post("/community/member/promote")
-def promote_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=d['comm_id']).first()
-    admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['admin_id']).first()
+def promote_member(d: CommMemberActionData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
+    admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.admin_id).first()
     if not admin or (admin.role != 'admin' and c.creator_id != admin.user_id): return {"status": "error"}
-    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
+    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.target_id).first()
     if target: target.role = 'admin'; db.commit()
     return {"status": "ok"}
 
 @app.post("/community/member/demote")
-def demote_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=d['comm_id']).first()
-    if c.creator_id != d['creator_id']: return {"status": "error"}
-    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
+def demote_member(d: CommMemberActionData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
+    if c.creator_id != d.creator_id: return {"status": "error"}
+    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.target_id).first()
     if target and target.role == 'admin': target.role = 'member'; db.commit()
     return {"status": "ok"}
 
 @app.post("/community/member/kick")
-def kick_member(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=d['comm_id']).first()
-    admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['admin_id']).first()
+def kick_member(d: CommMemberActionData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
+    admin = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.admin_id).first()
     if not admin or (admin.role != 'admin' and c.creator_id != admin.user_id): return {"status": "error"}
-    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d['target_id']).first()
-    if not target or target.user_id == c.creator_id: return {"status": "error"}
-    if target.role == 'admin' and c.creator_id != admin.user_id: return {"status": "error"} 
+    target = db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.target_id).first()
+    if not target or target.user_id == c.creator_id or (target.role == 'admin' and c.creator_id != admin.user_id): return {"status": "error"} 
     db.delete(target); db.commit()
     return {"status": "ok"}
 
 @app.get("/communities/list/{uid}")
 def list_comms(uid: int, db: Session=Depends(get_db)):
-    my_memberships = db.query(CommunityMember).filter(CommunityMember.user_id == uid).all()
-    my_comm_ids = [m.comm_id for m in my_memberships]
-    my_comms = db.query(Community).filter(Community.id.in_(my_comm_ids)).all()
-    return {"my_comms": [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url} for c in my_comms]}
+    my_comm_ids = [m.comm_id for m in db.query(CommunityMember).filter_by(user_id=uid).all()]
+    return {"my_comms": [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url} for c in db.query(Community).filter(Community.id.in_(my_comm_ids)).all()]}
 
 @app.get("/communities/search")
 def search_comms(uid: int, q: str = "", db: Session=Depends(get_db)):
-    my_memberships = db.query(CommunityMember).filter(CommunityMember.user_id == uid).all()
-    my_comm_ids = [m.comm_id for m in my_memberships]
+    my_comm_ids = [m.comm_id for m in db.query(CommunityMember).filter_by(user_id=uid).all()]
     query = db.query(Community).filter(~Community.id.in_(my_comm_ids))
     if q: query = query.filter(Community.name.ilike(f"%{q}%"))
-    comms = query.limit(20).all()
-    return [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url, "desc": c.description, "is_private": c.is_private} for c in comms]
+    return [{"id": c.id, "name": c.name, "avatar_url": c.avatar_url, "desc": c.description, "is_private": c.is_private} for c in query.limit(20).all()]
 
 @app.post("/community/request/send")
-def send_comm_req(d: dict, db: Session=Depends(get_db)):
-    c = db.query(Community).filter_by(id=d.get('comm_id')).first()
+def send_comm_req(d: JoinCommData, db: Session=Depends(get_db)):
+    c = db.query(Community).filter_by(id=d.comm_id).first()
     if not c: return {"status": "error"}
     if c.is_private == 0:
-        if not db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.get('user_id')).first():
-            db.add(CommunityMember(comm_id=c.id, user_id=d.get('user_id'), role="member")); db.commit()
+        if not db.query(CommunityMember).filter_by(comm_id=c.id, user_id=d.user_id).first(): db.add(CommunityMember(comm_id=c.id, user_id=d.user_id, role="member")); db.commit()
         return {"status": "joined"}
     else:
-        ext = db.query(CommunityRequest).filter_by(comm_id=c.id, user_id=d.get('user_id')).first()
-        if not ext: db.add(CommunityRequest(comm_id=c.id, user_id=d.get('user_id'))); db.commit()
+        if not db.query(CommunityRequest).filter_by(comm_id=c.id, user_id=d.user_id).first(): db.add(CommunityRequest(comm_id=c.id, user_id=d.user_id)); db.commit()
         return {"status": "requested"}
 
 @app.get("/community/{cid}/requests")
@@ -1878,19 +1874,17 @@ def get_comm_reqs(cid: int, uid: int, db: Session=Depends(get_db)):
     role = db.query(CommunityMember).filter_by(comm_id=cid, user_id=uid).first()
     c = db.query(Community).filter_by(id=cid).first()
     if (not role or role.role != "admin") and (c and c.creator_id != uid): return []
-    reqs = db.query(CommunityRequest).filter_by(comm_id=cid).all()
-    return [{"id": r.id, "user_id": r.user.id, "username": r.user.username, "avatar": r.user.avatar_url} for r in reqs]
+    return [{"id": r.id, "user_id": r.user.id, "username": r.user.username, "avatar": r.user.avatar_url} for r in db.query(CommunityRequest).filter_by(comm_id=cid).all()]
 
 @app.post("/community/request/handle")
-def handle_comm_req(d: dict, db: Session=Depends(get_db)):
-    req = db.query(CommunityRequest).filter_by(id=d.get('req_id')).first()
+def handle_comm_req(d: HandleCommReqData, db: Session=Depends(get_db)):
+    req = db.query(CommunityRequest).filter_by(id=d.req_id).first()
     if not req: return {"status": "error"}
-    role = db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=d.get('admin_id')).first()
+    role = db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=d.admin_id).first()
     c = db.query(Community).filter_by(id=req.comm_id).first()
-    if (not role or role.role != "admin") and (c and c.creator_id != d.get('admin_id')): return {"status": "unauthorized"}
-    if d.get('action') == "accept": 
-        ext = db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=req.user_id).first()
-        if not ext: db.add(CommunityMember(comm_id=req.comm_id, user_id=req.user_id, role="member"))
+    if (not role or role.role != "admin") and (c and c.creator_id != d.admin_id): return {"status": "unauthorized"}
+    if d.action == "accept": 
+        if not db.query(CommunityMember).filter_by(comm_id=req.comm_id, user_id=req.user_id).first(): db.add(CommunityMember(comm_id=req.comm_id, user_id=req.user_id, role="member"))
     db.delete(req); db.commit()
     return {"status": "ok"}
 
@@ -1906,33 +1900,32 @@ def get_comm_details(cid: int, uid: int, db: Session=Depends(get_db)):
     return {"name": c.name if c else "?", "description": c.description if c else "", "avatar_url": c.avatar_url if c else "", "banner_url": c.banner_url if c else "", "is_admin": is_admin, "creator_id": c.creator_id if c else 0, "channels": visible_channels, "members": members_data}
 
 @app.post("/community/channel/create")
-def create_channel(comm_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(""), db: Session=Depends(get_db)):
-    role = db.query(CommunityMember).filter_by(comm_id=comm_id, user_id=user_id).first()
-    c = db.query(Community).filter_by(id=comm_id).first()
-    if (not role or role.role != "admin") and (c and c.creator_id != user_id): return {"status": "error"}
-    db.add(CommunityChannel(comm_id=comm_id, name=name, channel_type=type, is_private=is_private, banner_url=banner_url)); db.commit()
+def create_channel(d: CreateChannelData, db: Session=Depends(get_db)):
+    role = db.query(CommunityMember).filter_by(comm_id=d.comm_id, user_id=d.user_id).first()
+    c = db.query(Community).filter_by(id=d.comm_id).first()
+    if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
+    db.add(CommunityChannel(comm_id=d.comm_id, name=d.name, channel_type=d.type, is_private=d.is_private, banner_url=d.banner_url)); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/channel/edit")
-def edit_channel(channel_id: int=Form(...), user_id: int=Form(...), name: str=Form(...), type: str=Form(...), is_private: int=Form(...), banner_url: str=Form(None), db: Session=Depends(get_db)):
-    ch = db.query(CommunityChannel).filter_by(id=channel_id).first()
+def edit_channel(d: EditChannelData, db: Session=Depends(get_db)):
+    ch = db.query(CommunityChannel).filter_by(id=d.channel_id).first()
     if not ch: return {"status": "error"}
-    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=user_id).first()
+    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=d.user_id).first()
     c = db.query(Community).filter_by(id=ch.comm_id).first()
-    if (not role or role.role != "admin") and (c and c.creator_id != user_id): return {"status": "error"}
-    ch.name = name; ch.channel_type = type; ch.is_private = is_private
-    if banner_url: ch.banner_url = banner_url
+    if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
+    ch.name = d.name; ch.channel_type = d.type; ch.is_private = d.is_private
+    if d.banner_url: ch.banner_url = d.banner_url
     db.commit()
     return {"status": "ok"}
 
 @app.post("/community/channel/{chid}/delete")
-def destroy_channel(chid: int, d: dict, db: Session=Depends(get_db)):
-    uid = d.get('user_id')
+def destroy_channel(chid: int, d: UserIdData, db: Session=Depends(get_db)):
     ch = db.query(CommunityChannel).filter_by(id=chid).first()
     if not ch: return {"status": "error"}
-    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=uid).first()
+    role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=d.user_id).first()
     c = db.query(Community).filter_by(id=ch.comm_id).first()
-    if (not role or role.role != "admin") and (c and c.creator_id != uid): return {"status": "error"}
+    if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
     db.query(CommunityMessage).filter_by(channel_id=chid).delete()
     db.delete(ch); db.commit()
     return {"status": "ok"}
@@ -1940,38 +1933,65 @@ def destroy_channel(chid: int, d: dict, db: Session=Depends(get_db)):
 @app.get("/community/channel/{chid}/messages")
 def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
     msgs = db.query(CommunityMessage).filter_by(channel_id=chid).order_by(CommunityMessage.timestamp.asc()).limit(100).all()
-    res = []
-    for m in msgs:
-        b = get_user_badges(m.sender.xp, m.sender.id, getattr(m.sender, 'role', 'membro'))
-        res.append({"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300})
-    return res
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300, **format_user_summary(m.sender)} for m in msgs]
+
+@app.post("/group/create")
+def create_group(d: CreateGroupData, db: Session=Depends(get_db)):
+    grp = ChatGroup(name=d.name)
+    db.add(grp); db.commit(); db.refresh(grp)
+    db.add(GroupMember(group_id=grp.id, user_id=d.creator_id))
+    for mid in d.member_ids: db.add(GroupMember(group_id=grp.id, user_id=mid))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/group/{group_id}/messages")
+def get_group_msgs(group_id: int, db: Session=Depends(get_db)):
+    msgs = db.query(GroupMessage).filter_by(group_id=group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
+    return [{"id": m.id, "user_id": m.sender_id, "content": m.content, "timestamp": get_utc_iso(m.timestamp), "avatar": m.sender.avatar_url, "username": m.sender.username, "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300, **format_user_summary(m.sender)} for m in msgs]
+
+@app.post("/call/bg/set")
+def set_call_bg(d: SetWallpaperData, db: Session=Depends(get_db)):
+    config = db.query(UserConfig).filter_by(target_type=d.target_type, target_id=d.target_id).first()
+    if config: config.wallpaper_url = d.bg_url
+    else: db.add(UserConfig(user_id=d.user_id or 0, target_type=d.target_type, target_id=d.target_id, wallpaper_url=d.bg_url))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/call/bg/{target_type}/{target_id}")
+def get_call_bg(target_type: str, target_id: str, db: Session=Depends(get_db)):
+    config = db.query(UserConfig).filter_by(target_type=target_type, target_id=target_id).first()
+    return {"bg_url": config.wallpaper_url if config else None}
+    
+@app.get("/agora-config")
+def get_agora_config(): 
+    return {"app_id": AGORA_APP_ID}
+
+@app.get("/users/basic/{uid}")
+def get_basic_user(uid: int, db: Session=Depends(get_db)):
+    u = db.query(User).filter_by(id=uid).first()
+    if u: return {"name": u.username, "avatar": u.avatar_url}
+    return {"name": "Desconhecido", "avatar": "https://ui-avatars.com/api/?name=?"}
 
 # HELPER WS: DM
 def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     parts = ch.split("_")
     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
     new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
-    db.add(new_msg)
-    db.commit()
-    db.refresh(new_msg)
+    db.add(new_msg); db.commit(); db.refresh(new_msg)
     return new_msg, rec_id
 
 # HELPER WS: COMM
 def handle_comm_message(db: Session, ch: str, uid: int, txt: str):
     chid = int(ch.split("_")[1])
     new_msg = CommunityMessage(channel_id=chid, sender_id=uid, content=txt)
-    db.add(new_msg)
-    db.commit()
-    db.refresh(new_msg)
+    db.add(new_msg); db.commit(); db.refresh(new_msg)
     return new_msg, None
 
 # HELPER WS: GROUP
 def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     grid = int(ch.split("_")[1])
     new_msg = GroupMessage(group_id=grid, sender_id=uid, content=txt)
-    db.add(new_msg)
-    db.commit()
-    db.refresh(new_msg)
+    db.add(new_msg); db.commit(); db.refresh(new_msg)
     return new_msg, None
 
 @app.websocket("/ws/{ch}/{uid}")
@@ -1981,6 +2001,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         while True:
             txt = await ws.receive_text()
             
+            # --- COMANDOS DE SINALIZAÇÃO RÁPIDA (Sem Banco de Dados) ---
             if txt == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
                 continue
@@ -1990,7 +2011,10 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 continue
             if txt.startswith("CALL_SIGNAL:"):
                 parts = txt.split(":")
-                await manager.send_personal({"type": f"call_{parts[2]}", "channel": parts[3]}, int(parts[1]))
+                target = int(parts[1])
+                action = parts[2]
+                channel = parts[3]
+                await manager.send_personal({"type": f"call_{action}", "channel": channel}, target)
                 continue
             if txt.startswith("SYNC_BG:"):
                 parts = txt.split(":", 2)
@@ -1998,6 +2022,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     await manager.broadcast({"type": "sync_bg", "channel": parts[1], "bg_url": parts[2]}, "Geral")
                 continue
                 
+            # --- LÓGICA DE MENSAGENS (Usa os Helpers e o Banco de Dados) ---
             db = SessionLocal()
             try:
                 u_fresh = db.query(User).filter_by(id=uid).first()
@@ -2007,6 +2032,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 new_msg = None
                 target_dm_id = None
                 
+                # Delega o trabalho para os Helpers
                 if ch.startswith("dm_"):
                     new_msg, target_dm_id = handle_dm_message(db, ch, uid, txt)
                     if target_dm_id:
@@ -2016,6 +2042,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 elif ch.startswith("group_"):
                     new_msg, _ = handle_group_message(db, ch, uid, txt)
                 
+                # Se a mensagem foi salva com sucesso, distribui para a galera
                 if new_msg:
                     b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
                     user_data = {
@@ -2037,11 +2064,11 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         
             except Exception as e: 
                 db.rollback()
-                logger.error(f"Erro no WebSocket: {e}") 
+                logger.error(f"Erro crítico no WebSocket ao salvar mensagem: {e}") 
             finally: 
                 db.close()
     except Exception as e:
-        logger.info(f"WS fechado pelo uid {uid}: {e}")
+        logger.info(f"Conexão WS fechada pelo usuário {uid}: {e}")
         manager.disconnect(ws, ch, uid)
 
 @app.get("/user/{target_id}")
@@ -2049,6 +2076,7 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
     target = db.query(User).filter_by(id=target_id).first()
     viewer = db.query(User).filter_by(id=viewer_id).first()
     
+    # Blindagem: se o Neon der uma engasgada ou o usuário sumir, não quebra a tela!
     if not target or not viewer:
         return {
             "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", 
@@ -2062,39 +2090,18 @@ async def get_user_profile(target_id: int, viewer_id: int, db: Session=Depends(g
     status = "friends" if target in viewer.friends else "none"
     req_id = None
     if status == "none":
-        sent = db.query(FriendRequest).filter(FriendRequest.sender_id == viewer_id, FriendRequest.receiver_id == target_id).first()
-        received = db.query(FriendRequest).filter(FriendRequest.sender_id == target_id, FriendRequest.receiver_id == viewer_id).first()
+        sent = db.query(FriendRequest).filter_by(sender_id=viewer_id, receiver_id=target_id).first()
+        received = db.query(FriendRequest).filter_by(sender_id=target_id, receiver_id=viewer_id).first()
         if sent: status = "pending_sent"
         if received: status = "pending_received"; req_id = received.id
         
-    b = get_user_badges(target.xp, target.id, getattr(target, 'role', 'membro'))
-    return {"username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, "bio": target.bio, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem'], "medals": b['medals'], "percent": b['percent'], "next_xp": b['next_xp'], "next_rank": b['next_rank'], "posts": posts_data, "friend_status": status, "request_id": req_id}
+    # Usa o novo Helper de sumário (DRY)
+    return {
+        "username": target.username, "avatar_url": target.avatar_url, "cover_url": target.cover_url, 
+        "bio": target.bio, "posts": posts_data, "friend_status": status, "request_id": req_id, 
+        **format_user_summary(target)
+    }
 
-@app.post("/profile/set_wallpaper")
-async def set_wallpaper(d: dict, db: Session=Depends(get_db)):
-    config = db.query(UserConfig).filter_by(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id']).first()
-    if config:
-        config.wallpaper_url = d['url']
-    else:
-        db.add(UserConfig(user_id=d['user_id'], target_type=d['target_type'], target_id=d['target_id'], wallpaper_url=d['url']))
-    db.commit()
-    return {"status": "ok"}
-
-@app.get("/profile/get_wallpaper")
-async def get_wallpaper(uid: int, type: str, tid: str, db: Session=Depends(get_db)):
-    config = db.query(UserConfig).filter_by(user_id=uid, target_type=type, target_id=tid).first()
-    return {"url": config.wallpaper_url if config else None}
-    
-@app.get("/agora-config")
-async def get_agora_config(): 
-    return {"app_id": AGORA_APP_ID}
-
-@app.get("/users/basic/{uid}")
-async def get_basic_user(uid: int, db: Session=Depends(get_db)):
-    u = db.query(User).filter_by(id=uid).first()
-    if u: return {"name": u.username, "avatar": u.avatar_url}
-    return {"name": "Desconhecido", "avatar": "https://ui-avatars.com/api/?name=?"}
-    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
