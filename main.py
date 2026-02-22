@@ -1757,7 +1757,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 CANCELAR</button>
 </div>
 
-<div id="modal-login" class="modal hidden">
+<div id="modal-login" class="modal">
     <div class="modal-box">
         <h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1>
         <div id="login-form">
@@ -2221,9 +2221,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch(e) {}
         localStorage.removeItem('token');
     }
-
-    // Sem token — mostrar login
-    showLoginScreen();
+    // Modal de login já está visível no HTML por padrão — não precisa fazer nada
 });
 
 function showLoginScreen() {
