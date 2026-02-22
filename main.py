@@ -184,7 +184,7 @@ class UserConfig(Base):
     __tablename__ = "user_configs"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-    target_type = Column(String)
+    target_type = Column(String) 
     target_id = Column(String)
     wallpaper_url = Column(String, default="")
 
@@ -291,7 +291,7 @@ def format_user_summary(user: User):
     b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
     return {"id": user.id, "username": user.username, "avatar_url": user.avatar_url, "rank": b['rank'], "color": b['color'], "special_emblem": b['special_emblem']}
 
-# --- FRONTEND COMPLETAMENTE REVISADO ---
+# --- FRONTEND COMPLETAMENTE REVISADO E RESPONSIVO ---
 html_content = r"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -449,6 +449,8 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .btn-float{bottom:80px}
     #floating-call-btn { bottom: 80px; right: 20px; width:60px; height:60px; font-size:30px; }
     #expanded-call-panel { bottom: 150px; right: 20px; width: 90%; max-width: 320px; }
+    .profile-header-container { height: 140px; margin-bottom: 50px; }
+    .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
 </style>
 </head>
@@ -855,6 +857,10 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 <script>
 window.deleteTarget = {type: null, id: null};
 
+// CLOUDINARY - INJETADO PARA NÃO QUEBRAR O JS
+const CLOUD_NAME = "dqa0q3qlx";
+const UPLOAD_PRESET = "for_glory_preset";
+
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -918,7 +924,7 @@ const T = {
         'new_squad': 'NUEVO ESCUADRÓN', 'group_name': 'Nombre del Grupo', 'select_allies': 'Selecciona aliados:', 'create': 'CREAR',
         'new_post': 'NUEVO POST', 'caption_placeholder': 'Leyenda...', 'publish': 'PUBLICAR (+50 XP)',
         'edit_profile': 'EDITAR PERFIL', 'bio_placeholder': 'Escribe tu Bio...', 'save': 'GUARDAR',
-        'edit_base': 'EDIT BASE', 'base_avatar': 'Nuevo Avatar', 'base_banner': 'Nuevo Banner',
+        'edit_base': 'EDITAR BASE', 'base_avatar': 'Nuevo Avatar', 'base_banner': 'Nuevo Banner',
         'stealth_on': '🕵️ MODO FURTIVO: ON', 'stealth_off': '🟢 MODO FURTIVO: OFF', 'search_soldier': 'Buscar Soldado...', 'requests': '📩 Solicitudes', 'friends': '👥 Amigos', 'disconnect': 'DESCONECTAR',
         'private_msgs': 'MENSAJES PRIVADOS', 'group_x1': '+ ESCUADRÓN DM', 'my_bases': '🛡️ MIS BASES', 'create_base': '+ CREAR BASE',
         'explore_bases': '🌐 EXPLORAR BASES', 'search_base': 'Buscar Base...', 'my_history': '🕒 MI HISTORIAL',
@@ -970,6 +976,7 @@ window.currentAgoraChannel = null;
 window.isCaller = false;
 window.callTargetId = null;
 
+// Desbloqueador de Áudio Automático
 document.body.addEventListener('click', () => {
     if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
 }, { once: true });
@@ -1051,7 +1058,7 @@ async function connectToAgora(channelName, typeParam) {
     
     try {
         let res = await fetch('/agora-config'); let conf = await res.json();
-        if (!conf.app_id) { showToast("Erro: Central de Rádio Offline (Falta App ID)."); return; }
+        if (!conf.app_id || conf.app_id.trim() === "") { showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)"); leaveCall(); return; }
         if (rtc.client) { await rtc.client.leave(); }
         
         try {
@@ -1077,7 +1084,7 @@ async function connectToAgora(channelName, typeParam) {
         await rtc.client.join(conf.app_id, channelName, null, user.id);
         
         try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
-        catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador."); leaveCall(); return; }
+        catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
         
         await rtc.client.publish([rtc.localAudioTrack]);
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
@@ -1390,7 +1397,7 @@ async function toggleRecord(type) {
                 inp.placeholder=`${t('recording')} ${mins}:${secs} ${t('click_to_send')}`;
             },1000);
         } 
-    }catch(e){ console.error(e); showToast("Mic Blocked!");} 
+    }catch(e){ console.error(e); showToast("Sem Microfone!");} 
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let hData=await hist.json();let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
@@ -1404,9 +1411,11 @@ async function toggleComments(pid){let sec=document.getElementById(`comments-${p
 async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
 async function sendComment(pid){try{let inp=document.getElementById(`comment-inp-${pid}`);let text=inp.value.trim();if(!text)return;let r=await fetch('/post/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:pid,user_id:user.id,text:text})});if(r.ok){inp.value='';toggleEmoji(true);lastFeedHash="";loadFeed();}}catch(e){ console.error(e); }}
 async function fetchChatMessages(id,type){let list=document.getElementById('dm-list');let fetchUrl=type==='group'?`/group/${id}/messages?nocache=${new Date().getTime()}`:`/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;try{let r=await fetch(fetchUrl);if(r.ok){let msgs=await r.json();let isAtBottom=(list.scrollHeight-list.scrollTop<=list.clientHeight+50);(msgs||[]).forEach(d=>{let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let m=(d.user_id===user.id);let c=d.content;let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;list.insertAdjacentHTML('beforeend',h);}});if(isAtBottom)list.scrollTop=list.scrollHeight;}}catch(e){ console.error(e); }}
+
 function connectDmWS(id,name,type){if(dmWS)dmWS.close();let p=location.protocol==='https:'?'wss:':'ws:';let ch=type==='group'?`group_${id}`:`dm_${Math.min(user.id,id)}_${Math.max(user.id,id)}`;dmWS=new WebSocket(`${p}//${location.host}/ws/${ch}/${user.id}`);dmWS.onclose=()=>{setTimeout(()=>{if(currentChatId===id&&document.getElementById('view-dm').classList.contains('active')){fetchChatMessages(id,type);connectDmWS(id,name,type);}},2000);};dmWS.onmessage=e=>{let d=JSON.parse(e.data);let b=document.getElementById('dm-list');let m=parseInt(d.user_id)===parseInt(user.id);let c=d.content;if(d.type==='ping'||d.type==='pong')return;
     if (c.startsWith('[CALL_BG]')) { return; }
     let prefix=type==='group'?'group_msg':'dm_msg';let msgId=`${prefix}-${d.id}`;if(!document.getElementById(msgId)){let delBtn='';let timeHtml=d.timestamp?`<span class="msg-time">${formatMsgTime(d.timestamp)}</span>`:'';if(c==='[DELETED]'){c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;}else{if(c.startsWith('[AUDIO]')){c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;}else if(c.startsWith('http')&&c.includes('cloudinary')){if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;}else{c=`<img src="${c}" style="max-width:100%;border-radius:10px;cursor:pointer;border:1px solid #444;" onclick="window.open(this.src)">`;}}delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';}let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;b.insertAdjacentHTML('beforeend',h);b.scrollTop=b.scrollHeight;} let isDmActive=document.getElementById('view-dm').classList.contains('active');if(isDmActive&&currentChatType==='1v1'&&currentChatId===d.user_id){fetch(`/inbox/read/${d.user_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})}).then(()=>fetchUnread());}else{fetchUnread();}};}
+
 async function openChat(id,name,type){let changingChat=(currentChatId!==id||currentChatType!==type);currentChatId=id;currentChatType=type;document.getElementById('dm-header-name').innerText=name;goView('dm');if(type==='1v1'){await fetch(`/inbox/read/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.id})});fetchUnread();}if(changingChat){document.getElementById('dm-list').innerHTML='';}await fetchChatMessages(id,type);if(changingChat||!dmWS||dmWS.readyState!==WebSocket.OPEN){connectDmWS(id,name,type);}}
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(dmWS)dmWS.send(c.secure_url);}catch(e){ console.error(e); }}
@@ -1422,7 +1431,8 @@ async function openCommunity(cid, keepInfoOpen=false){
     activeCommId=cid;goView('comm-dashboard');
     let infoArea = document.getElementById('comm-info-area');
     let chatArea = document.getElementById('comm-chat-area');
-    if(!keepInfoOpen) { infoArea.style.display='none'; chatArea.style.display='flex'; }
+    let isInfoOpen = infoArea.style.display === 'flex';
+    if(!keepInfoOpen && !isInfoOpen) { infoArea.style.display='none'; chatArea.style.display='flex'; }
     
     try{
         let r=await fetch(`/community/${cid}/${user.id}?nocache=${new Date().getTime()}`);let d=await r.json();
@@ -1456,7 +1466,7 @@ async function openCommunity(cid, keepInfoOpen=false){
                 let editBtn=(d.is_admin||d.creator_id===user.id)?`<span style="margin-left:5px;font-size:11px;cursor:pointer;opacity:0.7;" onclick="event.stopPropagation(); openEditChannelModal(${ch.id}, '${ch.name}', '${ch.type}', ${ch.is_private})">⚙️</span>`:'';
                 cb.innerHTML+=`<button class="channel-btn" style="${bgStyle}" onclick="joinChannel(${ch.id}, '${ch.type}', this)">${icon}${ch.name} ${editBtn}</button>`;
             });
-            if(!keepInfoOpen) { joinChannel(sortedChannels[0].id,sortedChannels[0].type,cb.children[0]); }
+            if(!keepInfoOpen && !isInfoOpen) { joinChannel(sortedChannels[0].id,sortedChannels[0].type,cb.children[0]); }
         }else{document.getElementById('comm-chat-list').innerHTML="";}
     }catch(e){ console.error(e); }
 }
@@ -1481,7 +1491,7 @@ async function joinChannel(chid,type,btnElem){let changingChannel=(activeChannel
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let c=await uploadToCloudinary(f);if(commWS)commWS.send(c.secure_url);}catch(e){ console.error(e); }}
 
-async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<div style="display:flex; justify-content:center; align-items:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:10px 15px;border-radius:12px;font-weight:bold;">${t('ally')}</span> <button class="glass-btn" style="padding:10px 20px;border-color:var(--primary);font-size:14px;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:10px 20px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
+async function openPublicProfile(uid){try{let r=await fetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`);let d=await r.json();document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<div style="display:flex; justify-content:center; align-items:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
 
 async function uploadToCloudinary(file){
     let limiteMB=100;
@@ -1541,6 +1551,7 @@ def toggle_stealth(d: UserIdData, db: Session=Depends(get_db)):
 def get_notifications(uid: int, db: Session=Depends(get_db)):
     unread_pms = db.query(PrivateMessage.sender_id).filter(PrivateMessage.receiver_id == uid, PrivateMessage.is_read == 0).all()
     pm_counts = Counter([str(u[0]) for u in unread_pms])
+    total_dms = sum(pm_counts.values())
     
     my_comms = db.query(Community).filter(Community.creator_id == uid).all()
     my_admin_roles = db.query(CommunityMember).filter_by(user_id=uid, role="admin").all()
@@ -1553,7 +1564,7 @@ def get_notifications(uid: int, db: Session=Depends(get_db)):
         
     friend_reqs_count = db.query(FriendRequest).filter_by(receiver_id=uid).count()
     
-    return {"dms": {"total": sum(pm_counts.values()), "by_sender": dict(pm_counts)}, "comms": {"total": sum(req_counts.values()), "by_comm": dict(req_counts)}, "friend_reqs": friend_reqs_count}
+    return {"dms": {"total": total_dms, "by_sender": dict(pm_counts)}, "comms": {"total": sum(req_counts.values()), "by_comm": dict(req_counts)}, "friend_reqs": friend_reqs_count}
 
 @app.get("/inbox/unread/{uid}")
 def get_unread(uid: int, db: Session=Depends(get_db)):
@@ -1895,8 +1906,7 @@ def create_channel(d: CreateChannelData, db: Session=Depends(get_db)):
     role = db.query(CommunityMember).filter_by(comm_id=d.comm_id, user_id=d.user_id).first()
     c = db.query(Community).filter_by(id=d.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
-    db.add(CommunityChannel(comm_id=d.comm_id, name=d.name, channel_type=d.type, is_private=d.is_private, banner_url=d.banner_url))
-    db.commit()
+    db.add(CommunityChannel(comm_id=d.comm_id, name=d.name, channel_type=d.type, is_private=d.is_private, banner_url=d.banner_url)); db.commit()
     return {"status": "ok"}
 
 @app.post("/community/channel/edit")
@@ -1906,9 +1916,7 @@ def edit_channel(d: EditChannelData, db: Session=Depends(get_db)):
     role = db.query(CommunityMember).filter_by(comm_id=ch.comm_id, user_id=d.user_id).first()
     c = db.query(Community).filter_by(id=ch.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
-    ch.name = d.name
-    ch.channel_type = d.type
-    ch.is_private = d.is_private
+    ch.name = d.name; ch.channel_type = d.type; ch.is_private = d.is_private
     if d.banner_url: ch.banner_url = d.banner_url
     db.commit()
     return {"status": "ok"}
@@ -1921,8 +1929,7 @@ def destroy_channel(chid: int, d: UserIdData, db: Session=Depends(get_db)):
     c = db.query(Community).filter_by(id=ch.comm_id).first()
     if (not role or role.role != "admin") and (c and c.creator_id != d.user_id): return {"status": "error"}
     db.query(CommunityMessage).filter_by(channel_id=chid).delete()
-    db.delete(ch)
-    db.commit()
+    db.delete(ch); db.commit()
     return {"status": "ok"}
 
 @app.get("/community/channel/{chid}/messages")
@@ -1934,7 +1941,7 @@ def get_comm_msgs(chid: int, db: Session=Depends(get_db)):
 def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     parts = ch.split("_")
     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
-    new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
+  new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
     db.add(new_msg); db.commit(); db.refresh(new_msg)
     return new_msg, rec_id
 
