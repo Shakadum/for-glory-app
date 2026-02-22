@@ -49,6 +49,13 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 def get_password_hash(password):
+    if isinstance(password, str):
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password = password_bytes[:72].decode('utf-8', errors='ignore')
+    return pwd_context.hash(password)
+
+def get_password_hash(password):
     logger.info(f"get_password_hash recebeu senha de {len(password)} caracteres")
 
 def authenticate_user(db: Session, username: str, password: str):
@@ -3054,4 +3061,5 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
