@@ -572,7 +572,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @app.post("/login")
 async def login_legacy(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     return await login_for_access_token(form_data, db)
-    @app.post("/auth/forgot-password")
+
+@app.post("/auth/forgot-password")
 def forgot_password(d: ForgotPasswordData, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(email=d.email).first()
     if user:
@@ -3035,6 +3036,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
