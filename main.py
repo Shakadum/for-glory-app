@@ -59,6 +59,40 @@ def get_password_hash(password):
     logger.info(f"get_password_hash recebeu senha de {len(password)} caracteres")
 
 def authenticate_user(db: Session, username: str, password: str):
+    logger.info(f"Tentativa de login para usuário: {username}")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        logger.warning(f"Usuário {username} não encontrado")
+        return False
+    if not user.password_hash:
+        logger.warning(f"Usuário {username} com password_hash vazio")
+        return False
+
+    logger.info(f"Hash armazenado: {user.password_hash[:50]}...")
+    # Tenta bcrypt
+    if user.password_hash.startswith("$2b$"):
+        try:
+            if verify_password(password, user.password_hash):
+                logger.info("Senha correta (bcrypt)")
+                return user
+            else:
+                logger.warning("Senha incorreta (bcrypt)")
+        except Exception as e:
+            logger.error(f"Erro ao verificar bcrypt: {e}")
+
+    # Tenta SHA256 (legado) – se aplicável
+    if len(user.password_hash) == 64:  # tamanho de SHA256 hex
+        import hashlib
+        if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
+            logger.info("Senha correta (SHA256) - atualizando para bcrypt")
+            user.password_hash = get_password_hash(password)
+            db.commit()
+            return user
+
+    logger.warning(f"Nenhum método válido para {username}")
+    return False
+
+def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.password_hash:
         return False
@@ -573,6 +607,14 @@ def register(d: RegisterData, db: Session = Depends(get_db)):
     ))
     db.commit()
     return {"status": "ok"}
+
+def get_password_hash(password):
+    # Garante que a senha não ultrapasse 72 bytes (bcrypt limit)
+    if isinstance(password, str):
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password = password_bytes[:72].decode('utf-8', errors='ignore')
+    return pwd_context.hash(password)
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -3061,5 +3103,6 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
