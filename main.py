@@ -3246,13 +3246,6 @@ async function searchUsers(){let q=document.getElementById('search-input').value
 """
 
 # ----------------------------------------------------------------------
-# ROTA PRINCIPALu.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
-</script>
-</body>
-</html>
-"""
-
-# ----------------------------------------------------------------------
 # ROTA PRINCIPAL (FRONTEND)
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
@@ -3262,4 +3255,5 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
