@@ -46,24 +46,31 @@ import hashlib
 
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
-    if not user or not user.password_hash:
+    if not user:
+        logger.warning(f"Usuário {username} não encontrado")
+        return False
+    if not user.password_hash:
+        logger.warning(f"Usuário {username} com password_hash vazio")
         return False
 
-    # Tenta bcrypt apenas se o hash parecer bcrypt
+    logger.info(f"Hash de {username}: {user.password_hash[:20]}...")  # log parcial
+
+    # Tenta bcrypt
     if user.password_hash.startswith("$2b$"):
         try:
             if verify_password(password, user.password_hash):
                 return user
-        except Exception:
-            pass  # Falha na verificação bcrypt, continua para SHA256
+        except Exception as e:
+            logger.error(f"Erro ao verificar bcrypt para {username}: {e}")
 
-    # Tenta SHA256 (legado)
+    # Tenta SHA256
     if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
-        # Atualiza para bcrypt
+        logger.info(f"Atualizando senha de {username} de SHA256 para bcrypt")
         user.password_hash = get_password_hash(password)
         db.commit()
         return user
 
+    logger.warning(f"Nenhum método válido para {username}")
     return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -3045,6 +3052,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
