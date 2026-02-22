@@ -127,6 +127,9 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForGlory")
 
+logger.info(f"DATABASE_URL existe: {os.environ.get('DATABASE_URL') is not None}")
+logger.info(f"SECRET_KEY existe: {os.environ.get('SECRET_KEY') is not None}")
+
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_NAME', 'dqa0q3qlx'),
     api_key=os.environ.get('CLOUDINARY_KEY', ''),
@@ -3259,3 +3262,4 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
