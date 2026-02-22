@@ -41,14 +41,20 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
+import hashlib
+
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
-    if not user:
+    if not user or not user.password_hash:
         return False
 
-    # Tenta bcrypt
-    if verify_password(password, user.password_hash):
-        return user
+    # Tenta bcrypt apenas se o hash parecer bcrypt
+    if user.password_hash.startswith("$2b$"):
+        try:
+            if verify_password(password, user.password_hash):
+                return user
+        except Exception:
+            pass  # Falha na verificação bcrypt, continua para SHA256
 
     # Tenta SHA256 (legado)
     if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
@@ -590,8 +596,10 @@ def reset_password(d: ResetPasswordData, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(email=email).first()
     if not user:
         raise HTTPException(404, "Usuário não encontrado")
-    user.password_hash = get_password_hash(d.new_password)
-    db.commit()
+    new_hash = get_password_hash(d.new_password)
+print(f"Novo hash: {new_hash}")  # ou logger.info
+user.password_hash = new_hash
+db.commit()
     return {"status": "ok"}
 
 @app.get("/users/me")
@@ -3036,6 +3044,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
