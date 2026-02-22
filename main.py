@@ -2447,12 +2447,12 @@ function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?"))
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
 async function doLogin() {
-    alert('função doLogin executada');
+    alert('função definida manualmente');
     let formData = new FormData();
     formData.append('username', document.getElementById('l-user').value);
     formData.append('password', document.getElementById('l-pass').value);
     let r = await fetch('/token', { method: 'POST', body: formData });
-    if (!r.ok) { showToast("Erro"); return; }
+    if (!r.ok) { alert('Erro'); return; }
     let data = await r.json();
     localStorage.setItem('token', data.access_token);
     let me = await fetch('/users/me', { headers: { 'Authorization': `Bearer ${data.access_token}` } });
@@ -3255,5 +3255,6 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
