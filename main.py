@@ -2381,6 +2381,7 @@ function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?"))
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
 async function doLogin() {
+    alert('função doLogin executada');
     let formData = new FormData();
     formData.append('username', document.getElementById('l-user').value);
     formData.append('password', document.getElementById('l-pass').value);
@@ -2998,5 +2999,6 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
