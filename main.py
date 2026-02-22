@@ -21,11 +21,17 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import status
 
 # ----------------------------------------------------------------------
+# LOGGER (definido cedo para uso nas funções de segurança)
+# ----------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ForGlory")
+
+# ----------------------------------------------------------------------
 # CONFIGURAÇÕES DE SEGURANÇA
 # ----------------------------------------------------------------------
 SECRET_KEY = os.environ.get("SECRET_KEY", "sua_chave_secreta_super_segura_123")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -124,11 +130,6 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 # ----------------------------------------------------------------------
 # CONFIGURAÇÕES GERAIS
 # ----------------------------------------------------------------------
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ForGlory")
-
-logger.info(f"DATABASE_URL existe: {os.environ.get('DATABASE_URL') is not None}")
-logger.info(f"SECRET_KEY existe: {os.environ.get('SECRET_KEY') is not None}")
 
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_NAME', 'dqa0q3qlx'),
@@ -2233,6 +2234,17 @@ function stopSounds() {
 
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('token');
+    if (token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (Date.now() >= payload.exp * 1000) {
+                localStorage.removeItem('token');
+                showToast('⚠️ Sessão expirada. Faça login novamente.');
+                goView('auth');
+                return new Response(null, { status: 401 });
+            }
+        } catch(e) {}
+    }
     if (!token) {
         window.location.reload();
         throw new Error('No token');
@@ -2447,7 +2459,6 @@ function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?"))
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
 async function doLogin() {
-    alert('função definida manualmente');
     let formData = new FormData();
     formData.append('username', document.getElementById('l-user').value);
     formData.append('password', document.getElementById('l-pass').value);
@@ -3204,20 +3215,7 @@ async function joinChannel(chid, type, btnElem) {
     }
 }
 function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
-async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try }
-        if (changingChannel) {
-            document.getElementById('comm-chat-list').innerHTML = '';
-        }
-        await fetchCommMessages(chid);
-        if (!commWS || commWS.readyState !== WebSocket.OPEN) {
-            connectCommWS(chid);
-        }
-    }
-}
-function sendCommMsg(){let i=document.getElementById('comm-msg');let msg=i.value.trim();if(msg&&commWS&&commWS.readyState===WebSocket.OPEN){commWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadCommImage(){let f=document.getElementById('comm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(commWS) commWS.send(data.secure_url); }catch(e){{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(commWS) commWS.send(data.secure_url); }catch(e){ console.error(e); }}
-
-async function openPublicProfile(uid){try{let r=await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById(' console.error(e); }}
 
 async function openPublicProfile(uid){try{let r=await authFetch(`/user/${uid}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d=await r.json(); document.getElementById('pub-avatar').src=d.avatar_url;let pc=document.getElementById('pub-cover');pc.src=d.cover_url;pc.style.display='block';document.getElementById('pub-name').innerText=d.username;document.getElementById('pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){pub-bio').innerText=d.bio;document.getElementById('pub-emblems').innerHTML=formatRankInfo(d.rank,d.special_emblem,d.color);renderMedals('pub-medals-box',d.medals,true);let ab=document.getElementById('pub-actions');ab.innerHTML='';document.getElementById('pub-status-dot').setAttribute('data-uid',uid);updateStatusDots();if(d.friend_status==='friends'){ab.innerHTML=`<div style="display:flex; justify-content:center; align-itemsab.innerHTML=`<div style="display:flex; justify-content:center; align-items:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1:center; gap:10px; width:100%;"><span style="color:#66fcf1;border:1px solid #66fcf1;padding:8px 12px;border-radius:12px;font-weight:bold;font-size:12px;">${t('ally')}</span> <button class="glass-btn" style="padding:8px 15px; border-color:var(--primary); font-size:12px; max-width:120px; margin:0;" onclick="openChat(${uid}, '${d.username}', '1v1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">${tv1')">💬 Mensagem</button></div><div style="width:100%; margin-top:15px; text-align:center;"><button class="glass-btn danger-btn" style="padding:8px 15px; font-size:12px; width:auto; display:inline-block; margin:0;" onclick="unfriend(${uid})">❌ Desfazer Amizade</button></div>`;}else if(d.friend_status==='pending_sent'){ab.innerHTML=`<span style="color:orange;border:1px solid orange;padding:10px 15px;border-radius:12px;">${t('sent')}</span>`;}else if(d.friend_status==='pending_received'){ab.innerHTML=`<button class="glass-btn" onclick="handleReq(${d.request_id},'accept')">${t('accept_ally')}</button>`;}else{ab.innerHTML=`<button class="glass-btn" style="padding:10px 20px; font-size:13px; max-width:200px; display:block; margin: 0 auto;" onclick="sendRequest(${uid})">('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
 
@@ -3226,19 +3224,9 @@ async function uploadToCloudinary(file){
     return Promise.reject("Use /upload");
 }
 
-async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub${t('recruit_ally')}</button>`;}let g=document.getElementById('pub-grid');g.innerHTML='';(d.posts||[]).forEach(p=>{g.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;" controls></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)">`});goView('public-profile')}catch(e){ console.error(e); }}
-
-async function uploadToCloudinary(file){
-    // Não usado mais – substituído por upload via backend
-    return Promise.reject("Use /upload");
-}
-
 async function submitPost(){let f=document.getElementById('file-upload').files[0];let cap=document.getElementById('caption-upload').value;if(!f)return;let btn=document.getElementById('btn-pub');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); let payload={ caption: cap, content_url: data.secure_url, media_type: data.resource_type }; let r=await authFetch('/post/create_from_url', {method:'POST', body:JSON');btn.disabled=true;document.getElementById('upload-progress').style.display='block';document.getElementById('progress-text').style.display='block';try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); let payload={ caption: cap, content_url: data.secure_url, media_type: data.resource_type }; let r=await authFetch('/post/create_from_url', {method:'POST', body:JSON.stringify(p.stringify(payload)}); if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
-async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementByIdayload)}); if(r.ok){lastFeedHash="";loadFeed();closeUpload();loadMyHistory();updateProfileState();}}catch(e){ console.error(e); }finally{btn.disabled=false;document.getElementById('upload-progress').style.display='none';document.getElementById('progress-text').style.display='none';document.getElementById('progress-bar').style.width='0%';}}
 async function updateProfile(){let btn=document.getElementById('btn-save-profile');btn.disabled=true;try{let f=document.getElementById('avatar-upload').files[0];let c=document.getElementById('cover-upload').files[0];let b=document.getElementById('bio-update').value;let au=null,cu=null;if(f){let formData = new FormData(); formData.append('file', f); let res =('bio-update').value;let au=null,cu=null;if(f){let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(c){let formData = new FormData(); formData.append('file', c); let res = await authFetch('/upload', { method: 'POST', body: formData, await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(c){let formData = new FormData(); formData.append('file', c); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: headers: {} }); let data = await res.json(); cu = data.secure_url; } let payload={ avatar_url: au, cover_url: cu, bio: b }; let r=await authFetch('/profile/update_meta', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
-function clearSearch(){document.getElementById('search-input'). {} }); let data = await res.json(); cu = data.secure_url; } let payload={ avatar_url: au, cover_url: cu, bio: b }; let r=await authFetch('/profile/update_meta', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}}catch(e){ console.error(e); }finally{btn.disabled=false;}}
 function clearSearch(){document.getElementById('search-input').value='';document.getElementById('search-results').innerHTML='';}
-async function searchUsers(){let q=document.getElementById('search-input').value;if(!qvalue='';document.getElementById('search-results').innerHTML='';}
 async function searchUsers(){let q=document.getElementById('search-input').value;if(!q)return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime())return;try{let r=await fetch(`/users/search?q=${q}&nocache=${new Date().getTime()}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin}`);let res=await r.json();let b=document.getElementById('search-results');b.innerHTML='';(res||[]).forEach(u=>{if(u.id!==user.id)b.innerHTML+=`<div style="padding:10px;background:rgba(255,255,255,0.05);margin-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${-top:5px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPublicProfile(${u.id})"><div class="av-wrap"><img src="${u.avatar_url}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;margin:0;"><div class="status-dot" data-uid="${u.id}"></div></div><span>${u.username}</span></div>`});updateStatusDots();}catch(e){ console.error(e); }}
 </script>
 </body>
@@ -3255,6 +3243,5 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
 
 
