@@ -597,9 +597,9 @@ def reset_password(d: ResetPasswordData, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(404, "Usuário não encontrado")
     new_hash = get_password_hash(d.new_password)
-print(f"Novo hash: {new_hash}")  # ou logger.info
-user.password_hash = new_hash
-db.commit()
+    print(f"Novo hash: {new_hash}")  # ou logger.info
+    user.password_hash = new_hash
+    db.commit()
     return {"status": "ok"}
 
 @app.get("/users/me")
@@ -3044,6 +3044,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
