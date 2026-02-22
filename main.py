@@ -43,9 +43,21 @@ def get_password_hash(password):
 
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
-    if not user or not verify_password(password, user.password_hash):
+    if not user:
         return False
-    return user
+
+    # Tenta bcrypt
+    if verify_password(password, user.password_hash):
+        return user
+
+    # Tenta SHA256 (legado)
+    if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
+        # Atualiza para bcrypt
+        user.password_hash = get_password_hash(password)
+        db.commit()
+        return user
+
+    return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -3003,6 +3015,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
