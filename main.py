@@ -541,8 +541,9 @@ def register(d: RegisterData, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "ok"}
 
-@app.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@app.post("/login")
+async def login_legacy(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    return await login_for_access_token(form_data, db)
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -2988,16 +2989,14 @@ async function searchUsers(){let q=document.getElementById('search-input').value
 """
 
 # ----------------------------------------------------------------------
-# ROTA PRINCIPAL
+# ROTA PRINCIPAL (FRONTEND)
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def get():
     return HTMLResponse(content=html_content)
 
-# ----------------------------------------------------------------------
-# INÍCIO
-# ----------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
