@@ -572,6 +572,26 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @app.post("/login")
 async def login_legacy(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     return await login_for_access_token(form_data, db)
+    @app.post("/auth/forgot-password")
+def forgot_password(d: ForgotPasswordData, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=d.email).first()
+    if user:
+        token = create_reset_token(user.email)
+        # Por enquanto, apenas loga o link (futuramente enviar e-mail)
+        logger.info(f"RESGATE: https://seuapp.onrender.com/?token={token}")
+    return {"status": "ok"}
+
+@app.post("/auth/reset-password")
+def reset_password(d: ResetPasswordData, db: Session = Depends(get_db)):
+    email = verify_reset_token(d.token)
+    if not email:
+        raise HTTPException(400, "Token inválido ou expirado")
+    user = db.query(User).filter_by(email=email).first()
+    if not user:
+        raise HTTPException(404, "Usuário não encontrado")
+    user.password_hash = get_password_hash(d.new_password)
+    db.commit()
+    return {"status": "ok"}
 
 @app.get("/users/me")
 def read_users_me(current_user: User = Depends(get_current_active_user)):
@@ -3015,6 +3035,7 @@ def get():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
