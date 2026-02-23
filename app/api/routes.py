@@ -88,18 +88,6 @@ def authenticate_user(db: Session, username: str, password: str):
                 return user
             else:
                 logger.warning("❌ Senha incorreta (bcrypt)")
-        except Exception as e:
-            logger.error(f"⚠️ Erro ao verificar bcrypt: {e}")
-    
-    # Tenta SHA256 (legado)
-    if user.password_hash == hashlib.sha256(password.encode()).hexdigest():
-        logger.info("🔄 Senha correta (SHA256) - atualizando para bcrypt")
-        user.password_hash = get_password_hash(password)
-        db.commit()
-        return user
-    
-    logger.warning("❌ Nenhum método válido")
-    return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -148,8 +136,6 @@ cloudinary.config(
 # ----------------------------------------------------------------------
 # BANCO DE DADOS (NEON / POSTGRESQL)
 # ----------------------------------------------------------------------
-except Exception as e:
-    logger.error(f"Erro inicial BD: {e}")
 
 # ----------------------------------------------------------------------
 # MODELOS PYDANTIC (CORRIGIDOS)
@@ -421,8 +407,6 @@ if size is not None and size > 100 * 1024 * 1024:
     try:
         result = cloudinary.uploader.upload(file.file, resource_type="auto")
         return {"secure_url": result["secure_url"]}
-    except Exception as e:
-        raise HTTPException(500, f"Erro no upload: {e}")
 
 # ----------------------------------------------------------------------
 # ENDPOINTS DE AUTENTICAÇÃO E USUÁRIO
@@ -1386,13 +1370,6 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     await manager.broadcast(user_data, ch)
                     if ch.startswith("dm_") or ch.startswith("group_"):
                         await manager.broadcast({"type": "ping"}, "Geral")
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Erro WS: {e}")
-            finally:
-                db.close()
-    except Exception:
-        manager.disconnect(ws, ch, uid)
 
 # ----------------------------------------------------------------------
 # FRONTEND (CORRIGIDO)
