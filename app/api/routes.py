@@ -70,39 +70,29 @@ def get_password_hash(password):
 
 # ========== FUNÇÃO DE AUTENTICAÇÃO COM LOGS ==========
 def authenticate_user(db: Session, username: str, password: str):
-    logger.info(f"🔍 Tentativa de login para usuário: {username}")
     user = db.query(User).filter(User.username == username).first()
-    if not user:
-        logger.warning(f"❌ Usuário {username} não encontrado")
+    if not user or not user.password_hash:
+        logger.warning(f"❌ Usuário {username} não encontrado ou sem hash")
         return False
-    if not user.password_hash:
-        logger.warning(f"❌ Usuário {username} com password_hash vazio")
-        return False
-    logger.info(f"🔑 Hash armazenado: {user.password_hash[:50]}...")
-    
-    # Tenta bcrypt
-if user.password_hash.startswith("$2b$"):
-    if verify_password(password, user.password_hash):
-        logger.info("🟩 Senha correta (bcrypt)")
-        return user
-    else:
-        logger.warning("❌ Senha incorreta (bcrypt)")
 
-from typing import Optional
-from datetime import timedelta
+    # Verifica com passlib (bcrypt)
+    try:
+        if verify_password(password, user.password_hash):
+            logger.info("✅ Senha correta")
+            return user
+        logger.warning("❌ Senha incorreta")
+        return False
+    except Exception:
+        logger.exception("Erro ao verificar senha")
+        return False
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    ...
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
-
-
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -389,31 +379,52 @@ def format_user_summary(user: User):
 # ENDPOINTS DE UPLOAD (VIA BACKEND)
 # ----------------------------------------------------------------------
 @app.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user)
-):
-    # Validações simples
-# UploadFile pode não ter .size dependendo do servidor/versão. Calcula de forma segura.
-try:
-    file.file.seek(0, os.SEEK_END)
-    size = file.file.tell()
-    file.file.seek(0)
-except Exception:
-    size = None
-
-if size is not None and size > 100 * 1024 * 1024:
-    raise HTTPException(status_code=400, detail="Arquivo muito grande (máx 100MB)")
-    allowed = ["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm", "audio/webm", "audio/mpeg"]
-    if file.content_type not in allowed:
-        raise HTTPException(400, "Tipo de arquivo não permitido")
+async def upload_file(file: UploadFile = File(...)):
+    """Faz upload de arquivo para o Cloudinary.
+    Retorna a URL segura (https) e metadados básicos.
+    """
     try:
-        result = cloudinary.uploader.upload(file.file, resource_type="auto")
-        return {"secure_url": result["secure_url"]}
+        filename = (file.filename or "").lower()
+        ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+        allowed = {"png","jpg","jpeg","gif","webp","mp4","mov","webm","mp3","wav","ogg","m4a","pdf"}
+        if ext not in allowed:
+            raise HTTPException(status_code=400, detail="Tipo de arquivo não permitido")
 
-# ----------------------------------------------------------------------
-# ENDPOINTS DE AUTENTICAÇÃO E USUÁRIO
-# ----------------------------------------------------------------------
+        # garante config do Cloudinary (usa env vars)
+        try:
+            init_cloudinary()
+        except Exception as e:
+            logger.exception("Cloudinary não configurado")
+            raise HTTPException(status_code=500, detail="Cloudinary não configurado") from e
+
+        # lê bytes
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="Arquivo vazio")
+
+        # upload
+        result = cloudinary.uploader.upload(
+            data,
+            resource_type="auto",
+            folder="uploads",
+            use_filename=True,
+            unique_filename=True,
+            overwrite=False,
+        )
+
+        return {
+            "url": result.get("secure_url") or result.get("url"),
+            "public_id": result.get("public_id"),
+            "resource_type": result.get("resource_type"),
+            "bytes": result.get("bytes"),
+            "format": result.get("format"),
+            "original_filename": result.get("original_filename"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Erro ao fazer upload")
+        raise HTTPException(status_code=500, detail="Falha no upload") from e
 @app.post("/register")
 def register(d: RegisterData, db: Session = Depends(get_db)):
     if db.query(User).filter_by(username=d.username).first():
@@ -1306,77 +1317,58 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     return new_msg, None
 
 @app.websocket("/ws/{ch}/{uid}")
-async def ws_end(ws: WebSocket, ch: str, uid: int):
-    token = ws.query_params.get("token")
+async def ws_end(ws: WebSocket, ch: str, uid: int, token: Optional[str] = None):
+    """WebSocket por canal + usuário.
+
+    Importante: com múltiplas instâncias, você precisa de um 'backplane' (Redis/pubsub)
+    para broadcast entre instâncias. Este handler funciona para 1 instância.
+    """
+    # valida token (query ?token=...)
     if not token:
-        await ws.close(code=1008, reason="Missing token")
+        await ws.close(code=1008)
         return
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        if not username:
-            await ws.close(code=1008, reason="Invalid token")
+        token_uid = int(payload.get("sub"))
+        if token_uid != int(uid):
+            await ws.close(code=1008)
             return
-        db = SessionLocal()
-        user = db.query(User).filter(User.username == username).first()
-        if not user or user.id != uid:
-            await ws.close(code=1008, reason="User mismatch")
-            return
-    except JWTError:
-        await ws.close(code=1008, reason="Invalid token")
+    except Exception:
+        await ws.close(code=1008)
         return
-    finally:
-        db.close()
 
-    await manager.connect(ws, ch, uid)
-
+    # valida usuário no DB
     try:
-        while True:
-            txt = await ws.receive_text()
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == uid).first()
+            if not user:
+                await ws.close(code=1008)
+                return
 
-            if txt == "ping":
-                await ws.send_text(json.dumps({"type": "pong"}))
+        # conecta (faz accept dentro do manager)
+        await manager.connect(uid, ws, ch)
+
+        while True:
+            data = await ws.receive_json()
+            # formato esperado: {"type":"msg","content":"...","to":123}
+            msg_type = data.get("type", "msg")
+            content = (data.get("content") or "").strip()
+
+            if msg_type == "ping":
+                await ws.send_json({"type": "pong"})
                 continue
 
-            db = SessionLocal()
-            try:
-                u_fresh = db.query(User).filter_by(id=uid).first()
-                if not u_fresh:
-                    continue
+            if not content:
+                continue
 
-                new_msg = None
-                target_dm_id = None
-
-                if ch.startswith("dm_"):
-                    new_msg, target_dm_id = handle_dm_message(db, ch, uid, txt)
-                    if target_dm_id:
-                        await manager.send_personal({"type": "new_dm", "sender_id": u_fresh.id, "sender_name": u_fresh.username}, target_dm_id)
-                elif ch.startswith("comm_"):
-                    new_msg, _ = handle_comm_message(db, ch, uid, txt)
-                elif ch.startswith("group_"):
-                    new_msg, _ = handle_group_message(db, ch, uid, txt)
-
-                if new_msg:
-                    b = get_user_badges(u_fresh.xp, u_fresh.id, getattr(u_fresh, 'role', 'membro'))
-                    user_data = {
-                        "id": new_msg.id,
-                        "user_id": u_fresh.id,
-                        "username": u_fresh.username,
-                        "avatar": u_fresh.avatar_url,
-                        "content": txt,
-                        "can_delete": True,
-                        "timestamp": get_utc_iso(new_msg.timestamp),
-                        "rank": b['rank'],
-                        "color": b['color'],
-                        "special_emblem": b['special_emblem']
-                    }
-                    await manager.broadcast(user_data, ch)
-                    if ch.startswith("dm_") or ch.startswith("group_"):
-                        await manager.broadcast({"type": "ping"}, "Geral")
-
-# ----------------------------------------------------------------------
-# FRONTEND (CORRIGIDO)
-# ----------------------------------------------------------------------
+            # (opcional) persistir mensagem no DB aqui
+            await manager.broadcast(ch, {"type": "msg", "from": uid, "content": content})
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Erro no WebSocket")
+    finally:
+        manager.disconnect(uid, ws, ch)
 html_content = r"""<!DOCTYPE html>
 <html lang="pt-br">
 <head>
