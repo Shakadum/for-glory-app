@@ -683,6 +683,7 @@ def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
 # ENDPOINTS DE AMIZADE
 # ----------------------------------------------------------------------
 @app.post("/friend/request")
+@app.post("/friends/request")
 def send_req(
     d: FriendReqData,
     current_user: User = Depends(get_current_active_user),
@@ -707,6 +708,7 @@ def send_req(
     return {"status": "sent"}
 
 @app.get("/friend/requests")
+@app.get("/friends/requests")
 def get_reqs(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -719,6 +721,7 @@ def get_reqs(
     return {"requests": requests_data, "friends": friends_data}
 
 @app.post("/friend/handle")
+@app.post("/friends/handle")
 def handle_req(
     d: RequestActionData,
     current_user: User = Depends(get_current_active_user),
@@ -737,6 +740,7 @@ def handle_req(
     return {"status": "ok"}
 
 @app.post("/friend/remove")
+@app.post("/friends/remove")
 def remove_friend(
     d: UnfriendData,
     current_user: User = Depends(get_current_active_user),
