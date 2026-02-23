@@ -9,7 +9,7 @@ cloudinary
 requests
 aiofiles
 bcrypt
-
+alembic==1.13.3
 
 # dev/test
 pytest==8.3.2
