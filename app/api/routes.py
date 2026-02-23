@@ -2016,7 +2016,20 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
     </div>
 </div>
-
+<script>
+window.EMOJIS = [
+  "\uD83D\uDE00",
+  "\uD83D\uDE02",
+  "\uD83D\uDE0D",
+  "\uD83D\uDD25",
+  "\uD83D\uDCAA",
+  "\u2764",
+  "\uD83D\uDE2D",
+  "\uD83D\uDE21",
+  "\uD83C\uDF89",
+  "\uD83D\uDC4D"
+];
+</script>
 <script>
 window.deleteTarget = {type: null, id: null};
 
