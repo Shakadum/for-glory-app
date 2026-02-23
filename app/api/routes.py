@@ -503,6 +503,53 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
         "medals": b['medals'],
         "is_invisible": getattr(current_user, 'is_invisible', 0)
     }
+@app.post("/users/me/avatar")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    # Upload to Cloudinary and persist URL
+    try:
+        res = cloudinary.uploader.upload(
+            await file.read(),
+            folder=f"forglory/avatars/{current_user.id}",
+            resource_type="image",
+        )
+        url = res.get("secure_url") or res.get("url")
+        if not url:
+            raise HTTPException(status_code=500, detail="Cloudinary did not return URL")
+        current_user.avatar_url = url
+        db.add(current_user)
+        db.commit()
+        return {"avatar_url": url}
+    except Exception as e:
+        logger.exception("Avatar upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="Avatar upload failed")
+
+@app.post("/users/me/cover")
+async def upload_my_cover(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        res = cloudinary.uploader.upload(
+            await file.read(),
+            folder=f"forglory/covers/{current_user.id}",
+            resource_type="image",
+        )
+        url = res.get("secure_url") or res.get("url")
+        if not url:
+            raise HTTPException(status_code=500, detail="Cloudinary did not return URL")
+        current_user.cover_url = url
+        db.add(current_user)
+        db.commit()
+        return {"cover_url": url}
+    except Exception as e:
+        logger.exception("Cover upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="Cover upload failed")
+
 
 @app.get("/users/online")
 def get_online_users(db: Session = Depends(get_db)):
@@ -667,7 +714,7 @@ def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
             db.query(Post)
             .options(joinedload(Post.author))
             .filter(Post.user_id == uid)
-            .order_by(Post.created_at.desc())
+            .order_by(Post.timestamp.desc())
             .limit(limit)
             .all()
         )
@@ -2016,20 +2063,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         </div>
     </div>
 </div>
-<script>
-window.EMOJIS = [
-  "\uD83D\uDE00",
-  "\uD83D\uDE02",
-  "\uD83D\uDE0D",
-  "\uD83D\uDD25",
-  "\uD83D\uDCAA",
-  "\u2764",
-  "\uD83D\uDE2D",
-  "\uD83D\uDE21",
-  "\uD83C\uDF89",
-  "\uD83D\uDC4D"
-];
-</script>
+
 <script>
 window.deleteTarget = {type: null, id: null};
 
