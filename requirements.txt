@@ -1,18 +1,17 @@
 fastapi==0.131.0
 uvicorn==0.41.0
-sqlalchemy==2.0.46alembic==1.13.3
+sqlalchemy==2.0.46
+alembic==1.13.3
 psycopg2-binary==2.9.11
-python-jose[cryptography]
+python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
-python-multipart
-cloudinary
-requests
-aiofiles
-bcrypt
+python-multipart==0.0.22
+cloudinary==1.44.1
+requests==2.32.5
+aiofiles==25.1.0
+bcrypt==5.0.0
 
-
-# dev/test
+# dev/test (opcional)
 pytest==8.3.2
 pytest-asyncio==0.24.0
 httpx==0.27.2
-
