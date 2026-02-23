@@ -579,6 +579,18 @@ def create_post_url(
     db.commit()
     return {"status": "ok"}
 
+# ----------------------------------------------------------------------
+# FRONTEND COMPAT: the UI calls POST /post with the same payload used by
+# /post/create_from_url. Without this alias the browser gets 404 and it looks
+# like "não publica".
+@app.post("/post")
+def create_post_alias(
+    d: CreatePostData,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return create_post_url(d=d, current_user=current_user, db=db)
+
 @app.post("/post/like")
 def toggle_like(
     d: ToggleLikeData,
@@ -1317,13 +1329,16 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     return new_msg, None
 
 @app.websocket("/ws/{ch}/{uid}")
-async def ws_end(ws: WebSocket, ch: str, uid: int, token: Optional[str] = None):
+async def ws_end(ws: WebSocket, ch: str, uid: int):
     """WebSocket por canal + usuário.
 
     Importante: com múltiplas instâncias, você precisa de um 'backplane' (Redis/pubsub)
     para broadcast entre instâncias. Este handler funciona para 1 instância.
     """
     # valida token (query ?token=...)
+    # Em WebSocket, o FastAPI NÃO injeta query params como argumento da função.
+    # Então precisamos ler manualmente de ws.query_params.
+    token = ws.query_params.get("token")
     if not token:
         await ws.close(code=1008)
         return
@@ -1566,7 +1581,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     </div>
 </div>
 
-<div class="lang-dropdown">
+  <div class="lang-dropdown" id="lang-dropdown">
     <div class="lang-btn" id="lang-btn-current">🌍 Idioma</div>
     <div class="lang-content">
         <div class="lang-item" onclick="changeLanguage('pt')">🇧🇷 Português</div>
@@ -2076,13 +2091,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch(e) {}
         localStorage.removeItem('token');
     }
-    // Modal de login já está visível no HTML por padrão — não precisa fazer nada
+// Modal de login já está visível no HTML por padrão — não precisa fazer nada
 });
+
+function updateLangDropdownVisibility() {
+    const el = document.getElementById('lang-dropdown');
+    if (!el) return;
+    const loginVisible = !document.getElementById('modal-login')?.classList.contains('hidden');
+    const profileActive = document.getElementById('view-profile')?.classList.contains('active');
+    // Exibir seletor de idioma somente no LOGIN e no PERFIL
+    el.style.display = (loginVisible || profileActive) ? 'flex' : 'none';
+}
 
 function showLoginScreen() {
     document.getElementById('app').style.display = 'none';
     document.getElementById('modal-login').classList.remove('hidden');
     toggleAuth('login');
+    updateLangDropdownVisibility();
 }
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
@@ -2578,6 +2603,7 @@ function goView(v, btnElem){
     document.getElementById('view-'+v).classList.add('active');
     if(v !== 'public-profile' && v !== 'dm' && v !== 'comm-dashboard') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(btnElem) btnElem.classList.add('active'); else if(event && event.target && event.target.closest) event.target.closest('.nav-btn')?.classList.add('active'); }
     if(v === 'inbox') loadInbox(); if(v === 'mycomms') loadMyComms(); if(v === 'explore') loadPublicComms(); if(v === 'history') loadMyHistory(); if(v === 'feed') loadFeed();
+    updateLangDropdownVisibility();
 }
 
 async function toggleRecord(type) { 
