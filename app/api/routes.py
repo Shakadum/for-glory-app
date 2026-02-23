@@ -4,7 +4,7 @@ import os
 import logging
 import hashlib
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import or_, and_, func
@@ -653,31 +653,78 @@ def get_comments(post_id: int, db: Session = Depends(get_db)):
 
 @app.get("/posts")
 def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
-    posts = db.query(Post).options(joinedload(Post.author)).order_by(Post.timestamp.desc()).limit(limit).all()
-    post_ids = [p.id for p in posts]
-    likes_bulk = db.query(Like.post_id, Like.user_id).filter(Like.post_id.in_(post_ids)).all() if post_ids else []
-    comments_count = db.query(Comment.post_id, func.count(Comment.id)).filter(Comment.post_id.in_(post_ids)).group_by(Comment.post_id).all() if post_ids else []
-    comments_dict = dict(comments_count)
-    result = []
-    for p in posts:
-        post_likes = [l for l in likes_bulk if l[0] == p.id]
-        u_sum = format_user_summary(p.author)
-        result.append({
-            "id": p.id,
-            "content_url": p.content_url,
-            "media_type": p.media_type,
-            "caption": p.caption,
-            "author_name": u_sum["username"],
-            "author_avatar": u_sum["avatar_url"],
-            "author_rank": u_sum["rank"],
-            "rank_color": u_sum["color"],
-            "special_emblem": u_sum["special_emblem"],
-            "author_id": p.author_id,
-            "likes": len(post_likes),
-            "user_liked": any(l[1] == uid for l in post_likes),
-            "comments": comments_dict.get(p.id, 0)
-        })
-    return result
+    """Retorna feed de posts.
+
+    Observação: o schema real do banco (Post) usa os campos:
+      - media_url / media_type / text / created_at / user_id
+
+    O front antigo esperava `content_url` e `caption`, então fazemos o mapeamento.
+    Também evitamos 500 por campos inexistentes.
+    """
+
+    try:
+        posts = (
+            db.query(Post)
+            .options(joinedload(Post.author))
+            .filter(Post.user_id == uid)
+            .order_by(Post.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        post_ids = [p.id for p in posts]
+        likes_bulk = (
+            db.query(Like.post_id, Like.user_id)
+            .filter(Like.post_id.in_(post_ids))
+            .all()
+            if post_ids
+            else []
+        )
+        comments_count = (
+            db.query(Comment.post_id, func.count(Comment.id))
+            .filter(Comment.post_id.in_(post_ids))
+            .group_by(Comment.post_id)
+            .all()
+            if post_ids
+            else []
+        )
+        comments_dict = dict(comments_count)
+
+        result = []
+        for p in posts:
+            post_likes = [l for l in likes_bulk if l[0] == p.id]
+            author = getattr(p, "author", None)
+            u_sum = format_user_summary(author) if author else {
+                "username": "?",
+                "avatar_url": None,
+                "rank": "",
+                "color": "#888",
+                "special_emblem": None,
+            }
+
+            result.append(
+                {
+                    "id": p.id,
+                    "content_url": getattr(p, "media_url", None),
+                    "media_type": getattr(p, "media_type", None),
+                    "caption": getattr(p, "text", None),
+                    "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
+                    "author_name": u_sum["username"],
+                    "author_avatar": u_sum["avatar_url"],
+                    "author_rank": u_sum["rank"],
+                    "rank_color": u_sum["color"],
+                    "special_emblem": u_sum["special_emblem"],
+                    "author_id": getattr(p, "user_id", None),
+                    "likes": len(post_likes),
+                    "user_liked": any(l[1] == uid for l in post_likes),
+                    "comments": comments_dict.get(p.id, 0),
+                }
+            )
+
+        return result
+    except Exception as e:
+        logger.exception(f"❌ Erro em /posts (uid={uid}): {e}")
+        return []
 
 # ----------------------------------------------------------------------
 # ENDPOINTS DE AMIZADE
@@ -1384,7 +1431,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 return
 
         # conecta (faz accept dentro do manager)
-        await manager.connect(uid, ws, ch)
+        # ConnectionManager.connect espera (ws, chan, uid)
+        await manager.connect(ws, ch, uid)
 
         while True:
             data = await ws.receive_json()
@@ -1406,7 +1454,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
     except Exception:
         logger.exception("Erro no WebSocket")
     finally:
-        manager.disconnect(uid, ws, ch)
+        manager.disconnect(ws, ch, uid)
 html_content = r"""<!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -2372,12 +2420,13 @@ function showCallPanel() { document.getElementById('expanded-call-panel').style.
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 // Friend request from user search list
-async function sendFriendReq(username){
-  if(!username) return;
+async function sendFriendReq(targetId){
+  if(targetId === undefined || targetId === null) return;
   try{
     const res = await authFetch('/friends/request', {
       method: 'POST',
-      body: JSON.stringify({ friend_username: username })
+      // Backend espera { target_id: number }
+      body: JSON.stringify({ target_id: Number(targetId) })
     });
     const data = await res.json().catch(()=>({}));
     if(!res.ok){
