@@ -1329,10 +1329,29 @@ async def ws_end(ws: WebSocket, ch: str, uid: int, token: Optional[str] = None):
         return
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        token_uid = int(payload.get("sub"))
-        if token_uid != int(uid):
+        sub = payload.get("sub")
+        if sub is None:
             await ws.close(code=1008)
             return
+
+        # `sub` may be username (older tokens) or numeric user id (newer tokens)
+        token_uid = None
+        token_username = None
+        try:
+            token_uid = int(sub)
+        except (TypeError, ValueError):
+            token_username = str(sub)
+
+        if token_uid is not None:
+            if token_uid != int(uid):
+                await ws.close(code=1008)
+                return
+        else:
+            with SessionLocal() as db:
+                u = db.query(User).filter(User.username == token_username).first()
+                if not u or u.id != int(uid):
+                    await ws.close(code=1008)
+                    return
     except Exception:
         await ws.close(code=1008)
         return
@@ -1384,7 +1403,8 @@ html_content = r"""<!DOCTYPE html>
 body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 50% 0%, #1a1d26 0%, #0b0c10 70%);color:#e0e0e0;font-family:'Inter',sans-serif;margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 #app{display:none;flex:1;overflow:hidden;position:relative}
 
-.lang-dropdown { position:absolute; top:15px; right:15px; z-index:9999; }
+.lang-dropdown { position:fixed; top:12px; right:12px; z-index:9999; }
+@media (max-width: 640px){ .lang-dropdown { top:64px; right:12px; } }
 .lang-btn { background:rgba(11,12,16,0.6); color:white; border:1px solid var(--primary); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:bold; font-family:'Rajdhani'; backdrop-filter:blur(5px); display:flex; align-items:center; gap:5px; transition:0.3s; }
 .lang-btn:hover { background:rgba(102,252,241,0.2); box-shadow:0 0 15px rgba(102,252,241,0.3); }
 .lang-content { display:none; position:absolute; top:100%; right:0; background:rgba(20,25,35,0.95); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:8px; flex-direction:column; min-width:120px; box-shadow:0 10px 20px rgba(0,0,0,0.5); backdrop-filter:blur(10px); }
@@ -2321,6 +2341,27 @@ async function toggleMuteCall() {
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
 function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
+
+// Friend request from user search list
+async function sendFriendReq(username){
+  if(!username) return;
+  try{
+    const res = await authFetch('/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ friend_username: username })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){
+      showToast(data.detail || 'Erro ao enviar pedido de amizade', true);
+      return;
+    }
+    showToast('Pedido de amizade enviado!');
+  }catch(err){
+    console.error('sendFriendReq error', err);
+    showToast('Erro ao enviar pedido de amizade', true);
+  }
+}
+window.sendFriendReq = sendFriendReq;
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
 function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }
