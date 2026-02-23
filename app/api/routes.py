@@ -81,15 +81,18 @@ def authenticate_user(db: Session, username: str, password: str):
     logger.info(f"🔑 Hash armazenado: {user.password_hash[:50]}...")
     
     # Tenta bcrypt
-    if user.password_hash.startswith("$2b$"):
-        try:
-            if verify_password(password, user.password_hash):
-                logger.info("✅ Senha correta (bcrypt)")
-                return user
-            else:
-                logger.warning("❌ Senha incorreta (bcrypt)")
+if user.password_hash.startswith("$2b$"):
+    if verify_password(password, user.password_hash):
+        logger.info("🟩 Senha correta (bcrypt)")
+        return user
+    else:
+        logger.warning("❌ Senha incorreta (bcrypt)")
+
+from typing import Optional
+from datetime import timedelta
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    ...
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
