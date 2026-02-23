@@ -752,10 +752,16 @@ def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
             result.append(
                 {
                     "id": p.id,
-                    "content_url": getattr(p, "media_url", None),
-                    "media_type": getattr(p, "media_type", None),
-                    "caption": getattr(p, "text", None),
-                    "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
+                        # Compat: nosso model/tabela usa posts.content_url, posts.caption, posts.timestamp.
+                        # Algumas versões antigas do front esperavam media_url/text/created_at.
+                        "content_url": getattr(p, "content_url", None) or getattr(p, "media_url", None),
+                        "media_type": getattr(p, "media_type", None),
+                        "caption": getattr(p, "caption", None) or getattr(p, "text", None),
+                        "created_at": (
+                            getattr(p, "timestamp", None).isoformat()
+                            if getattr(p, "timestamp", None)
+                            else (p.created_at.isoformat() if getattr(p, "created_at", None) else None)
+                        ),
                     "author_name": u_sum["username"],
                     "author_avatar": u_sum["avatar_url"],
                     "author_rank": u_sum["rank"],
