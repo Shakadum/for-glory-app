@@ -10,6 +10,8 @@ cloudinary==1.44.1
 requests==2.32.5
 aiofiles==25.1.0
 bcrypt==5.0.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
 
 # dev/test (opcional)
 pytest==8.3.2
