@@ -168,6 +168,9 @@ class CommentData(BaseModel):
     post_id: int
     text: str
 
+class CommentCreate(BaseModel):
+    text: str
+
 class DelCommentData(BaseModel):
     comment_id: int
 
@@ -749,6 +752,86 @@ def delete_post_endpoint(
     db.commit()
     return {"status": "ok"}
 
+
+# ----------------------------------------------------------------------
+# NOVOS ENDPOINTS (REST) - compat com front B7
+# ----------------------------------------------------------------------
+@app.delete("/posts/{post_id}")
+def delete_post_rest(
+    post_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Remove um post do usuário logado.
+    Mantém compatibilidade com o front novo (menu ⋮ -> apagar).
+    """
+    post = db.query(Post).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    db.query(Like).filter_by(post_id=post.id).delete()
+    db.query(Comment).filter_by(post_id=post.id).delete()
+    db.delete(post)
+
+    # regra simples de XP (mantém comportamento do endpoint antigo)
+    if getattr(current_user, "xp", 0) >= 50:
+        current_user.xp -= 50
+
+    db.commit()
+    return {"ok": True}
+
+@app.post("/posts/{post_id}/like")
+def toggle_like_rest(
+    post_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Toggle like. Retorna {likes, liked}.
+    """
+    post = db.query(Post).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    existing = db.query(Like).filter_by(post_id=post_id, user_id=current_user.id).first()
+    if existing:
+        db.delete(existing)
+        liked = False
+    else:
+        db.add(Like(post_id=post_id, user_id=current_user.id))
+        liked = True
+
+    db.commit()
+
+    likes_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
+    return {"likes": int(likes_count), "liked": liked}
+
+@app.post("/posts/{post_id}/comment")
+def create_comment_rest(
+    post_id: int,
+    d: CommentCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Cria comentário em post. Body: {text}
+    """
+    post = db.query(Post).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    text = (d.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty comment")
+
+    c = Comment(user_id=current_user.id, post_id=post_id, text=text)
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return {"ok": True, "comment": {"id": c.id, "text": c.text, "user_id": c.user_id, "post_id": c.post_id}}
 @app.get("/post/{post_id}/comments")
 def get_comments(post_id: int, db: Session = Depends(get_db)):
     comments = db.query(Comment).filter_by(post_id=post_id).order_by(Comment.timestamp.asc()).all()
