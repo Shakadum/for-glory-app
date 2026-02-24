@@ -643,7 +643,19 @@ async def get_user_profile(
     if not target or not viewer:
         return {"username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "cover_url": "", "bio": "Perdido em combate.", "rank": "Recruta", "color": "#888", "special_emblem": "", "medals": [], "percent": 0, "next_xp": 100, "next_rank": "Soldado", "posts": [], "friend_status": "none", "request_id": None}
     posts = db.query(Post).filter_by(user_id=target_id).order_by(Post.timestamp.desc()).all()
-    posts_data = [{"content_url": p.content_url, "media_type": p.media_type} for p in posts]
+    posts_data = []
+    for p in posts:
+        cu = (getattr(p, "content_url", None) or getattr(p, "media_url", None) or getattr(p, "url", None) or "").strip()
+        cap = getattr(p, "caption", None) or getattr(p, "text", None) or ""
+        ts = getattr(p, "timestamp", None) or getattr(p, "created_at", None) or getattr(p, "created", None)
+        created = ts.isoformat() if hasattr(ts, "isoformat") and ts else (str(ts) if ts else None)
+        posts_data.append({
+            "id": p.id,
+            "content_url": cu if cu else None,
+            "media_type": getattr(p, "media_type", None) or "image",
+            "caption": cap if cap else None,
+            "created_at": created,
+        })
     status = "friends" if target in viewer.friends else "none"
     req_id = None
     if status == "none":
@@ -665,7 +677,7 @@ def create_post_url(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    db.add(Post(user_id=current_user.id, content_url=d.content_url, media_type=d.media_type, caption=d.caption))
+    db.add(Post(user_id=current_user.id, content_url=d.content_url, media_type=d.media_type, caption=d.caption, timestamp=datetime.utcnow()))
     current_user.xp += 50
     db.commit()
     return {"status": "ok"}
@@ -1699,6 +1711,9 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s;max-height:90vh;overflow-y:auto; scrollbar-width:thin;}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
 .btn-main{width:100%;padding:14px;margin-top:15px;background:var(--primary);border:none;font-weight:700;border-radius:10px;cursor:pointer;font-size:16px;color:#0b0c10;text-transform:uppercase}
+.pp-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.pp-actions .btn-main,.pp-actions .glass-btn{width:auto;flex:1;min-width:140px;margin-top:0}
+.pp-actions .glass-btn{padding:12px 14px}
 .btn-link{background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;margin-top:15px;font-size:14px}
 
 #toast{visibility:hidden;opacity:0;min-width:200px;background:var(--primary);color:#0b0c10;text-align:center;border-radius:50px;padding:12px 24px;position:fixed;z-index:9999;left:50%;top:30px;transform:translateX(-50%);font-weight:bold;transition:0.3s; box-shadow: 0 5px 20px rgba(102,252,241,0.5);}
@@ -2449,7 +2464,7 @@ async function uploadCallBg(inputElem){
         document.getElementById('expanded-call-panel').style.backgroundImage=`url('${data.secure_url}')`;
         showToast("Fundo alterado!");
         if(globalWS && globalWS.readyState === WebSocket.OPEN) {
-            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + data.secure_url);
+            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + (data.secure_url || data.url));
         }
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
@@ -2704,9 +2719,9 @@ async function unfriend(fid) {
     }
 }
 
-async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); av = data.secure_url; } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { name:n, desc:d, is_priv:parseInt(p), avatar_url:av, banner_url:ban }; let r=await authFetch('/community/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){console.error(err);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
-async function submitEditComm(){let avFile=document.getElementById('edit-comm-avatar').files[0];let banFile=document.getElementById('edit-comm-banner').files[0];if(!avFile&&!banFile)return showToast("Selecione algo.");let btn=document.getElementById('btn-save-comm');btn.disabled=true;btn.innerText="ENVIANDO...";try{let au=null; let bu=null; if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = data.secure_url; } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload = { comm_id: activeCommId, avatar_url: au, banner_url: bu }; let r=await authFetch('/community/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-comm').classList.add('hidden');showToast("Base Atualizada!");openCommunity(activeCommId, true);loadMyComms();}}catch(e){console.error(e);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('save');}}
-async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = data.secure_url; } let payload = { comm_id: activeCommId, name:n, type:tType, is_private:parseInt(p), banner_url:ban }; let r=await authFetch('/community/channel/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId, true);}}catch(err){console.error(err);}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
+async function submitCreateComm(e){e.preventDefault();let n=document.getElementById('new-comm-name').value.trim();let d=document.getElementById('new-comm-desc').value.trim();let p=document.getElementById('new-comm-priv').value;let avFile=document.getElementById('comm-avatar-upload').files[0];let banFile=document.getElementById('comm-banner-upload').files[0];if(!n)return showToast("Digite um nome!");let btn=e.target;btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let av="https://ui-avatars.com/api/?name="+safeName+"&background=111&color=66fcf1";let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); av = (data.secure_url || data.url); } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = (data.secure_url || data.url); } let payload = { name:n, desc:d, is_priv:parseInt(p), avatar_url:av, banner_url:ban }; let r=await authFetch('/community/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-comm').classList.add('hidden');showToast("Base Criada!");loadMyComms();goView('mycomms');}}catch(err){console.error(err);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('establish');}}
+async function submitEditComm(){let avFile=document.getElementById('edit-comm-avatar').files[0];let banFile=document.getElementById('edit-comm-banner').files[0];if(!avFile&&!banFile)return showToast("Selecione algo.");let btn=document.getElementById('btn-save-comm');btn.disabled=true;btn.innerText="ENVIANDO...";try{let au=null; let bu=null; if(avFile){let formData = new FormData(); formData.append('file', avFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); au = (data.secure_url || data.url); } if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = (data.secure_url || data.url); } let payload = { comm_id: activeCommId, avatar_url: au, banner_url: bu }; let r=await authFetch('/community/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-comm').classList.add('hidden');showToast("Base Atualizada!");openCommunity(activeCommId, true);loadMyComms();}}catch(e){console.error(e);showToast("Erro.");}finally{btn.disabled=false;btn.innerText=t('save');}}
+async function submitCreateChannel(){let n=document.getElementById('new-ch-name').value.trim();let tType=document.getElementById('new-ch-type').value;let p=document.getElementById('new-ch-priv').value;let banFile=document.getElementById('new-ch-banner').files[0];if(!n)return showToast("Digite o nome.");let btn=document.getElementById('btn-create-ch');btn.disabled=true;btn.innerText="CRIANDO...";try{let safeName=encodeURIComponent(n);let ban="https://placehold.co/600x200/0b0c10/1f2833?text="+safeName;if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); ban = (data.secure_url || data.url); } let payload = { comm_id: activeCommId, name:n, type:tType, is_private:parseInt(p), banner_url:ban }; let r=await authFetch('/community/channel/create', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-create-channel').classList.add('hidden');showToast("Canal Criado!");openCommunity(activeCommId, true);}}catch(err){console.error(err);}finally{btn.disabled=false;btn.innerText=t('create_channel');}}
 async function toggleStealth(){try{let r=await authFetch('/profile/stealth', {method:'POST'}); if(r.ok){let d=await r.json(); user.is_invisible=d.is_invisible; updateStealthUI(); fetchOnlineUsers();}}catch(e){ console.error(e); }}
 function updateStealthUI(){let btn=document.getElementById('btn-stealth');let myDot=document.getElementById('my-status-dot');if(user.is_invisible){btn.innerText=t('stealth_on');btn.style.borderColor="#ffaa00";btn.style.color="#ffaa00";myDot.classList.remove('online');}else{btn.innerText=t('stealth_off');btn.style.borderColor="rgba(102, 252, 241, 0.3)";btn.style.color="var(--primary)";myDot.classList.add('online');}}
 async function requestReset(){let email=document.getElementById('f-email').value;if(!email)return showToast("Erro!");try{let r=await fetch('/auth/forgot-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})}); showToast("Enviado!"); toggleAuth('login');}catch(e){console.error(e);showToast("Erro");}}
@@ -2850,7 +2865,7 @@ async function toggleRecord(type) {
                 let formData = new FormData(); formData.append('file', file);
                 let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} });
                 let data = await res.json();
-                let audioMsg="[AUDIO]"+data.secure_url; 
+                let audioMsg="[AUDIO]"+(data.secure_url || data.url); 
                 if(type==='dm'&&dmWS){dmWS.send(audioMsg);}
                 else if(type==='comm'&&commWS){commWS.send(audioMsg);}
                 else if(type.startsWith('comment-')){ 
@@ -3048,7 +3063,7 @@ function connectDmWS(id, name, type) {
 }
 
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
-async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(dmWS) dmWS.send(data.secure_url); }catch(e){ console.error(e); }}
+async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(dmWS) dmWS.send((data.secure_url || data.url)); }catch(e){ console.error(e); }}
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
@@ -3128,7 +3143,7 @@ function closeComm(){goView('mycomms',document.querySelectorAll('.nav-btn')[3]);
 
 window.currentEditChannelId=null;
 function openEditChannelModal(id,name,type,priv){window.currentEditChannelId=id;document.getElementById('edit-ch-name').value=name;document.getElementById('edit-ch-type').value=type;document.getElementById('edit-ch-priv').value=priv;document.getElementById('modal-edit-channel').classList.remove('hidden');}
-async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = data.secure_url; } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
+async function submitEditChannel(){let n=document.getElementById('edit-ch-name').value.trim();let tType=document.getElementById('edit-ch-type').value;let p=document.getElementById('edit-ch-priv').value;let banFile=document.getElementById('edit-ch-banner').files[0];if(!n)return;let btn=document.getElementById('btn-edit-ch');btn.disabled=true;btn.innerText="SALVANDO...";try{let bu=null; if(banFile){let formData = new FormData(); formData.append('file', banFile); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); bu = (data.secure_url || data.url); } let payload={channel_id:window.currentEditChannelId, name:n, type:tType, is_private:parseInt(p), banner_url:bu}; let r=await authFetch('/community/channel/edit', {method:'POST', body:JSON.stringify(payload)}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}catch(e){ console.error(e); }finally{btn.disabled=false;btn.innerText=t('save');}}
 
 async function fetchCommMessages(chid){
     let list=document.getElementById('comm-chat-list');
@@ -3273,7 +3288,7 @@ async function openPublicProfile(uid){
                 btns.push(`<button class="btn-main" style="margin-top:0;" onclick="sendRequest(${uid})">➕ Recrutar aliado</button>`);
                 btns.push(`<button class="btn-main" style="margin-top:0;background:transparent;border:1px solid var(--primary);" onclick="openChat(${uid}, '${(d.username||'DM').replace(/'/g, "\\'")}', '1v1')">💬 DM</button>`);
             }
-            actionsDiv.innerHTML = btns.join('');
+            actionsDiv.innerHTML = `<div class="pp-actions">${btns.join('')}</div>`;
         }
 
         goView('public-profile');
@@ -3285,7 +3300,7 @@ async function uploadToCloudinary(file){
     formData.append('file',file);
     let res=await authFetch('/upload',{method:'POST',body:formData});
     let data=await res.json();
-    return data.secure_url;
+    return (data.secure_url || data.url);
 }
 
 async function submitPost(){
