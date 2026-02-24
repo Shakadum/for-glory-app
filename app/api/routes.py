@@ -755,7 +755,7 @@ def get_comments(post_id: int, db: Session = Depends(get_db)):
     return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, **format_user_summary(c.author)} for c in comments]
 
 @app.get("/posts")
-def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
+def get_posts(uid: int | None = None, limit: int = 50, db: Session = Depends(get_db)):
     """Retorna feed de posts.
 
     Observação: o schema real do banco (Post) usa os campos:
@@ -766,11 +766,15 @@ def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
     """
 
     try:
-        posts = (
+        q = (
             db.query(Post)
             .options(joinedload(Post.author))
-            .filter(Post.user_id == uid)
-            .order_by(Post.timestamp.desc())
+        )
+        if uid is not None:
+            q = q.filter(Post.user_id == uid)
+
+        posts = (
+            q.order_by(Post.timestamp.desc())
             .limit(limit)
             .all()
         )
@@ -1603,7 +1607,38 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             except Exception:
                 logger.exception("WS: erro ao persistir mensagem")
 
-            payload = {"type": "msg", "from": uid, "content": content, "id": saved_id, "ts": ts}
+            # monta payload compatível com o front (user_id/username/avatar/timestamp/can_delete)
+            sender_username = None
+            sender_avatar = None
+            sender_rank = None
+            sender_special = None
+            sender_color = None
+            try:
+                with SessionLocal() as db:
+                    su = db.query(User).filter(User.id == uid).first()
+                    if su:
+                        sender_username = su.username
+                        sender_avatar = su.avatar_url
+                        extra = format_user_summary(su)
+                        sender_rank = extra.get("author_rank") or extra.get("rank")
+                        sender_special = extra.get("special_emblem")
+                        sender_color = extra.get("rank_color") or extra.get("color")
+            except Exception:
+                pass
+
+            payload = {
+                "type": "msg",
+                "id": saved_id,
+                "user_id": uid,
+                "username": sender_username or str(uid),
+                "avatar": sender_avatar or "",
+                "rank": sender_rank,
+                "special_emblem": sender_special,
+                "color": sender_color,
+                "content": content,
+                "timestamp": ts,
+                "can_delete": True,
+            }
             await manager.broadcast(ch, payload)
     except WebSocketDisconnect:
         pass
@@ -1784,7 +1819,26 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
   .post-media{max-height:100vh !important; width:100%; object-fit:cover !important; background:#000;}
   video.post-media{display:block;}
   .post-media-wrapper{padding:0; border:none;}
+
+/* Comentários como overlay (não empurra o vídeo, não quebra o autoplay) */
+.comments-section{
+  position:absolute;
+  left:0; right:0; bottom:0;
+  max-height:45vh;
+  overflow-y:auto;
+  z-index:6;
+  display:none;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(10px);
 }
+.comment-input-area{
+  position: sticky;
+  bottom: 0;
+  background: rgba(0,0,0,0.85);
+  padding-top: 10px;
+}
+}
+
 /* garantir cliques nos botões (comentários/delete) */
 .comment-row span{position:relative; z-index:5;}
 .post-header span{position:relative; z-index:5;}
@@ -1892,9 +1946,11 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p>
         <div style="display:flex; gap:10px; margin-top:20px;">
             <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button>
-            <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
+            <button type="button" onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
         </div>
-    
+    </div>
+</div>
+
 <div id="modal-ranks" class="modal hidden">
   <div class="modal-box" style="max-width:520px;">
     <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">Patentes</h2>
@@ -1911,9 +1967,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     <div id="trophies-all-box"></div>
     <button onclick="closeTrophiesModal()" class="btn-main" style="margin-top:12px;">FECHAR</button>
   </div>
-</div>
-
-</div>
 </div>
 
 <div id="modal-create-comm" class="modal hidden">
@@ -3070,7 +3123,7 @@ async function toggleRecord(type) {
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata" controls playsinline crossorigin="anonymous"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
-async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media reel-video" ${isMobile?'muted playsinline preload="metadata"':'controls playsinline preload="metadata"'} crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" id="like-count-${x.id}" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" id="comment-count-${x.id}" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;setupReelsAutoplay();openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
+async function loadFeed(){try{let r=await fetch(`/posts?limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media reel-video" ${isMobile?'muted playsinline preload="metadata"':'controls playsinline preload="metadata"'} crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" id="like-count-${x.id}" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" id="comment-count-${x.id}" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;setupReelsAutoplay();openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
 document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){let pid=(window.deleteTarget&&window.deleteTarget.pid)?window.deleteTarget.pid:null; if(pid){await loadComments(pid); let cc=document.getElementById(`comment-count-${pid}`); if(cc){ cc.textContent=String(Math.max(0,(parseInt(cc.textContent||'0')||0)-1)); }} else { lastFeedHash=""; loadFeed(); }}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
