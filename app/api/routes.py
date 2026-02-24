@@ -2569,17 +2569,71 @@ async function doLogin() {
 async function doRegister(){ let btn=document.querySelector('#register-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ REGISTRANDO..."; btn.disabled=true; try{ let r=await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})}); if(!r.ok) throw new Error("Erro"); showToast("✔ Registrado! Faça login."); toggleAuth('login'); }catch(e){ console.error(e); showToast("❌ Erro no registro."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
 function formatMsgTime(iso){ if(!iso) return ""; let d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${t('at')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatRankInfo(rank, special, color){ return `${special ? `<span class="special-badge">${special}</span>` : ''}${rank ? `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>` : ''}`; }
-const EMOJIS = ["😀","😂","😍","😎","😭","👍","🔥","🎮","💬","❤️","✅","⚔️","🛡️"];
+// Emoji picker (defensivo: não quebra a página se EMOJIS sumir por algum merge)
+const EMOJIS = Array.isArray(window.EMOJIS) ? window.EMOJIS : ["😀","😂","😍","😎","😭","👍","🔥","🎮","💬","❤️","✅","⚔️","🛡️"];
+window.EMOJIS = EMOJIS;
 
-function initEmojis(){ let g=document.getElementById('emoji-grid'); if(!g)return; EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
+function initEmojis(){
+    const g = document.getElementById("emoji-grid");
+    if(!g) return;
+    if(!Array.isArray(window.EMOJIS)) {
+        console.warn("EMOJIS não definido; pulando emoji picker");
+        return;
+    }
+    g.innerHTML = "";
+    window.EMOJIS.forEach(e=>{
+        let s=document.createElement("div");
+        s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;";
+        s.innerText=e;
+        s.onclick=()=>{
+            if(currentEmojiTarget){
+                let inp=document.getElementById(currentEmojiTarget);
+                if(inp){ inp.value+=e; inp.focus(); }
+            }
+        };
+        s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)";
+        s.onmouseout=()=>s.style.background="transparent";
+        g.appendChild(s);
+    });
+}
+initEmojis();
 function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } }
 function closeUpload(){ document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value=''; document.getElementById('caption-upload').value=''; }
 function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-picker').style.display='flex'; }
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
 
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && user){ fetchUnread(); fetchOnlineUsers(); if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId); } });
-async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
-function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
+async function fetchOnlineUsers() {
+    if (!user) return;
+    try {
+        let r = await fetch(`/users/online?nocache=${Date.now()}`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
+        });
+
+        if (!r.ok) {
+            console.warn("online users status:", r.status);
+            window.onlineUsers = [];
+            updateStatusDots();
+            return;
+        }
+
+        let data = await r.json().catch(()=>[]);
+        window.onlineUsers = Array.isArray(data) ? data : [];
+        updateStatusDots();
+    } catch (e) {
+        console.error("Erro ao buscar usuários online:", e);
+        window.onlineUsers = [];
+    }
+}
+
+function updateStatusDots() {
+    const onlineIds = (Array.isArray(window.onlineUsers) ? window.onlineUsers : []).map(Number);
+    document.querySelectorAll(".status-dot").forEach(dot => {
+        const uid = parseInt(dot.getAttribute("data-uid"));
+        if (!uid) return;
+        dot.classList.toggle("online", onlineIds.includes(uid));
+    });
+}
 
 async function fetchUnread(){
     if(!user) return;
