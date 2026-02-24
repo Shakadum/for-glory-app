@@ -1740,14 +1740,80 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .post-media-wrapper { width: 100%; background: #030405; display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02); padding: 5px 0;}
 .post-media { max-width: 100%; max-height: 65vh; object-fit: contain !important; display: block; }
 
-/* Reels style (mobile only): 1 por tela + autoplay quando entra na tela */
+/* Reels style (mobile only): 1 por tela + overlays (não empurra layout) */
 @media (max-width: 768px){
-  #feed-container{padding:0 0 90px 0;gap:0;scroll-snap-type:y mandatory;}
-  .post-card{max-width:100%;border-radius:0;height:100dvh;scroll-snap-align:start;}
-  .post-media-wrapper{padding:0;flex:1;}
+  /* feed em snap, com espaço pro menu inferior */
+  #feed-container{padding:0 0 120px 0;gap:0;scroll-snap-type:y mandatory; align-items:stretch;}
+  .post-card{
+    max-width:100%;
+    border-radius:0;
+    height:calc(100dvh - 65px);
+    scroll-snap-align:start;
+    position:relative;
+  }
+  .post-media-wrapper{padding:0;flex:1;position:relative;}
   video.post-media{width:100%;height:100%;max-height:none;object-fit:cover !important;}
-  img.post-media{width:100%;height:auto;}
+  img.post-media{width:100%;height:100%;object-fit:cover;}
+
+  /* overlays */
+  .post-header{
+    position:absolute; top:8px; left:10px; right:10px;
+    z-index:5; border-radius:14px;
+    background:rgba(0,0,0,0.25);
+    backdrop-filter: blur(6px);
+  }
+  .post-actions{
+    position:absolute; left:10px; right:10px; bottom:76px;
+    z-index:6; border-radius:14px;
+    background:rgba(0,0,0,0.25);
+    backdrop-filter: blur(6px);
+  }
+  .post-caption{
+    position:absolute; left:10px; right:10px; bottom:132px;
+    z-index:6; border-radius:14px;
+    background:linear-gradient(transparent, rgba(0,0,0,0.55));
+    padding:10px 12px;
+  }
+
+  /* comentários como sheet overlay (não muda altura do card => não pausa vídeo) */
+  .comments-section{
+    position:absolute;
+    left:0; right:0; bottom:0;
+    max-height:55vh;
+    overflow-y:auto;
+    z-index:7;
+    border-radius:18px 18px 0 0;
+    background:rgba(0,0,0,0.78);
+    backdrop-filter: blur(10px);
+  }
+
+  /* área de input sempre clicável */
+  .comment-input-area{
+    position:sticky;
+    bottom:0;
+    z-index:8;
+    background:rgba(11,12,16,0.96);
+  }
+
+  /* botão de som no vídeo */
+  .reel-sound-btn{
+    position:absolute;
+    top:12px;
+    left:12px;
+    z-index:6;
+    width:44px;
+    height:44px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.18);
+    background:rgba(0,0,0,0.35);
+    color:white;
+    font-size:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
 }
+
 .post-caption{padding:15px;color:#ccc;font-size:14px;line-height:1.5}
 
 .av-wrap { position: relative; display: inline-block; cursor: pointer; margin:0;}
@@ -1812,7 +1878,12 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .search-glass { display: flex; background: rgba(0,0,0,0.4); border: 1px solid #333; border-radius: 15px; padding: 5px 15px; margin-bottom: 20px; width: 100%; align-items:center;}
 .search-glass input { background: transparent; border: none; color: white; outline: none; flex: 1; padding: 10px 0; font-size: 15px; }
 
-.btn-float{position:fixed;bottom:90px;right:25px;width:60px;height:60px;border-radius:50%;background:var(--primary);border:none;font-size:32px;box-shadow:0 4px 20px rgba(102,252,241,0.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;color:#0b0c10}
+.btn-float{position:fixed;bottom:110px;right:14px;width:52px;height:52px;border-radius:50%;background:var(--primary);border:none;font-size:28px;box-shadow:0 4px 20px rgba(102,252,241,0.35);cursor:pointer;z-index:40;display:flex;align-items:center;justify-content:center;color:#0b0c10;opacity:0.9}
+.btn-float.hide{display:none !important;}
+@media (min-width: 769px){
+  .btn-float{bottom:40px;right:40px;width:60px;height:60px;font-size:32px;z-index:50;opacity:1}
+}
+
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px)}
 .modal-box{background:rgba(20,25,35,0.95);padding:30px;border-radius:24px;border:1px solid var(--border);width:90%;max-width:380px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.8);animation:scaleUp 0.3s;max-height:90vh;overflow-y:auto; scrollbar-width:thin;}
 .inp{width:100%;padding:14px;margin:10px 0;background:rgba(0,0,0,0.3);border:1px solid #444;color:white;border-radius:10px;text-align:center;font-size:16px}
@@ -3341,7 +3412,29 @@ async function toggleLike(pid, btn) {
         }
     } catch (e) { console.error(e); }
 }
-async function toggleComments(pid){let sec=document.getElementById(`comments-${pid}`);if(sec.style.display==='block'){sec.style.display='none';}else{sec.style.display='block';loadComments(pid);}}
+async function toggleComments(pid){
+    let sec=document.getElementById(`comments-${pid}`);
+    if(!sec) return;
+    const opening = sec.style.display !== 'block';
+    if(opening){
+        sec.style.display='block';
+        sec.classList.add('open');
+        loadComments(pid);
+        if(isMobile()){
+            const fb=document.querySelector('.btn-float');
+            if(fb) fb.classList.add('hide');
+        }
+        // focus input after render
+        setTimeout(()=>{ let inp=document.getElementById(`comment-inp-${pid}`); if(inp) inp.focus({preventScroll:true}); }, 50);
+    }else{
+        sec.style.display='none';
+        sec.classList.remove('open');
+        if(isMobile()){
+            const fb=document.querySelector('.btn-float');
+            if(fb) fb.classList.remove('hide');
+        }
+    }
+}
 async function loadComments(pid){
     try{
         let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);
@@ -3459,6 +3552,7 @@ async function openChat(id, name, type) {
     if (changingChat || !dmWS || dmWS.readyState !== WebSocket.OPEN) {
         connectDmWS(id, name, type);
     }
+    startDmPolling(id, type);
 }
 
 function connectDmWS(id, name, type) {
@@ -3520,7 +3614,17 @@ function connectDmWS(id, name, type) {
     };
 }
 
-function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
+
+function startDmPolling(id, type){
+    try{ if(window.__dmPoll) clearInterval(window.__dmPoll); }catch(e){}
+    window.__dmPoll = setInterval(()=>{
+        const isDmActive = document.getElementById('view-dm')?.classList.contains('active');
+        if(!isDmActive) return;
+        if(currentChatId !== id || currentChatType !== type) return;
+        fetchChatMessages(id, type);
+    }, 2500);
+}
+function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(JSON.stringify({type:'msg', content: msg}));i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(dmWS) dmWS.send((data.secure_url || data.url)); }catch(e){ console.error(e); }}
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
@@ -3761,6 +3865,15 @@ async function uploadToCloudinary(file){
     return (data.secure_url || data.url);
 }
 
+
+function previewLocalImage(file, imgEl){
+    try{
+        if(!file || !imgEl) return;
+        const reader = new FileReader();
+        reader.onload = (e)=>{ imgEl.src = e.target.result; };
+        reader.readAsDataURL(file);
+    }catch(e){}
+}
 async function submitPost(){
     let file=document.getElementById('file-upload').files[0];
     let caption=document.getElementById('caption-upload').value.trim();
@@ -3787,18 +3900,32 @@ async function submitPost(){
 async function updateProfile(){
     let btn=document.getElementById('btn-save-profile');
     btn.disabled=true;
+    btn.innerText="ENVIANDO...";
     try{
         let f=document.getElementById('avatar-upload').files[0];
         let c=document.getElementById('cover-upload').files[0];
         let b=document.getElementById('bio-update').value;
+
+        // preview imediato no front
+        if(f){ previewLocalImage(f, document.getElementById('p-avatar')); }
+        if(c){ previewLocalImage(c, document.getElementById('p-cover')); }
+
+        showToast("⏳ Enviando imagens...");
         let au=null,cu=null;
         if(f) au=await uploadToCloudinary(f);
         if(c) cu=await uploadToCloudinary(c);
+
         let payload={avatar_url:au,cover_url:cu,bio:b};
         let r=await authFetch('/profile/update_meta',{method:'POST',body:JSON.stringify(payload)});
-        if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}
-    }catch(e){ console.error(e); }
-    finally{ btn.disabled=false; }
+        if(r.ok){
+            showToast("✅ Perfil atualizado!");
+            await updateProfileState();
+            document.getElementById('modal-profile').classList.add('hidden');
+        }else{
+            showToast("❌ Erro ao atualizar perfil.");
+        }
+    }catch(e){ console.error(e); showToast("❌ Erro ao enviar."); }
+    finally{ btn.disabled=false; btn.innerText=t('save'); }
 }
 
 function clearSearch(){
