@@ -749,6 +749,19 @@ def del_comment(
     count = db.query(Comment).filter_by(post_id=post_id).count() if post_id else 0
     return {"status": "ok", "post_id": post_id, "comments": count}
 
+@app.delete("/comments/{comment_id}")
+def delete_comment_rest(comment_id:int, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    c = db.query(Comment).filter_by(id=comment_id).first()
+    post_id = c.post_id if c else None
+    if not c:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if c.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    db.delete(c)
+    db.commit()
+    count = db.query(Comment).filter_by(post_id=post_id).count() if post_id else 0
+    return {"ok": True, "post_id": post_id, "comments": count}
+
 @app.post("/post/delete")
 def delete_post_endpoint(
     d: DeletePostData,
@@ -1621,16 +1634,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 err = None
                 if ch.startswith("dm_"):
                     # dm_{min}_{max}
-                    try:
-                        _, a, b = ch.split("_")
-                        a = int(a)
-                        b = int(b)
-                        other = b if uid == a else a
-                    except Exception:
-                        other = None
-                    if other is None:
-                        continue
-                    new_msg, err = handle_private_message(db, uid, other, content)
+                    new_msg, _rec_id = handle_dm_message(db, ch, uid, content)
+                    err = None
                 elif ch.startswith("group_"):
                     new_msg, err = handle_group_message(db, ch, uid, content)
                 elif ch.startswith("comm_"):
@@ -1836,6 +1841,52 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .profile-header-container { height: 140px; margin-bottom: 50px; }
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
+
+/* ===== Reels Mobile UX fixes (B11) ===== */
+@media (max-width: 768px){
+  /* 1 post per screen */
+  .post-card{ height:100vh; border-radius:0; margin:0; }
+  .post-media-wrapper{ position:relative; height:100%; }
+  .post-media-wrapper .post-media{ width:100%; height:100%; object-fit:cover; background:#000; }
+
+  /* Sound button */
+  .reel-sound-btn{
+    position:absolute;
+    top:12px;
+    left:12px;
+    z-index:15;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.15);
+    background:rgba(0,0,0,0.35);
+    color:#fff;
+    padding:10px 12px;
+    font-weight:bold;
+  }
+
+  /* Comments overlay (so it doesn't push/resize the video and doesn't trigger observer pause) */
+  .comments-section{
+    position:absolute;
+    left:0;
+    right:0;
+    bottom:0;
+    max-height:55vh;
+    overflow:auto;
+    z-index:20;
+    background:rgba(0,0,0,0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .comment-input-area{
+    position:sticky;
+    bottom:0;
+    z-index:25;
+  }
+
+  /* Prevent upload modal/button from covering reels area unintentionally */
+  #modal-upload .modal-box{ width:92vw; max-height:90vh; overflow:auto; }
+}
+
 </style>
 </head>
 <body>
@@ -3080,28 +3131,70 @@ async function toggleRecord(type) {
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata" controls playsinline crossorigin="anonymous"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
 function isMobile(){return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;}
 
+function toggleReelSound(btn){
+    try{
+        const wrap = btn.closest('.post-media-wrapper');
+        const v = wrap ? wrap.querySelector('video.reel-video') : null;
+        if(!v) return;
+        v.muted = !v.muted;
+        btn.textContent = v.muted ? '🔇' : '🔊';
+        // On iOS, unmute may require user gesture; this click is a gesture.
+        if(v.paused){
+            v.play().catch(()=>{});
+        }
+    }catch(e){}
+}
+
 function setupReelsAutoplay(){
     if(!isMobile()) return;
-    const vids = Array.from(document.querySelectorAll('.reel-video'));
+
+    const vids = Array.from(document.querySelectorAll('video.reel-video'));
+
     vids.forEach(v=>{
+        // Autoplay on mobile requires muted. We start muted, user can tap 🔇 to unmute.
         v.muted = true;
         v.playsInline = true;
         v.setAttribute('playsinline','');
-        v.controls = false;
         v.preload = 'metadata';
+
+        // click to play/pause (since controls are hidden in reels)
+        if(!v.dataset.tapBound){
+            v.dataset.tapBound = '1';
+            v.addEventListener('click', (e)=>{
+                // ignore clicks that come from inside comment input area etc.
+                if(e && e.target && (e.target.classList?.contains('comment-inp') || e.target.closest?.('.comments-section'))) return;
+                if(v.paused){
+                    v.play().catch(()=>{});
+                }else{
+                    v.pause();
+                }
+            });
+        }
+
+        // set initial icon if button exists
+        const btn = v.closest('.post-media-wrapper')?.querySelector('.reel-sound-btn');
+        if(btn) btn.textContent = v.muted ? '🔇' : '🔊';
     });
+
     if(window.__reelsObserver) try{ window.__reelsObserver.disconnect(); }catch(e){}
+
     window.__reelsObserver = new IntersectionObserver((entries)=>{
         entries.forEach(async (entry)=>{
             const v = entry.target;
+
+            // If user is typing a comment on this post, don't pause it.
+            const active = document.activeElement;
+            const typingHere = active && active.classList && active.classList.contains('comment-inp') && v.closest('.post-card')?.contains(active);
+
             if(entry.isIntersecting){
                 vids.forEach(o=>{ if(o!==v) o.pause(); });
                 try{ await v.play(); }catch(e){}
             } else {
-                v.pause();
+                if(!typingHere) v.pause();
             }
         });
     }, { threshold: 0.80 });
+
     vids.forEach(v=>window.__reelsObserver.observe(v));
 }
 
@@ -3126,9 +3219,9 @@ async function loadFeed(){
         p.forEach(x=>{
             const url = x.content_url || x.video_url || x.media_url;
             let mediaHtml = (x.media_type==='video')
-                ? `<video src="${url}" class="post-media reel-video" playsinline muted preload="metadata" crossorigin="anonymous"></video>`
+                ? `<video src="${url}" class="post-media reel-video" playsinline preload="metadata" crossorigin="anonymous"></video>`
                 : `<img src="${url}" class="post-media" loading="lazy">`;
-            mediaHtml=`<div class="post-media-wrapper">${mediaHtml}</div>`;
+            mediaHtml=`<div class="post-media-wrapper">${mediaHtml}${(x.media_type==='video')?'<button class="reel-sound-btn" onclick="toggleReelSound(this)">🔇</button>':''}</div>`;
             let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';
             let heartIcon=x.user_liked?"❤️":"🤍";
             let heartClass=x.user_liked?"liked":"";
@@ -3191,6 +3284,9 @@ document.getElementById('btn-confirm-delete').onclick=async()=>{
             if(r.ok){ lastFeedHash=""; loadFeed(); loadMyHistory(); updateProfileState(); }
         }else if(tp==='comment'){
             let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})});
+            if(!r.ok){
+                r = await authFetch(`/comments/${id}`, {method:'DELETE'});
+            }
             if(r.ok){
                 let d = await r.json().catch(()=>null);
                 let pid = (d && d.post_id) ? d.post_id : postId;
