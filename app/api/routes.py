@@ -511,6 +511,7 @@ async def upload_my_avatar(
 ):
     # Upload to Cloudinary and persist URL
     try:
+        init_cloudinary()
         res = cloudinary.uploader.upload(
             await file.read(),
             folder=f"forglory/avatars/{current_user.id}",
@@ -528,7 +529,7 @@ async def upload_my_avatar(
         raise HTTPException(status_code=500, detail="Avatar upload failed")
 
 
-@app.get("/users/{uid}")
+@app.get("/users/id/{uid}")
 def get_user_public(uid: int, db: Session = Depends(get_db)):
     u = db.query(User).filter(User.id == uid).first()
     if not u:
@@ -543,6 +544,12 @@ def get_user_public(uid: int, db: Session = Depends(get_db)):
         "rank": compute_rank(u.xp),
     }
 
+
+# compat: front-end antigo usa /users/basic/{uid}
+@app.get("/users/basic/{uid}")
+def get_user_basic(uid: int, db: Session = Depends(get_db)):
+    return get_user_public(uid, db)
+
 @app.post("/users/me/cover")
 async def upload_my_cover(
     file: UploadFile = File(...),
@@ -550,6 +557,7 @@ async def upload_my_cover(
     db: Session = Depends(get_db),
 ):
     try:
+        init_cloudinary()
         res = cloudinary.uploader.upload(
             await file.read(),
             folder=f"forglory/covers/{current_user.id}",
@@ -590,17 +598,33 @@ def toggle_stealth(
     return {"is_invisible": current_user.is_invisible}
 
 @app.post("/profile/update_meta")
-def update_prof_meta(
-    d: UpdateProfileData,
+async def update_prof_meta(
+    request: Request,
+    avatar_url: Optional[str] = Form(None),
+    cover_url: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    if d.avatar_url:
-        current_user.avatar_url = d.avatar_url
-    if d.cover_url:
-        current_user.cover_url = d.cover_url
-    if d.bio:
-        current_user.bio = d.bio
+    """Atualiza metadados do perfil.
+
+    Aceita tanto JSON (fetch) quanto form-data (form HTML).
+    """
+    if avatar_url is None and cover_url is None and bio is None:
+        try:
+            payload = await request.json()
+            avatar_url = payload.get("avatar_url")
+            cover_url = payload.get("cover_url")
+            bio = payload.get("bio")
+        except Exception:
+            pass
+
+    if avatar_url:
+        current_user.avatar_url = avatar_url
+    if cover_url:
+        current_user.cover_url = cover_url
+    if bio is not None:
+        current_user.bio = bio
     db.commit()
     return {"status": "ok"}
 
@@ -2264,6 +2288,11 @@ async function authFetch(url, options = {}) {
   const token = localStorage.getItem("token");
   const headers = options.headers ? { ...options.headers } : {};
   if (token) headers["Authorization"] = "Bearer " + token;
+
+  // Se body é string (JSON), garante Content-Type.
+  if (typeof options.body === "string" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const opts = { ...options, headers };
 
