@@ -535,6 +535,7 @@ def get_user_public(uid: int, db: Session = Depends(get_db)):
     u = db.query(User).filter(User.id == uid).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+    s = format_user_summary(u)
     return {
         "id": u.id,
         "username": u.username,
@@ -542,7 +543,9 @@ def get_user_public(uid: int, db: Session = Depends(get_db)):
         "cover_url": u.cover_url,
         "bio": u.bio,
         "xp": u.xp,
-        "rank": compute_rank(u.xp),
+        "rank": s.get("rank") or compute_rank(u.xp),
+        "rank_color": s.get("color") or "#2ecc71",
+        "special_emblem": s.get("special_emblem") or "",
     }
 
 
@@ -795,7 +798,7 @@ def get_posts(uid: int, limit: int = 50, db: Session = Depends(get_db)):
                     "id": p.id,
                         # Compat: nosso model/tabela usa posts.content_url, posts.caption, posts.timestamp.
                         # Algumas versões antigas do front esperavam media_url/text/created_at.
-                        "content_url": getattr(p, "content_url", None) or getattr(p, "media_url", None),
+                        "content_url": (getattr(p, "content_url", None) or getattr(p, "media_url", None) or "").strip() if isinstance((getattr(p, "content_url", None) or getattr(p, "media_url", None) or ""), str) else (getattr(p, "content_url", None) or getattr(p, "media_url", None) or ""),
                         "media_type": getattr(p, "media_type", None),
                         "caption": getattr(p, "caption", None) or getattr(p, "text", None),
                         "created_at": (
@@ -1529,9 +1532,17 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         await manager.connect(ws, ch, uid)
 
         while True:
-            data = await ws.receive_json()
-            # formato esperado: {"type":"msg","content":"...","to":123}
-            msg_type = data.get("type", "msg")
+            msg = await ws.receive()
+            text_msg = (msg.get("text") or "").strip()
+            if not text_msg:
+                # ignora pings/frames vazios
+                continue
+            try:
+                data = json.loads(text_msg)
+            except Exception:
+                logger.warning("WS: mensagem não-JSON ignorada: %r", text_msg[:80])
+                continue
+            # formato esperado: {"type":"msg", "content":"...", "to_uid":?, "group_id":?, "comm_id":?, "channel_id":?}
             content = (data.get("content") or "").strip()
 
             if msg_type == "ping":
@@ -2101,6 +2112,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             </div>
             <div style="text-align:center;margin-top:20px">
                 <h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin:5px 0;">...</h2>
+                <div id="pub-rank" style="color:var(--primary);font-weight:700;margin-bottom:6px;">...</div>
                 <div id="pub-emblems" style="margin-bottom:10px;"></div>
                 <p id="pub-bio" style="color:#888;margin:10px 0 20px 0;">...</p>
                 <div id="pub-medals-box" style="text-align:center;"></div>
@@ -3235,7 +3247,7 @@ async function openPublicProfile(uid){
         // grid de posts
         let grid = document.getElementById('pub-grid');
         grid.innerHTML = '';
-        (d.posts || []).forEach(p => {
+        (d.posts || []).filter(p => p && p.content_url).forEach(p => {
             grid.innerHTML += (p.media_type === 'video')
                 ? `<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls playsinline preload="metadata" crossorigin="anonymous"></video>`
                 : `<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;
