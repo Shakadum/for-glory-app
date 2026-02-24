@@ -168,9 +168,6 @@ class CommentData(BaseModel):
     post_id: int
     text: str
 
-class CommentCreate(BaseModel):
-    text: str
-
 class DelCommentData(BaseModel):
     comment_id: int
 
@@ -752,86 +749,6 @@ def delete_post_endpoint(
     db.commit()
     return {"status": "ok"}
 
-
-# ----------------------------------------------------------------------
-# NOVOS ENDPOINTS (REST) - compat com front B7
-# ----------------------------------------------------------------------
-@app.delete("/posts/{post_id}")
-def delete_post_rest(
-    post_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Remove um post do usuário logado.
-    Mantém compatibilidade com o front novo (menu ⋮ -> apagar).
-    """
-    post = db.query(Post).filter_by(id=post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    if post.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not allowed")
-
-    db.query(Like).filter_by(post_id=post.id).delete()
-    db.query(Comment).filter_by(post_id=post.id).delete()
-    db.delete(post)
-
-    # regra simples de XP (mantém comportamento do endpoint antigo)
-    if getattr(current_user, "xp", 0) >= 50:
-        current_user.xp -= 50
-
-    db.commit()
-    return {"ok": True}
-
-@app.post("/posts/{post_id}/like")
-def toggle_like_rest(
-    post_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Toggle like. Retorna {likes, liked}.
-    """
-    post = db.query(Post).filter_by(id=post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    existing = db.query(Like).filter_by(post_id=post_id, user_id=current_user.id).first()
-    if existing:
-        db.delete(existing)
-        liked = False
-    else:
-        db.add(Like(post_id=post_id, user_id=current_user.id))
-        liked = True
-
-    db.commit()
-
-    likes_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
-    return {"likes": int(likes_count), "liked": liked}
-
-@app.post("/posts/{post_id}/comment")
-def create_comment_rest(
-    post_id: int,
-    d: CommentCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Cria comentário em post. Body: {text}
-    """
-    post = db.query(Post).filter_by(id=post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    text = (d.text or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Empty comment")
-
-    c = Comment(user_id=current_user.id, post_id=post_id, text=text)
-    db.add(c)
-    db.commit()
-    db.refresh(c)
-    return {"ok": True, "comment": {"id": c.id, "text": c.text, "user_id": c.user_id, "post_id": c.post_id}}
 @app.get("/post/{post_id}/comments")
 def get_comments(post_id: int, db: Session = Depends(get_db)):
     comments = db.query(Comment).filter_by(post_id=post_id).order_by(Comment.timestamp.asc()).all()
@@ -1632,13 +1549,18 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if not text_msg:
                 # ignora pings/frames vazios
                 continue
+
+            data = None
+            msg_type = "msg"
+            content = ""
+
+            # Aceita JSON (novo) e texto puro (legado)
             try:
                 data = json.loads(text_msg)
+                msg_type = (data.get("type") or "msg").strip()
+                content = (data.get("content") or "").strip()
             except Exception:
-                logger.warning("WS: mensagem não-JSON ignorada: %r", text_msg[:80])
-                continue
-            # formato esperado: {"type":"msg", "content":"...", "to_uid":?, "group_id":?, "comm_id":?, "channel_id":?}
-            content = (data.get("content") or "").strip()
+                content = text_msg
 
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
@@ -1647,8 +1569,42 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if not content:
                 continue
 
-            # (opcional) persistir mensagem no DB aqui
-            await manager.broadcast(ch, {"type": "msg", "from": uid, "content": content})
+            saved_id = None
+            ts = get_utc_iso(datetime.utcnow())
+
+            # Persistência por tipo de canal
+            try:
+                with SessionLocal() as db:
+                    if ch.startswith("dm_"):
+                        parts = ch.split("_")
+                        if len(parts) == 3:
+                            a = int(parts[1]); b = int(parts[2])
+                            to_uid = b if int(uid) == a else a
+                            pm = PrivateMessage(sender_id=uid, receiver_id=to_uid, content=content, timestamp=datetime.utcnow(), is_read=0)
+                            db.add(pm); db.commit(); db.refresh(pm)
+                            saved_id = pm.id
+                        else:
+                            to_uid = None
+                    elif ch.startswith("group_"):
+                        gid = int(ch.split("_")[1])
+                        gm = GroupMessage(group_id=gid, sender_id=uid, content=content, timestamp=datetime.utcnow())
+                        db.add(gm); db.commit(); db.refresh(gm)
+                        saved_id = gm.id
+                    elif ch.startswith("comm_"):
+                        channel_id = int(ch.split("_")[1])
+                        chan = db.query(CommunityChannel).filter_by(id=channel_id).first()
+                        if chan:
+                            cm = CommunityMessage(community_id=chan.community_id, channel_id=channel_id, sender_id=uid, content=content, timestamp=datetime.utcnow())
+                            db.add(cm); db.commit(); db.refresh(cm)
+                            saved_id = cm.id
+                    else:
+                        # canal genérico: sem persistência
+                        pass
+            except Exception:
+                logger.exception("WS: erro ao persistir mensagem")
+
+            payload = {"type": "msg", "from": uid, "content": content, "id": saved_id, "ts": ts}
+            await manager.broadcast(ch, payload)
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -1818,6 +1774,21 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .profile-header-container { height: 140px; margin-bottom: 50px; }
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
+
+
+/* --- B7: REELS (AUTOPLAY SÓ NO CELULAR) --- */
+@media(max-width:768px){
+  /* Reels = 1 post por tela + scroll snap */
+  #feed-container{scroll-snap-type:y mandatory; padding:0; gap:0; align-items:stretch;}
+  .post-card{height:100vh; max-width:100%; border-radius:0; scroll-snap-align:start; background:#000;}
+  .post-media{max-height:100vh !important; width:100%; object-fit:cover !important; background:#000;}
+  video.post-media{display:block;}
+  .post-media-wrapper{padding:0; border:none;}
+}
+/* garantir cliques nos botões (comentários/delete) */
+.comment-row span{position:relative; z-index:5;}
+.post-header span{position:relative; z-index:5;}
+
 </style>
 </head>
 <body>
@@ -1923,7 +1894,26 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
             <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button>
             <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
         </div>
-    </div>
+    
+<div id="modal-ranks" class="modal hidden">
+  <div class="modal-box" style="max-width:520px;">
+    <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">Patentes</h2>
+    <p style="color:#aaa; margin-top:-6px; font-size:13px;">Veja todas as patentes e o que falta para desbloquear.</p>
+    <div id="ranks-list" style="max-height:60vh; overflow:auto; padding-right:6px;"></div>
+    <button onclick="closeRanksModal()" class="btn-main" style="margin-top:12px;">FECHAR</button>
+  </div>
+</div>
+
+<div id="modal-trophies" class="modal hidden">
+  <div class="modal-box" style="max-width:650px;">
+    <h2 style="color:var(--primary); font-family:'Rajdhani'; margin-top:0;">Troféus</h2>
+    <p style="color:#aaa; margin-top:-6px; font-size:13px;">Os que você tem aparecem desbloqueados. Os restantes ficam com cadeado e mostram o requisito.</p>
+    <div id="trophies-all-box"></div>
+    <button onclick="closeTrophiesModal()" class="btn-main" style="margin-top:12px;">FECHAR</button>
+  </div>
+</div>
+
+</div>
 </div>
 
 <div id="modal-create-comm" class="modal hidden">
@@ -2223,6 +2213,110 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 
 <script>
 window.deleteTarget = {type: null, id: null};
+
+const isMobile = window.matchMedia("(max-width: 768px)").matches;
+let reelsObserver = null;
+
+function setupReelsAutoplay(){
+  if(!isMobile) return;
+
+  // Garantir requisitos de autoplay no mobile
+  document.querySelectorAll('video.reel-video').forEach(v=>{
+    v.muted = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline','');
+    v.controls = false;
+    v.loop = true;
+  });
+
+  if(reelsObserver) reelsObserver.disconnect();
+
+  reelsObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(async (entry)=>{
+      const video = entry.target;
+      if(entry.isIntersecting){
+        // pausa os outros
+        document.querySelectorAll('video.reel-video').forEach(v=>{ if(v!==video) v.pause(); });
+        try{ await video.play(); }catch(e){}
+      } else {
+        video.pause();
+      }
+    });
+  }, { threshold: 0.80 });
+
+  document.querySelectorAll('video.reel-video').forEach(v=>reelsObserver.observe(v));
+}
+
+const RANK_TIERS = [
+  {xp:0, name:"Recruta", next:100, color:"#888888"},
+  {xp:100, name:"Soldado", next:300, color:"#2ecc71"},
+  {xp:300, name:"Cabo", next:600, color:"#27ae60"},
+  {xp:600, name:"3º Sargento", next:1000, color:"#3498db"},
+  {xp:1000, name:"2º Sargento", next:1500, color:"#2980b9"},
+  {xp:1500, name:"1º Sargento", next:2500, color:"#9b59b6"},
+  {xp:2500, name:"Subtenente", next:4000, color:"#8e44ad"},
+  {xp:4000, name:"Tenente", next:6000, color:"#f1c40f"},
+  {xp:6000, name:"Capitão", next:10000, color:"#f39c12"},
+  {xp:10000, name:"Major", next:15000, color:"#e67e22"},
+  {xp:15000, name:"Tenente-Coronel", next:25000, color:"#e74c3c"},
+  {xp:25000, name:"Coronel", next:50000, color:"#c0392b"},
+  {xp:50000, name:"General ⭐", next:50000, color:"#FFD700"}
+];
+
+function showRanksModal(){
+  const modal=document.getElementById('modal-ranks');
+  const box=document.getElementById('ranks-list');
+  if(!modal||!box) return;
+
+  const myXP = (user && typeof user.xp==='number') ? user.xp : 0;
+
+  box.innerHTML = RANK_TIERS.map((t,i)=>{
+    const next = (i+1<RANK_TIERS.length) ? RANK_TIERS[i+1].xp : null;
+    const have = myXP >= t.xp;
+    const missing = have ? 0 : (t.xp - myXP);
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.35); margin-bottom:10px;">
+        <div>
+          <div style="font-weight:900; color:${t.color}; font-family:'Rajdhani'; font-size:18px;">${t.name}</div>
+          <div style="color:#aaa; font-size:12px;">Requisito: ${t.xp} XP${next?` (próxima em ${next} XP)`:''}</div>
+          ${have ? `<div style="color:#2ecc71; font-size:12px; margin-top:4px;">✔ Você já tem</div>` :
+                  `<div style="color:#ff7777; font-size:12px; margin-top:4px;">🔒 Faltam ${missing} XP</div>`}
+        </div>
+        <div style="width:10px;height:46px;border-radius:8px;background:${t.color}; opacity:${have?1:0.35};"></div>
+      </div>
+    `;
+  }).join('');
+
+  modal.classList.remove('hidden');
+}
+function closeRanksModal(){ document.getElementById('modal-ranks')?.classList.add('hidden'); }
+
+function showTrophiesModal(){
+  const modal=document.getElementById('modal-trophies');
+  const box=document.getElementById('trophies-all-box');
+  if(!modal||!box) return;
+  // mostra todos (com cadeado e requisito)
+  renderMedals('trophies-all-box', (user?.medals||[]), false);
+  modal.classList.remove('hidden');
+}
+function closeTrophiesModal(){ document.getElementById('modal-trophies')?.classList.add('hidden'); }
+
+// Mostra só o que você tem no perfil (sem cadeados), e um botão "Ver troféus"
+function renderMyTrophies(){
+  const box=document.getElementById('p-medals-box');
+  if(!box) return;
+  const medals=(user?.medals||[]);
+  const owned = medals.filter(m=>m.earned);
+  if(owned.length===0){
+    box.innerHTML = `<div style="background:rgba(255,255,255,0.05); padding:18px; border-radius:12px; border:1px dashed #444; color:#888; font-style:italic; margin-top:18px;">🎖️ ${t('no_trophies')}</div>
+                     <div style="text-align:center; margin-top:10px;"><button class="btn-link" onclick="showTrophiesModal()">Ver troféus</button></div>`;
+    return;
+  }
+  // reaproveita renderMedals em modo "público" (só earned)
+  renderMedals('p-medals-box', medals, true);
+  // adiciona botão abaixo
+  box.innerHTML += `<div style="text-align:center; margin-top:-10px; margin-bottom:20px;"><button class="btn-link" onclick="showTrophiesModal()">Ver troféus</button></div>`;
+}
 
 // CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
 const T = {
@@ -2836,7 +2930,7 @@ function updateUI(){
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     let missingXP = user.next_xp - user.xp;
     document.getElementById('p-progression-box').innerHTML = `<div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:'Rajdhani'; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
-    renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
+    renderMyTrophies(); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
 function startApp(){
@@ -2976,9 +3070,9 @@ async function toggleRecord(type) {
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata" controls playsinline crossorigin="anonymous"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
-async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata" crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
+async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media reel-video" ${isMobile?'muted playsinline preload="metadata"':'controls playsinline preload="metadata"'} crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" id="like-count-${x.id}" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" id="comment-count-${x.id}" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;setupReelsAutoplay();openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
-document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){lastFeedHash="";loadFeed();}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
+document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){let pid=(window.deleteTarget&&window.deleteTarget.pid)?window.deleteTarget.pid:null; if(pid){await loadComments(pid); let cc=document.getElementById(`comment-count-${pid}`); if(cc){ cc.textContent=String(Math.max(0,(parseInt(cc.textContent||'0')||0)-1)); }} else { lastFeedHash=""; loadFeed(); }}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
 async function updateProfileState() { try { let r = await authFetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) { console.error(e); } }
 async function toggleLike(pid, btn) {
@@ -3004,7 +3098,7 @@ async function toggleLike(pid, btn) {
     } catch (e) { console.error(e); }
 }
 async function toggleComments(pid){let sec=document.getElementById(`comments-${pid}`);if(sec.style.display==='block'){sec.style.display='none';}else{sec.style.display='block';loadComments(pid);}}
-async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
+async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}, pid:${pid}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
 async function sendComment(pid) {
     try {
         let inp = document.getElementById(`comment-inp-${pid}`);
@@ -3017,8 +3111,11 @@ async function sendComment(pid) {
         if (r.ok) {
             inp.value = '';
             toggleEmoji(true);
-            lastFeedHash = "";
-            loadFeed();
+            // Não recarrega o feed (isso pausava o vídeo). Apenas atualiza comentários.
+            await loadComments(pid);
+            let cc = document.getElementById(`comment-count-${pid}`);
+            if(cc){ cc.textContent = String((parseInt(cc.textContent||'0')||0) + 1); }
+
         }
     } catch (e) { console.error(e); }
 }
