@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form
 from starlette.requests import Request
 from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
@@ -62,11 +63,15 @@ def verify_password(plain_password, hashed_password):
 
 # ========== FUNÇÃO CORRIGIDA (APENAS UMA) ==========
 def get_password_hash(password):
-    # Garante que a senha não ultrapasse 72 bytes (limite do bcrypt)
+    """Gera hash bcrypt.
+
+    bcrypt tem limite de 72 bytes: truncar silenciosamente cria risco real
+    (senhas diferentes viram a mesma hash). Então aqui a gente bloqueia.
+    """
     if isinstance(password, str):
-        password_bytes = password.encode('utf-8')
+        password_bytes = password.encode("utf-8")
         if len(password_bytes) > 72:
-            password = password_bytes[:72].decode('utf-8', errors='ignore')
+            raise HTTPException(status_code=400, detail="Senha muito longa (máx. 72 bytes).")
     return pwd_context.hash(password)
 
 # ========== FUNÇÃO DE AUTENTICAÇÃO COM LOGS ==========
@@ -1640,13 +1645,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         manager.disconnect(ws, ch, uid)
 from pathlib import Path
 
-TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "index.html"
-
-def get_frontend_html() -> str:
-    try:
-        return TEMPLATE_PATH.read_text(encoding="utf-8")
-    except Exception:
-        return "<h1>Frontend template missing</h1>"
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 
@@ -1654,6 +1654,8 @@ def get_frontend_html() -> str:
 # ROTA PRINCIPAL (FRONTEND)
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
-def get():
-    return HTMLResponse(content=get_frontend_html())
+def get(request: Request):
+    # Mantemos server-side template pronto (mesmo que hoje não injete variáveis)
+    # Isso facilita futuras configs por ambiente, feature flags, etc.
+    return templates.TemplateResponse("index.html", {"request": request})
 
