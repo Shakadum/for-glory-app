@@ -15,8 +15,8 @@ def utcnow():
 friendship = Table(
     'friendships',
     Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('friend_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    Column('friend_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
 )
 
 
@@ -55,8 +55,8 @@ class FriendRequest(Base):
     __tablename__ = 'friend_requests'
 
     id = Column(Integer, primary_key=True, index=True)
-    sender_id = Column(Integer, ForeignKey('users.id'))
-    receiver_id = Column(Integer, ForeignKey('users.id'))
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    receiver_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     timestamp = Column(DateTime, default=utcnow)
 
     sender = relationship('User', foreign_keys=[sender_id])
@@ -66,7 +66,7 @@ class Post(Base):
     __tablename__ = 'posts'
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content_url = Column(String)
     media_type = Column(String)
     caption = Column(String)
@@ -80,16 +80,16 @@ class Like(Base):
     __table_args__ = (UniqueConstraint('user_id','post_id', name='uq_like_user_post'),)
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    post_id = Column(Integer, ForeignKey('posts.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'))
 
 
 class Comment(Base):
     __tablename__ = 'comments'
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    post_id = Column(Integer, ForeignKey('posts.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'))
     text = Column(String)
     timestamp = Column(DateTime, default=utcnow)
 
@@ -100,8 +100,8 @@ class PrivateMessage(Base):
     __tablename__ = 'private_messages'
 
     id = Column(Integer, primary_key=True, index=True)
-    sender_id = Column(Integer, ForeignKey('users.id'))
-    receiver_id = Column(Integer, ForeignKey('users.id'))
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    receiver_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content = Column(String)
     is_read = Column(Integer, default=0)
     timestamp = Column(DateTime, default=utcnow)
@@ -120,16 +120,16 @@ class GroupMember(Base):
     __tablename__ = 'group_members'
 
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey('chat_groups.id'))
-    user_id = Column(Integer, ForeignKey('users.id'))
+    group_id = Column(Integer, ForeignKey('chat_groups.id', ondelete='CASCADE'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
 
 
 class GroupMessage(Base):
     __tablename__ = 'group_messages'
 
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey('chat_groups.id'))
-    sender_id = Column(Integer, ForeignKey('users.id'))
+    group_id = Column(Integer, ForeignKey('chat_groups.id', ondelete='CASCADE'))
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content = Column(String)
     timestamp = Column(DateTime, default=utcnow)
 
@@ -145,15 +145,15 @@ class Community(Base):
     avatar_url = Column(String)
     banner_url = Column(String, default='')
     is_private = Column(Integer, default=0)
-    creator_id = Column(Integer, ForeignKey('users.id'))
+    creator_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
 
 
 class CommunityMember(Base):
     __tablename__ = 'community_members'
 
     id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey('communities.id'))
-    user_id = Column(Integer, ForeignKey('users.id'))
+    comm_id = Column(Integer, ForeignKey('communities.id', ondelete='CASCADE'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     role = Column(String, default='member')
 
     user = relationship('User')
@@ -163,7 +163,7 @@ class CommunityChannel(Base):
     __tablename__ = 'community_channels'
 
     id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey('communities.id'))
+    comm_id = Column(Integer, ForeignKey('communities.id', ondelete='CASCADE'))
     name = Column(String)
     channel_type = Column(String, default='livre')
     banner_url = Column(String, default='')
@@ -174,8 +174,8 @@ class CommunityMessage(Base):
     __tablename__ = 'community_messages'
 
     id = Column(Integer, primary_key=True, index=True)
-    channel_id = Column(Integer, ForeignKey('community_channels.id'))
-    sender_id = Column(Integer, ForeignKey('users.id'))
+    channel_id = Column(Integer, ForeignKey('community_channels.id', ondelete='CASCADE'))
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content = Column(String)
     timestamp = Column(DateTime, default=utcnow)
 
@@ -186,8 +186,8 @@ class CommunityRequest(Base):
     __tablename__ = 'community_requests'
 
     id = Column(Integer, primary_key=True, index=True)
-    comm_id = Column(Integer, ForeignKey('communities.id'))
-    user_id = Column(Integer, ForeignKey('users.id'))
+    comm_id = Column(Integer, ForeignKey('communities.id', ondelete='CASCADE'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     timestamp = Column(DateTime, default=utcnow)
 
     user = relationship('User', foreign_keys=[user_id])
@@ -206,7 +206,7 @@ class UserConfig(Base):
     __tablename__ = 'user_configs'
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     target_type = Column(String)
     target_id = Column(String)
     wallpaper_url = Column(String, default='')
