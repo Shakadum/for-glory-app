@@ -277,12 +277,11 @@ class ConnectionManager:
         if chan not in self.active:
             self.active[chan] = []
         self.active[chan].append(ws)
-        if chan == "Geral":
-            self.user_ws[uid] = ws
+        self.user_ws[uid] = ws  # keep last WS per user (used for DM fallback)
     def disconnect(self, ws: WebSocket, chan: str, uid: int):
         if chan in self.active and ws in self.active[chan]:
             self.active[chan].remove(ws)
-        if chan == "Geral" and uid in self.user_ws:
+        if self.user_ws.get(uid) is ws:
             del self.user_ws[uid]
     async def broadcast(self, msg: dict, chan: str):
         for conn in self.active.get(chan, []):
@@ -731,11 +730,43 @@ def del_comment(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
+    """Legacy endpoint (front antigo). Mantido por compatibilidade.
+
+    Espera: { comment_id: int, post_id?: int }
+    """
     c = db.query(Comment).filter_by(id=d.comment_id).first()
-    if c and c.user_id == current_user.id:
-        db.delete(c)
-        db.commit()
-    return {"status": "ok"}
+    if not c:
+        raise HTTPException(status_code=404, detail="comment not found")
+    if c.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+    post_id = getattr(c, "post_id", None)
+    db.delete(c)
+    db.commit()
+    # retorna contador atualizado (se existir post_id)
+    comment_count = None
+    if post_id is not None:
+        comment_count = db.query(Comment).filter_by(post_id=post_id).count()
+    return {"status": "ok", "deleted": True, "post_id": post_id, "comment_count": comment_count}
+
+@app.delete("/comments/{comment_id}")
+def delete_comment_rest(
+    comment_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Endpoint REST para deletar comentário (front novo)."""
+    c = db.query(Comment).filter_by(id=comment_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="comment not found")
+    if c.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+    post_id = getattr(c, "post_id", None)
+    db.delete(c)
+    db.commit()
+    comment_count = None
+    if post_id is not None:
+        comment_count = db.query(Comment).filter_by(post_id=post_id).count()
+    return {"ok": True, "deleted": True, "post_id": post_id, "comment_count": comment_count}
 
 @app.post("/post/delete")
 def delete_post_endpoint(
@@ -1606,12 +1637,17 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         pm = PrivateMessage(sender_id=uid, receiver_id=to_uid, content=content, timestamp=now)
                         db.add(pm); db.commit(); db.refresh(pm)
                         payload["id"] = pm.id
+                        # Envia para quem estiver no canal do DM (se ambos abriram o dm_{a}_{b})
                         await manager.broadcast(payload, ch)
-                        # também notifica no WS "Geral" do destinatário (badge/unread)
+                        # Fallback: envia a própria mensagem pelo WS global do usuário (funciona mesmo
+                        # se o outro não estiver com esse DM aberto, desde que tenha WS ativo)
+                        await manager.send_personal(payload, to_uid)
+                        await manager.send_personal(payload, uid)
+                        # Notificação simples (badge/unread) - opcional
                         await manager.send_personal({"type": "dm_notify", "from_uid": uid}, to_uid)
                         continue
 
-                if ch.startswith("group_"):
+                if ch.startswith("group_")):
                     # group_{id}
                     parts = ch.split("_")
                     if len(parts) == 2:
