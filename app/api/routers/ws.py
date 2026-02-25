@@ -59,11 +59,53 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         await manager.connect(ws, ch, uid)
 
         while True:
-            msg = await ws.receive()
+
+try:
+    msg = await ws.receive()
+except RuntimeError:
+    # Starlette lança quando já recebeu disconnect
+    break
+
+if msg.get("type") == "websocket.disconnect":
+    break
             text_msg = (msg.get("text") or "").strip()
             if not text_msg:
                 # ignora pings/frames vazios
                 continue
+
+
+# Protocolos legados (strings) usados pelo front
+# - CALL_SIGNAL:{targetUid}:{accepted|rejected|cancelled}:{channel}
+# - SYNC_BG:{channel}:{bg_url}
+# - KICK_CALL:{targetUid}
+if text_msg.startswith("CALL_SIGNAL:"):
+    parts = text_msg.split(":", 3)
+    if len(parts) == 4:
+        target_uid = int(parts[1])
+        action = parts[2]
+        channel_name = parts[3]
+        if action == "accepted":
+            await manager.send_personal({"type": "call_accepted", "channel": channel_name}, target_uid)
+        elif action == "rejected":
+            await manager.send_personal({"type": "call_rejected", "channel": channel_name}, target_uid)
+        elif action == "cancelled":
+            await manager.send_personal({"type": "call_cancelled", "channel": channel_name}, target_uid)
+    continue
+
+if text_msg.startswith("SYNC_BG:"):
+    parts = text_msg.split(":", 2)
+    if len(parts) == 3:
+        channel_name = parts[1]
+        bg_url = parts[2]
+        await manager.broadcast({"type": "sync_bg", "channel": channel_name, "bg_url": bg_url}, ch)
+    continue
+
+if text_msg.startswith("KICK_CALL:"):
+    parts = text_msg.split(":", 1)
+    if len(parts) == 2:
+        target_uid = int(parts[1])
+        await manager.send_personal({"type": "kick_call", "target_id": target_uid}, target_uid)
+    continue
 
             # Aceita JSON estruturado *ou* string pura (compat com front antigo)
             try:
@@ -77,6 +119,15 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if msg_type == "ping":
                 await manager.broadcast({"type": "pong"}, ch)
                 continue
+
+
+if msg_type in ("call_accepted", "call_rejected", "call_cancelled"):
+    # compat: {type:call_accepted, to: uid, channel: name}
+    to_uid = data.get("to") or data.get("target_id")
+    channel_name = data.get("channel") or data.get("channel_name")
+    if to_uid and channel_name:
+        await manager.send_personal({"type": msg_type, "channel": channel_name}, int(to_uid))
+    continue
 
             content = data.get("content")
 

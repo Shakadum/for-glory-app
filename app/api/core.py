@@ -277,32 +277,49 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class ConnectionManager:
     def __init__(self):
-        self.active = {}
-        self.user_ws = {}
+        # active[chan] -> list[WebSocket]
+        self.active: dict[str, list[WebSocket]] = {}
+        # user_ws[uid] -> set[WebSocket] (um usuário pode ter WS global + DM + comm aberto)
+        self.user_ws: dict[int, set[WebSocket]] = {}
+
     async def connect(self, ws: WebSocket, chan: str, uid: int):
         await ws.accept()
-        if chan not in self.active:
-            self.active[chan] = []
-        self.active[chan].append(ws)
-        # Sempre mantenha um socket 'primário' por usuário para entrega direta (DM/unread etc.)
-        self.user_ws[uid] = ws
+        self.active.setdefault(chan, []).append(ws)
+        self.user_ws.setdefault(uid, set()).add(ws)
+
     def disconnect(self, ws: WebSocket, chan: str, uid: int):
-        if chan in self.active and ws in self.active[chan]:
-            self.active[chan].remove(ws)
-        if self.user_ws.get(uid) is ws:
-            del self.user_ws[uid]
+        try:
+            if chan in self.active and ws in self.active[chan]:
+                self.active[chan].remove(ws)
+        except Exception:
+            pass
+        try:
+            if uid in self.user_ws and ws in self.user_ws[uid]:
+                self.user_ws[uid].remove(ws)
+                if not self.user_ws[uid]:
+                    del self.user_ws[uid]
+        except Exception:
+            pass
+
     async def broadcast(self, msg: dict, chan: str):
-        for conn in self.active.get(chan, []):
+        # envia para todos no canal
+        payload = json.dumps(msg)
+        for conn in list(self.active.get(chan, [])):
             try:
-                await conn.send_text(json.dumps(msg))
-            except:
+                await conn.send_text(payload)
+            except Exception:
                 pass
+
     async def send_personal(self, msg: dict, uid: int):
-        ws = self.user_ws.get(uid)
-        if ws:
+        # envia para todos sockets desse usuário (global + dm + comm)
+        conns = list(self.user_ws.get(uid, set()))
+        if not conns:
+            return
+        payload = json.dumps(msg)
+        for ws in conns:
             try:
-                await ws.send_text(json.dumps(msg))
-            except:
+                await ws.send_text(payload)
+            except Exception:
                 pass
 
 manager = ConnectionManager()
