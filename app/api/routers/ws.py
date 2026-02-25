@@ -60,14 +60,14 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
 
         while True:
 
-try:
-    msg = await ws.receive()
-except RuntimeError:
-    # Starlette lança quando já recebeu disconnect
-    break
+            try:
+                msg = await ws.receive()
+            except RuntimeError:
+                # Starlette lança quando já recebeu disconnect
+                break
 
-if msg.get("type") == "websocket.disconnect":
-    break
+            if msg.get("type") == "websocket.disconnect":
+                break
             text_msg = (msg.get("text") or "").strip()
             if not text_msg:
                 # ignora pings/frames vazios
