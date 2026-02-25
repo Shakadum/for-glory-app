@@ -125,7 +125,22 @@ def delete_post_endpoint(
 @router.get("/post/{post_id}/comments")
 def get_comments(post_id: int, db: Session = Depends(get_db)):
     comments = db.query(Comment).filter_by(post_id=post_id).order_by(Comment.timestamp.asc()).all()
-    return [{"id": c.id, "text": c.text, "author_name": c.author.username, "author_avatar": c.author.avatar_url, "author_id": c.author.id, **format_user_summary(c.author)} for c in comments]
+    out = []
+    for c in comments:
+        u = format_user_summary(c.author)
+        # evita sobrescrever o id do comentário (format_user_summary retorna id do usuário)
+        if isinstance(u, dict):
+            u.pop("id", None)
+        out.append({
+            "id": c.id,
+            "text": c.text,
+            "author_name": c.author.username,
+            "author_avatar": c.author.avatar_url,
+            "author_id": c.author.id,
+            **(u or {}),
+        })
+    return out
+
 
 
 @router.get("/posts")
