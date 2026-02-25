@@ -79,7 +79,7 @@ def get_dms(
         "timestamp": get_utc_iso(m.timestamp),
         "avatar": m.sender.avatar_url,
         "username": m.sender.username,
-        "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300,
+        "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
         **format_user_summary(m.sender)
     } for m in msgs]
 
@@ -113,7 +113,7 @@ def delete_msg(
         msg = db.query(GroupMessage).filter_by(id=d.msg_id).first()
 
     if msg and msg.sender_id == current_user.id:
-        if (datetime.utcnow() - msg.timestamp).total_seconds() > 300:
+        if (datetime.now(timezone.utc) - ts_aware(msg.timestamp)).total_seconds() > 300:
             return {"status": "timeout", "msg": "Tempo limite excedido."}
         msg.content = "[DELETED]"
         db.commit()

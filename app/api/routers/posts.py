@@ -57,7 +57,7 @@ def create_post_url(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    db.add(Post(user_id=current_user.id, content_url=d.content_url, media_type=d.media_type, caption=d.caption, timestamp=datetime.utcnow()))
+    db.add(Post(user_id=current_user.id, content_url=d.content_url, media_type=d.media_type, caption=d.caption, timestamp=datetime.now(timezone.utc)))
     current_user.xp += 50
     db.commit()
     return {"status": "ok"}

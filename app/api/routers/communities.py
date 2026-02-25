@@ -333,7 +333,7 @@ def get_comm_msgs(chid: int, db: Session = Depends(get_db)):
         "timestamp": get_utc_iso(m.timestamp),
         "avatar": m.sender.avatar_url,
         "username": m.sender.username,
-        "can_delete": (datetime.utcnow() - m.timestamp).total_seconds() <= 300,
+        "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
         **format_user_summary(m.sender)
     } for m in msgs]
 

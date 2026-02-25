@@ -349,6 +349,33 @@ def verify_reset_token(token: str):
     except JWTError:
         return None
 
+def verify_token(token: str) -> dict:
+    """Valida JWT e retorna o payload. Levanta HTTPException se inválido.
+    Usado pelo WebSocket para autenticar conexões via query param ?token=..."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Token ausente")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+
+def compute_rank(xp: int) -> str:
+    """Retorna o nome do rank para um dado XP. Atalho para get_user_badges."""
+    return get_user_badges(xp, 0, "membro")["rank"]
+
+def ts_aware(dt) -> datetime:
+    """Garante que um datetime seja timezone-aware (UTC).
+    Resolve o TypeError de comparar naive vs aware datetime."""
+    if dt is None:
+        return datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
 def get_user_badges(xp, user_id, role):
     tiers = [
         (0, "Recruta", 100, "#888888"),
