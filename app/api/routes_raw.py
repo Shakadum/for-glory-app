@@ -141,6 +141,9 @@ cloudinary.config(
 # ----------------------------------------------------------------------
 # BANCO DE DADOS (NEON / POSTGRESQL)
 # ----------------------------------------------------------------------
+try:
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(bind=engine)
 except Exception as e:
     logger.error(f"Erro inicial BD: {e}")
 
