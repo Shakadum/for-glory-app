@@ -11,8 +11,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = 'f3a1b2c4d5e6'
-down_revision: Union[str, None] = 'd7c01e26475e'
+revision = "f3a1b2c4d5e6"
+down_revision = "822fae71bc5a"
 branch_labels = None
 depends_on = None
 
