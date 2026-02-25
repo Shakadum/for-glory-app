@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
+
+# UTC helper (Python 3.12+: avoid deprecated datetime.utcnow)
+def utcnow():
+    return datetime.now(timezone.utc)
 
 # Many-to-many friendship relation (symmetric via mirrored inserts in services)
 friendship = Table(
@@ -53,7 +57,7 @@ class FriendRequest(Base):
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(Integer, ForeignKey('users.id'))
     receiver_id = Column(Integer, ForeignKey('users.id'))
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -66,13 +70,14 @@ class Post(Base):
     content_url = Column(String)
     media_type = Column(String)
     caption = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     author = relationship('User')
 
 
 class Like(Base):
     __tablename__ = 'likes'
+    __table_args__ = (UniqueConstraint('user_id','post_id', name='uq_like_user_post'),)
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'))
@@ -86,7 +91,7 @@ class Comment(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     post_id = Column(Integer, ForeignKey('posts.id'))
     text = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     author = relationship('User')
 
@@ -99,7 +104,7 @@ class PrivateMessage(Base):
     receiver_id = Column(Integer, ForeignKey('users.id'))
     content = Column(String)
     is_read = Column(Integer, default=0)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -126,7 +131,7 @@ class GroupMessage(Base):
     group_id = Column(Integer, ForeignKey('chat_groups.id'))
     sender_id = Column(Integer, ForeignKey('users.id'))
     content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -172,7 +177,7 @@ class CommunityMessage(Base):
     channel_id = Column(Integer, ForeignKey('community_channels.id'))
     sender_id = Column(Integer, ForeignKey('users.id'))
     content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -183,7 +188,7 @@ class CommunityRequest(Base):
     id = Column(Integer, primary_key=True, index=True)
     comm_id = Column(Integer, ForeignKey('communities.id'))
     user_id = Column(Integer, ForeignKey('users.id'))
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
 
     user = relationship('User', foreign_keys=[user_id])
 
