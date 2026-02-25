@@ -895,7 +895,7 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-async async function leaveCall() { 
+async function leaveCall() { 
     stopSounds();
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
     if (rtc.client) { await rtc.client.leave(); } 
