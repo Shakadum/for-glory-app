@@ -78,10 +78,21 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 await manager.broadcast({"type": "pong"}, ch)
                 continue
 
-            content = (data.get("content") or "").strip()
-            if not content:
-            if len(content) > 2000:
+            content = data.get("content")
+
+            # validações
+            if content is None:
                 continue
+
+            if not isinstance(content, str):
+                content = str(content)
+
+            content = content.strip()
+            if not content:
+                continue
+
+            if len(content) > 2000:
+                await ws.send_json({"type": "error", "detail": "Mensagem muito longa"})
                 continue
 
             # Persistência + payload compatível com o front
