@@ -39,6 +39,37 @@ async def ring_group(d: CallRingGroupData, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+
+
+@router.get("/agora/token")
+def agora_token(
+    channel: str = Query(..., min_length=1),
+    uid: str = Query(..., min_length=1),
+    user=Depends(get_current_user),
+):
+    """Return an RTC token when AGORA_APP_CERT is configured.
+    If your Agora project requires tokens, you MUST set AGORA_APP_CERT on the backend.
+    """
+    # Basic auth guard: only allow requesting token for yourself
+    if str(user.id) != str(uid):
+        raise HTTPException(status_code=403, detail="uid mismatch")
+
+    from app.api.core import settings
+    app_id = getattr(settings, "AGORA_APP_ID", None)
+    app_cert = getattr(settings, "AGORA_APP_CERT", None)
+    expire = int(getattr(settings, "AGORA_TOKEN_EXPIRE", 3600) or 3600)
+
+    if not app_id:
+        raise HTTPException(status_code=500, detail="AGORA_APP_ID not configured")
+
+    if not app_cert:
+        # Token-less join (works only if your Agora project does not require tokens)
+        return {"app_id": app_id, "token": None, "expire_seconds": expire}
+
+    token = build_rtc_token(RtcTokenOptions(app_id=app_id, app_cert=app_cert, channel=channel, uid=str(uid), expire_seconds=expire))
+    return {"app_id": app_id, "token": token, "expire_seconds": expire}
+
+
 @router.get("/agora-config")
 def get_agora_config():
     return {"app_id": os.environ.get("AGORA_APP_ID", "")}
