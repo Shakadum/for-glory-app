@@ -1321,29 +1321,106 @@ async function toggleRecord(type) {
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata" controls playsinline crossorigin="anonymous"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
 async function loadFeed(){try{let r=await fetch(`/posts?limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata" crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
-document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash="";loadFeed();loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){
-            if(window.deleteTarget && window.deleteTarget.post_id){
-                await loadComments(window.deleteTarget.post_id);
-                // atualiza contador
-                try{
-                    let inp=document.getElementById(`comment-inp-${window.deleteTarget.post_id}`);
-                    if(inp){
-                        let card=inp.closest('.post-card');
-                        if(card){
-                            let btns=card.querySelectorAll('.post-actions .action-btn');
-                            if(btns && btns.length>=2){
-                                let countEl=btns[1].querySelector('.count');
-                                let listEl=document.getElementById(`comment-list-${window.deleteTarget.post_id}`);
-                                if(countEl && listEl){
-                                    countEl.innerText=listEl.querySelectorAll('.comment-row').length;
+document.getElementById('btn-confirm-delete').onclick = async () => {
+    if (!window.deleteTarget || !window.deleteTarget.id) return;
+    const tp = window.deleteTarget.type;
+    const id = window.deleteTarget.id;
+    document.getElementById('modal-delete').classList.add('hidden');
+
+    try {
+        if (tp === 'post') {
+            const r = await authFetch('/post/delete', {
+                method: 'POST',
+                body: JSON.stringify({ post_id: id })
+            });
+            if (r.ok) {
+                lastFeedHash = "";
+                await loadFeed();
+                await loadMyHistory();
+                await updateProfileState();
+            }
+            return;
+        }
+
+        if (tp === 'comment') {
+            const postId = window.deleteTarget.post_id;
+            const r = await authFetch('/comment/delete', {
+                method: 'POST',
+                body: JSON.stringify({ comment_id: id })
+            });
+            if (r.ok) {
+                if (postId) {
+                    await loadComments(postId);
+                    // atualiza contador (botão 💬)
+                    try {
+                        const inp = document.getElementById(`comment-inp-${postId}`);
+                        const listEl = document.getElementById(`comment-list-${postId}`);
+                        if (inp && listEl) {
+                            const card = inp.closest('.post-card');
+                            if (card) {
+                                const btns = card.querySelectorAll('.post-actions .action-btn');
+                                if (btns && btns.length >= 2) {
+                                    const countEl = btns[1].querySelector('.count');
+                                    if (countEl) countEl.innerText = listEl.querySelectorAll('.comment-row').length;
                                 }
                             }
                         }
+                    } catch (e) {}
+                }
+                // restaura estado do vídeo (se capturado)
+                try {
+                    await _restoreVideoState(window._pendingVideoState);
+                } catch (e) {}
+                window._pendingVideoState = null;
+            }
+            return;
+        }
+
+        if (tp === 'base') {
+            const r = await authFetch(`/community/${id}/delete`, { method: 'POST' });
+            if (r.ok) {
+                closeComm();
+                loadMyComms();
+            }
+            return;
+        }
+
+        if (tp === 'channel') {
+            const r = await authFetch(`/community/channel/${id}/delete`, { method: 'POST' });
+            if (r.ok) {
+                document.getElementById('modal-edit-channel').classList.add('hidden');
+                openCommunity(activeCommId, true);
+            }
+            return;
+        }
+
+        if (tp === 'dm_msg' || tp === 'comm_msg' || tp === 'group_msg') {
+            const mainType = tp === 'dm_msg' ? 'dm' : (tp === 'comm_msg' ? 'comm' : 'group');
+            const r = await authFetch('/message/delete', {
+                method: 'POST',
+                body: JSON.stringify({ msg_id: id, type: mainType })
+            });
+            const res = await r.json();
+            if (res.status === 'ok') {
+                const row = document.getElementById(`${tp}-${id}`);
+                if (row) {
+                    const msgBubble = row.querySelector('.msg-bubble');
+                    if (msgBubble) {
+                        const timeSpan = msgBubble.querySelector('.msg-time');
+                        const timeStr = timeSpan ? timeSpan.outerHTML : '';
+                        msgBubble.innerHTML = `<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;
                     }
-                }catch(e){}
-                await _restoreVideoState(window._pendingVideoState);
-                window._pendingVideoState=null;
-        }}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
+                    const btn = row.querySelector('.del-msg-btn');
+                    if (btn) btn.remove();
+                }
+            }
+            return;
+        }
+
+    } catch (e) {
+        console.error(e);
+    }
+};
 
 async function updateProfileState() { try { let r = await authFetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) { console.error(e); } }
 async function toggleLike(pid, btn) {
