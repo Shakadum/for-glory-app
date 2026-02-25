@@ -128,20 +128,31 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 # CONFIGURAÇÕES GERAIS
 # ----------------------------------------------------------------------
 
-def _require_env(name: str) -> str:
-    value = os.environ.get(name)
-    if not value:
-        raise RuntimeError(f"Variável de ambiente obrigatória não definida: {name}")
-    return value
+def _require_env_any(*names: str) -> str:
+    """Return the first env var found among names, else raise."""
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    raise RuntimeError(
+        "Variável de ambiente obrigatória não definida. Informe uma destas: "
+        + ", ".join(names)
+    )
 
-cloudinary.config(
-    cloud_name=_require_env('CLOUDINARY_NAME'),
-    api_key=_require_env('CLOUDINARY_KEY'),
-    api_secret=_require_env('CLOUDINARY_SECRET'),
-    secure=True
-)
+# Cloudinary pode vir como URL única (mais comum) ou separado em variáveis.
+cloudinary_url = os.environ.get("CLOUDINARY_URL")
+if cloudinary_url:
+    cloudinary.config(cloudinary_url=cloudinary_url, secure=True)
+else:
+    cloudinary.config(
+        cloud_name=_require_env_any("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_NAME"),
+        api_key=_require_env_any("CLOUDINARY_API_KEY", "CLOUDINARY_KEY"),
+        api_secret=_require_env_any("CLOUDINARY_API_SECRET", "CLOUDINARY_SECRET"),
+        secure=True,
+    )
 
-# ----------------------------------------------------------------------
+# ----------------------------
+#------------------------------------------
 # BANCO DE DADOS (NEON / POSTGRESQL)
 # ----------------------------------------------------------------------
 

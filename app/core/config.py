@@ -1,6 +1,9 @@
 import os
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+load_dotenv()  # load .env into process env
+
 class Settings(BaseModel):
     # Security
     SECRET_KEY: str = os.getenv('SECRET_KEY', 'change-me')
