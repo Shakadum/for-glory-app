@@ -103,8 +103,8 @@ async def upload_my_cover(
 
 
 @router.get("/users/online")
-def get_online_users(db: Session = Depends(get_db)):
-    active_uids = list(manager.user_ws.keys())
+async def get_online_users(db: Session = Depends(get_db)):
+    active_uids = await online_list() or list(manager.user_ws.keys())
     if not active_uids:
         return []
     visible_users = db.query(User.id).filter(User.id.in_(active_uids), User.is_invisible == 0).all()

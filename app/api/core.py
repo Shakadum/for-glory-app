@@ -19,6 +19,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.redis import init_redis, close_redis, online_list
 from app.db.session import get_db, engine, SessionLocal
 from app.db.base import Base
 from app.models.models import (
@@ -277,8 +278,18 @@ class UpdateProfileData(BaseModel):
 # ----------------------------------------------------------------------
 # APP E MANAGERS
 # ----------------------------------------------------------------------
-limiter = Limiter(key_func=get_remote_address)
+redis_storage = os.getenv('REDIS_URL') or 'memory://'
+limiter = Limiter(key_func=get_remote_address, storage_uri=redis_storage)
 app = FastAPI(title="For Glory Cloud")
+
+@app.on_event("startup")
+async def _startup():
+    await init_redis()
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await close_redis()
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
