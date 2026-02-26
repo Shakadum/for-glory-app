@@ -821,12 +821,14 @@ async function acceptCall() {
     stopSounds();
     window.callHasConnected = false; 
     window.isCaller = false;
+    // FIX: o canal está em pendingCallChannel, não em currentAgoraChannel (que está null aqui)
+    window.currentAgoraChannel = window.pendingCallChannel;
     
     if (globalWS && globalWS.readyState === WebSocket.OPEN && window.pendingCallerId) {
-        globalWS.send(`CALL_SIGNAL:${window.pendingCallerId}:accepted:${window.currentAgoraChannel}`);
+        globalWS.send(`CALL_SIGNAL:${window.pendingCallerId}:accepted:${window.pendingCallChannel}`);
     }
     
-    await connectToAgora(window.currentAgoraChannel, window.pendingCallType); 
+    await connectToAgora(window.pendingCallChannel, window.pendingCallType); 
 }
 
 async function connectToAgora(channelName, typeParam) {
@@ -1319,7 +1321,121 @@ async function toggleRecord(type) {
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata" controls playsinline crossorigin="anonymous"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
-async function loadFeed(){try{let r=await fetch(`/posts?limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata" crossorigin="anonymous"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
+async function loadFeed(){try{
+  let r=await fetch(`/posts?limit=50&nocache=${new Date().getTime()}`);
+  if(!r.ok)return;
+  let p=await r.json();
+  let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?'1':'0')));
+  if(h===lastFeedHash)return;
+  lastFeedHash=h;
+
+  let openComments=[];
+  let activeInputs={};
+  let focusedInputId=null;
+  if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){
+    focusedInputId=document.activeElement.id;
+  }
+  document.querySelectorAll('.comments-section').forEach(sec=>{
+    if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);
+  });
+  document.querySelectorAll('.comment-inp').forEach(inp=>{
+    if(inp.value)activeInputs[inp.id]=inp.value;
+  });
+
+  // FIX: salva estado de todos os videos por post_id antes de destruir o DOM
+  let videoStates={};
+  document.querySelectorAll('.post-card').forEach(card=>{
+    let v=card.querySelector('video');
+    let commSec=card.querySelector('[id^="comments-"]');
+    let pid=commSec?commSec.id.split('-')[1]:null;
+    if(v&&pid){
+      videoStates[pid]={time:v.currentTime,paused:v.paused,muted:v.muted,vol:v.volume};
+    }
+  });
+  // FIX: pausa e libera todos os videos ANTES de trocar innerHTML (evita player duplo)
+  document.querySelectorAll('#feed-container video').forEach(v=>{
+    try{v.pause();v.src='';v.load();}catch(e){}
+  });
+
+  let ht='';
+  p.forEach(x=>{
+    let m=x.media_type==='video'
+      ?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata" crossorigin="anonymous"></video>`
+      :`<img src="${x.content_url}" class="post-media" loading="lazy">`;
+    m=`<div class="post-media-wrapper">${m}</div>`;
+    let delBtn=x.author_id===user.id
+      ?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`
+      :'';
+    let heartIcon=x.user_liked?'❤️':'🤍';
+    let heartClass=x.user_liked?'liked':'';
+    let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);
+    ht+=`<div class="post-card">
+      <div class="post-header">
+        <div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})">
+          <div class="av-wrap" style="margin-right:12px;">
+            <img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+            <div class="status-dot" data-uid="${x.author_id}"></div>
+          </div>
+          <div class="user-info-box">
+            <b style="color:white;font-size:14px">${x.author_name}</b>
+            <div style="margin-top:2px;">${rankHtml}</div>
+          </div>
+        </div>
+        ${delBtn}
+      </div>
+      ${m}
+      <div class="post-actions">
+        <button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button>
+        <button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button>
+      </div>
+      <div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${x.caption}</div>
+      <div id="comments-${x.id}" class="comments-section">
+        <div id="comment-list-${x.id}"></div>
+        <form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;">
+          <button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button>
+          <input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off">
+          <button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button>
+          <button type="submit" class="btn-send-msg">➤</button>
+        </form>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('feed-container').innerHTML=ht;
+
+  // FIX: restaura estado dos videos pelo post_id (novo elemento no DOM)
+  for(let pid in videoStates){
+    let s=videoStates[pid];
+    if(s.paused)continue; // so restaura se estava tocando
+    let commSec=document.getElementById('comments-'+pid);
+    if(!commSec)continue;
+    let card=commSec.closest('.post-card');
+    if(!card)continue;
+    let v=card.querySelector('video');
+    if(!v)continue;
+    v.muted=s.muted;
+    v.volume=s.vol;
+    v.addEventListener('loadedmetadata',function onMeta(){
+      v.removeEventListener('loadedmetadata',onMeta);
+      v.currentTime=s.time;
+      v.play().catch(()=>{});
+    },{once:true});
+  }
+
+  openComments.forEach(pid=>{
+    let sec=document.getElementById(`comments-${pid}`);
+    if(sec){sec.style.display='block';loadComments(pid);}
+  });
+  for(let id in activeInputs){
+    let inp=document.getElementById(id);
+    if(inp)inp.value=activeInputs[id];
+  }
+  if(focusedInputId){
+    let inp=document.getElementById(focusedInputId);
+    if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}
+  }
+  updateStatusDots();
+}catch(e){ console.error(e); }}
 
 document.getElementById('btn-confirm-delete').onclick = async () => {
     if (!window.deleteTarget || !window.deleteTarget.id) return;
