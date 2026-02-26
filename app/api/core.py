@@ -28,6 +28,7 @@ from app.models.models import (
     CallBackground, UserConfig, friendship
 )
 from app.services.cloudinary import init_cloudinary
+from app.services.agora_token import build_rtc_token, RtcTokenOptions
 try:
     import cloudinary  # type: ignore
     import cloudinary.uploader  # type: ignore

@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from fastapi.responses import Response
 from app.api.core import *
 
 router = APIRouter()
@@ -7,12 +8,13 @@ router = APIRouter()
 def health():
     return {'status': 'ok'}
 
-
+@router.get('/favicon.ico', include_in_schema=False)
+def favicon():
+    # Retorna um SVG mínimo como ícone para parar os 404 nos logs
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#0b0c10"/><text x="16" y="22" font-size="18" text-anchor="middle" fill="#66fcf1">G</text></svg>'
+    return Response(content=svg, media_type="image/svg+xml")
 
 @router.get("/", response_class=HTMLResponse)
 def get(request: Request):
-    # Mantemos server-side template pronto (mesmo que hoje não injete variáveis)
-    # Isso facilita futuras configs por ambiente, feature flags, etc.
     return templates.TemplateResponse("index.html", {"request": request})
-
 

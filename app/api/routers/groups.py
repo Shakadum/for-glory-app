@@ -31,6 +31,7 @@ def get_group_messages(
 ):
     msgs = db.query(GroupMessage).filter_by(group_id=group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
     return [{
+        **format_user_summary(m.sender),
         "id": m.id,
         "user_id": m.sender_id,
         "content": m.content,
@@ -38,7 +39,6 @@ def get_group_messages(
         "avatar": m.sender.avatar_url,
         "username": m.sender.username,
         "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
-        **format_user_summary(m.sender)
     } for m in msgs]
 
 # ----------------------------------------------------------------------

@@ -327,6 +327,7 @@ def destroy_channel(
 def get_comm_msgs(chid: int, db: Session = Depends(get_db)):
     msgs = db.query(CommunityMessage).filter_by(channel_id=chid).order_by(CommunityMessage.timestamp.asc()).limit(100).all()
     return [{
+        **format_user_summary(m.sender),
         "id": m.id,
         "user_id": m.sender_id,
         "content": m.content,
@@ -334,7 +335,6 @@ def get_comm_msgs(chid: int, db: Session = Depends(get_db)):
         "avatar": m.sender.avatar_url,
         "username": m.sender.username,
         "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
-        **format_user_summary(m.sender)
     } for m in msgs]
 
 # ----------------------------------------------------------------------

@@ -39,7 +39,7 @@ class Settings:
 
     # Agora (Render/env naming: AGORA_APP_CERTIFICATE)
     AGORA_APP_ID: str = _env_any("AGORA_APP_ID", required=True)
-    AGORA_APP_CERT: str = _env_any("AGORA_APP_CERTIFICATE", "AGORA_APP_CERT", required=True)
+    AGORA_APP_CERT: str = _env_any("AGORA_APP_CERTIFICATE", "AGORA_APP_CERT", default="")
 
     # Mail (optional - enable only if you use password reset / email notifications)
     MAIL_USERNAME: str = _env_any("MAIL_USERNAME", default="")
