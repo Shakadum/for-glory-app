@@ -5,30 +5,38 @@ router = APIRouter()
 
 @router.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
-    """WebSocket por canal + usuário (single instance).
+    """WebSocket por canal + usuário.
 
-    Aceita JSON estruturado OU string pura (compat com front antigo).
-    Também aceita protocolos legados por prefixo:
-      - CALL_SIGNAL:{targetUid}:{accepted|rejected|cancelled}:{channel}
-      - SYNC_BG:{channel}:{bg_url}
-      - KICK_CALL:{targetUid}
+    IMPORTANTE: accept() sempre vem PRIMEIRO.
+    Fechar sem accept() resulta em 403 no cliente (Starlette/FastAPI).
+
+    Protocolos suportados:
+      - JSON estruturado: {"type": "msg", "content": "..."}
+      - Strings legadas: CALL_SIGNAL:uid:action:channel | SYNC_BG:channel:url | KICK_CALL:uid
     """
-    # valida token
+    # ── 1. Aceitar ANTES de qualquer validação ───────────────────────────────
+    await ws.accept()
+
+    # ── 2. Validar token ────────────────────────────────────────────────────
+    token = ws.query_params.get("token")
     try:
-        token = ws.query_params.get("token")
-        _ = verify_token(token)
+        token_payload = verify_token(token)
+        token_username = token_payload.get("sub")
     except Exception:
+        await ws.send_text(json.dumps({"type": "error", "detail": "Token inválido"}))
         await ws.close(code=1008)
         return
 
-    # valida usuário
+    # ── 3. Validar usuário e conferir que uid da URL bate com o token ────────
     with SessionLocal() as db:
         user = db.query(User).filter(User.id == uid).first()
-        if not user:
+        if not user or user.username != token_username:
+            await ws.send_text(json.dumps({"type": "error", "detail": "Acesso negado"}))
             await ws.close(code=1008)
             return
 
-    await manager.connect(ws, ch, uid)
+    # ── 4. Registrar conexão (já aceita) ─────────────────────────────────────
+    manager.connect_accepted(ws, ch, uid)
 
     try:
         while True:
@@ -43,7 +51,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if not text_msg:
                 continue
 
-            # ------------------ Protocolos legados (strings) ------------------
+            # ── Protocolos legados (string pura) ────────────────────────────
             if text_msg.startswith("CALL_SIGNAL:"):
                 parts = text_msg.split(":", 3)
                 if len(parts) == 4:
@@ -64,9 +72,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if text_msg.startswith("SYNC_BG:"):
                 parts = text_msg.split(":", 2)
                 if len(parts) == 3:
-                    channel_name = parts[1]
-                    bg_url = parts[2]
-                    await manager.broadcast({"type": "sync_bg", "channel": channel_name, "bg_url": bg_url}, ch)
+                    await manager.broadcast({"type": "sync_bg", "channel": parts[1], "bg_url": parts[2]}, ch)
                 continue
 
             if text_msg.startswith("KICK_CALL:"):
@@ -74,12 +80,12 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 if len(parts) == 2:
                     try:
                         target_uid = int(parts[1])
+                        await manager.send_personal({"type": "kick_call", "from": uid}, target_uid)
                     except Exception:
-                        continue
-                    await manager.send_personal({"type": "kick_call", "from": uid}, target_uid)
+                        pass
                 continue
 
-            # ------------------ JSON estruturado OU string pura ------------------
+            # ── JSON estruturado ou string pura ─────────────────────────────
             try:
                 data = json.loads(text_msg)
                 if not isinstance(data, dict):
@@ -90,10 +96,10 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             msg_type = (data.get("type") or "msg").strip()
 
             if msg_type == "ping":
-                await manager.broadcast({"type": "pong"}, ch)
+                await ws.send_text(json.dumps({"type": "pong"}))
                 continue
 
-            # ------------------ sinalização de call (novo) ------------------
+            # ── Sinalização de chamada ───────────────────────────────────────
             if msg_type in {"call_invite", "call_accept", "call_reject", "call_end"}:
                 to_uid = data.get("to")
                 channel_name = data.get("channel")
@@ -103,31 +109,26 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     to_uid = int(to_uid)
                 except Exception:
                     continue
-
-                if msg_type == "call_invite":
-                    await manager.send_personal({"type": "incoming_call", "from": uid, "channel": channel_name}, to_uid)
-                elif msg_type == "call_accept":
-                    await manager.send_personal({"type": "call_accepted", "from": uid, "channel": channel_name}, to_uid)
-                elif msg_type == "call_reject":
-                    await manager.send_personal({"type": "call_rejected", "from": uid, "channel": channel_name}, to_uid)
-                elif msg_type == "call_end":
-                    await manager.send_personal({"type": "call_ended", "from": uid, "channel": channel_name}, to_uid)
+                type_map = {
+                    "call_invite": "incoming_call",
+                    "call_accept": "call_accepted",
+                    "call_reject": "call_rejected",
+                    "call_end":    "call_ended",
+                }
+                await manager.send_personal({"type": type_map[msg_type], "from": uid, "channel": channel_name}, to_uid)
                 continue
 
-            # ------------------ mensagem normal ------------------
+            # ── Mensagem normal ──────────────────────────────────────────────
             content = data.get("content")
             if content is None:
                 continue
-            if not isinstance(content, str):
-                content = str(content)
-            content = content.strip()
+            content = str(content).strip()
             if not content:
                 continue
             if len(content) > 2000:
                 await ws.send_text(json.dumps({"type": "error", "detail": "Mensagem muito longa"}))
                 continue
 
-            # Persistência + payload compatível com o front
             with SessionLocal() as db:
                 sender = db.query(User).filter(User.id == uid).first()
                 if not sender:
@@ -149,17 +150,17 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     "can_delete": True,
                 }
 
-                # Roteamento por prefixo do canal (dm_, group_, comm_)
                 if ch.startswith("dm_"):
                     parts = ch.split("_")
                     if len(parts) == 3:
-                        a = int(parts[1]); b = int(parts[2])
+                        a, b = int(parts[1]), int(parts[2])
                         to_uid = b if uid == a else a
                         pm = PrivateMessage(sender_id=uid, receiver_id=to_uid, content=content, timestamp=now)
                         db.add(pm); db.commit(); db.refresh(pm)
                         payload["id"] = pm.id
                         await manager.broadcast(payload, ch)
-                        await manager.send_personal(payload, to_uid)
+                        # notifica o destinatário em qualquer canal que ele esteja
+                        await manager.send_personal({**payload, "type": "new_dm"}, to_uid)
                         continue
 
                 if ch.startswith("group_"):
@@ -182,11 +183,11 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         await manager.broadcast(payload, ch)
                         continue
 
-                # fallback
+                # fallback (canal global / status)
                 payload["id"] = int(now.timestamp() * 1000)
                 await manager.broadcast(payload, ch)
 
     except Exception:
-        logger.exception("Erro no WebSocket")
+        logger.exception("Erro no WebSocket uid=%s ch=%s", uid, ch)
     finally:
         manager.disconnect(ws, ch, uid)

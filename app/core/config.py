@@ -1,4 +1,9 @@
+from dotenv import load_dotenv
 import os
+
+# Load local .env automatically for dev (Render uses real env vars)
+load_dotenv()
+
 from dataclasses import dataclass
 
 

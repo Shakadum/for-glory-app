@@ -298,6 +298,11 @@ class ConnectionManager:
         self.active.setdefault(chan, []).append(ws)
         self.user_ws.setdefault(uid, set()).add(ws)
 
+    def connect_accepted(self, ws: WebSocket, chan: str, uid: int):
+        """Registra um WS que já foi aceito (accept() chamado antes)."""
+        self.active.setdefault(chan, []).append(ws)
+        self.user_ws.setdefault(uid, set()).add(ws)
+
     def disconnect(self, ws: WebSocket, chan: str, uid: int):
         try:
             if chan in self.active and ws in self.active[chan]:

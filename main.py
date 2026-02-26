@@ -547,32 +547,26 @@ def format_user_summary(user: User):
 # ENDPOINTS DE UPLOAD (VIA BACKEND)
 # ----------------------------------------------------------------------
 @app.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user)
-):
-    # Validações simples
-# UploadFile pode não ter .size dependendo do servidor/versão. Calcula de forma segura.
-try:
-    file.file.seek(0, os.SEEK_END)
-    size = file.file.tell()
-    file.file.seek(0)
-except Exception:
-    size = None
+async def upload_file(file: UploadFile = File(...)):
+    """Upload de imagem/vídeo para o Cloudinary.
 
-if size is not None and size > 100 * 1024 * 1024:
-    raise HTTPException(status_code=400, detail="Arquivo muito grande (máx 100MB)")
-    allowed = ["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm", "audio/webm", "audio/mpeg"]
-    if file.content_type not in allowed:
-        raise HTTPException(400, "Tipo de arquivo não permitido")
-    try:
-        result = cloudinary.uploader.upload(file.file, resource_type="auto")
-        return {"secure_url": result["secure_url"]}
-    except Exception as e:
-        raise HTTPException(500, f"Erro no upload: {e}")
+    Aceita apenas tipos MIME comuns de imagem e vídeo. Retorna URL pública.
+    """
+    allowed_mime_types = [
+        "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+        "video/mp4", "video/webm", "video/quicktime",
+    ]
+
+    if file.content_type not in allowed_mime_types:
+        raise HTTPException(status_code=400, detail="Tipo de arquivo não permitido.")
+
+    # Envia para Cloudinary (resource_type='auto' suporta imagem/vídeo)
+    result = cloudinary.uploader.upload(file.file, resource_type="auto")
+    return {"url": result.get("secure_url")}
 
 # ----------------------------------------------------------------------
 # ENDPOINTS DE AUTENTICAÇÃO E USUÁRIO
+
 # ----------------------------------------------------------------------
 @app.post("/register")
 def register(d: RegisterData, db: Session = Depends(get_db)):
