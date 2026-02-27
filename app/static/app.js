@@ -1,3 +1,12 @@
+
+
+function sendSystemDmMessage(text) {
+  try {
+    if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
+      dmWS.send(String(text));
+    }
+  } catch (e) { console.warn('system dm message failed', e); }
+}
 // ===== Emoji data (fallback) =====
 const EMOJIS = window.EMOJIS || [
   "😀","😁","😂","🤣","😊","😍","😘","😎","🤔","😅","😭","😡",
@@ -18,6 +27,8 @@ function escapeHtml(input) {
         "'": "&#39;",
     }[ch]));
 }
+window.escapeHtml = escapeHtml;
+
 
 function safeDisplayName(u) {
     const name =
@@ -28,9 +39,16 @@ function safeDisplayName(u) {
 }
 
 function safeAvatarUrl(url) {
-    const u = String(url ?? "").trim();
-    if (!u || u === "undefined" || u === "null") return "/static/default-avatar.svg";
-    return u;
+  try {
+    if (!url) return '/static/default-avatar.svg';
+    const s = String(url).trim();
+    if (!s || s === 'undefined' || s === 'null') return '/static/default-avatar.svg';
+    // Avoid creating requests like /undefined
+    if (s.startsWith('/') && s.length <= 10 && s.includes('undefined')) return '/static/default-avatar.svg';
+    return s;
+  } catch(e) {
+    return '/static/default-avatar.svg';
+  }
 }
 
 function normalizeUserBasic(u, fallbackUid = null) {
@@ -426,9 +444,19 @@ if (rtc.client) { await rtc.client.leave(); }
             if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
         });
         
-        rtc.client.on("user-unpublished", (remoteUser) => { 
-            delete rtc.remoteUsers[remoteUser.uid]; renderCallPanel(); 
-            if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { showToast("O aliado desligou."); leaveCall(); }
+        rtc.client.on("user-unpublished", (remoteUser) => {
+            // Remote stopped publishing (mute/disable) — do NOT end the call.
+            delete rtc.remoteUsers[remoteUser.uid];
+            renderCallPanel();
+        });
+        rtc.client.on("user-left", (remoteUser) => {
+            // Remote actually left the channel — end the call.
+            delete rtc.remoteUsers[remoteUser.uid];
+            renderCallPanel();
+            if (window.callHasConnected) {
+                showToast("O aliado saiu da chamada.");
+                leaveCall();
+            }
         });
         
         await rtc.client.join(conf.app_id, window.currentAgoraChannel, conf.token, user.id);
@@ -437,6 +465,13 @@ if (rtc.client) { await rtc.client.leave(); }
         catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
         
         await rtc.client.publish([rtc.localAudioTrack]);
+        window.callHasConnected = true;
+        if (!window.__callStartedAt) window.__callStartedAt = Date.now();
+        if (!window.__callStartLogged) {
+          window.__callStartLogged = true;
+          const dt = new Date();
+          sendSystemDmMessage(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
+        }
         try {
             window.callStartedAt = Date.now();
             if (window.currentCallType === 'dm' && dmWS && dmWS.readyState === 1) {
@@ -470,7 +505,20 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-async function leaveCall() { 
+async function leaveCall() {
+    try {
+      const startedAt = window.__callStartedAt;
+      if (startedAt) {
+        const ms = Date.now() - startedAt;
+        const sec = Math.max(0, Math.floor(ms/1000));
+        const mm = String(Math.floor(sec/60)).padStart(2,"0");
+        const ss = String(sec%60).padStart(2,"0");
+        sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+      }
+    } catch(e) {}
+    window.__callStartLogged = false;
+    window.__callStartedAt = null;
+ 
     stopSounds();
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
     if (rtc.client) { await rtc.client.leave(); } 
@@ -503,7 +551,7 @@ async function renderCallPanel(rtc, localUid) {
         const avatarImg = document.getElementById('call-active-avatar');
 
         // Build participant list (local + remote)
-        const remoteUids = (rtc?.remoteUsers || []).map(u => u.uid).filter(u => u !== undefined && u !== null);
+        const remoteUids = Object.keys(rtc?.remoteUsers || {}).map(k => Number(k)).filter(n => !Number.isNaN(n));
         const allUids = Array.from(new Set([localUid, ...remoteUids]));
 
         const basics = [];
@@ -516,7 +564,7 @@ async function renderCallPanel(rtc, localUid) {
                 const item = document.createElement('div');
                 item.className = 'call-user';
                 item.innerHTML = `
-                    <img src="${escapeHtml(b.avatar)}" class="call-user-avatar" alt="">
+                    <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="call-user-avatar" alt="">
                     <span class="call-user-name">${escapeHtml(b.name)}</span>
                 `;
                 usersList.appendChild(item);
@@ -527,8 +575,8 @@ async function renderCallPanel(rtc, localUid) {
         let activeUid = remoteUids.length ? remoteUids[0] : localUid;
         const activeBasic = await getUserBasic(activeUid);
 
-        if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic.avatar);
-        if (nameText) nameText.textContent = activeBasic.name;
+        if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic?.avatar);
+        if (nameText) nameText.textContent = (activeBasic?.name || 'Usuário');
 
         // Status + timer
         if (statusText) statusText.textContent = 'EM CHAMADA';
@@ -1075,10 +1123,10 @@ function connectDmWS(id, name, type) {
 
 function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){let f=document.getElementById('dm-file').files[0];if(!f)return;try{let formData = new FormData(); formData.append('file', f); let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); let data = await res.json(); if(dmWS) dmWS.send(data.secure_url); }catch(e){ console.error(e); }}
-async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${c.avatar_url}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
-async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
+async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
-async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${c.avatar_url}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 async function joinCommunity(cid){try{let r=await authFetch('/community/join', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
 async function requestCommJoin(cid){try{let r=await authFetch('/community/request/send', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
 async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await authFetch(`/community/${cid}/leave`, {method:'POST'}); let res=await r.json(); if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
@@ -1367,7 +1415,7 @@ async function searchUsers(){
         let d=await r.json();
         let res=document.getElementById('search-results');
         if(!d||d.length===0){res.innerHTML=`<p style='color:#888;text-align:center;margin-top:10px;'>${t('no_results')}</p>`;return;}
-        res.innerHTML=d.map(u=>`<div class="friend-row" onclick="openPublicProfile(${u.id})" style="cursor:pointer;"><div class="av-wrap"><img src="${u.avatar_url}" class="friend-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${u.id}"></div></div><div style="flex:1"><b style="color:white;">${u.username}</b></div><button class="glass-btn" style="padding:5px 12px;margin:0;" onclick="event.stopPropagation();sendFriendReq(${u.id})">${t('add_friend')}</button></div>`).join('');
+        res.innerHTML=d.map(u=>`<div class="friend-row" onclick="openPublicProfile(${u.id})" style="cursor:pointer;"><div class="av-wrap"><img src="${safeAvatarUrl(u.avatar_url)}" class="friend-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${u.id}"></div></div><div style="flex:1"><b style="color:white;">${u.username}</b></div><button class="glass-btn" style="padding:5px 12px;margin:0;" onclick="event.stopPropagation();sendFriendReq(${u.id})">${t('add_friend')}</button></div>`).join('');
         updateStatusDots();
     }catch(e){ console.error(e); }
 

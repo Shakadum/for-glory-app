@@ -99,7 +99,7 @@ def mark_read(
 
 
 @router.post("/message/delete")
-def delete_msg(
+async def delete_msg(
     d: DeleteMsgData,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)

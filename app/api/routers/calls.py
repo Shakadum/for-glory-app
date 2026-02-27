@@ -11,7 +11,7 @@ async def ring_dm(d: CallRingDMData, db: Session = Depends(get_db)):
             "type": "incoming_call",
             "caller_id": caller.id,
             "caller_name": caller.username,
-            "caller_avatar": caller.avatar_url,
+            "caller_avatar": (caller.avatar_url or "/static/default-avatar.svg"),
             "channel_name": d.channel_name,
             "call_type": "dm",
             "target_id": d.target_id
@@ -31,7 +31,7 @@ async def ring_group(d: CallRingGroupData, db: Session = Depends(get_db)):
                 "type": "incoming_call",
                 "caller_id": caller.id,
                 "caller_name": f"{caller.username} (Grp: {group.name})",
-                "caller_avatar": caller.avatar_url,
+                "caller_avatar": (caller.avatar_url or "/static/default-avatar.svg"),
                 "channel_name": d.channel_name,
                 "call_type": "group",
                 "target_id": d.group_id
