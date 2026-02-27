@@ -1,50 +1,8 @@
 window.deleteTarget = {type: null, id: null};
 
+// Lista de emojis (frontend puro). Se quiser, você pode expandir.
+const EMOJIS = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😭", "😡", "👍", "👎", "🙏", "👏", "🔥", "💯", "🎉", "✨", "💪", "🤝", "💔", "❤️", "🎮", "⚔️", "🛡️", "🏆", "🥇", "🎧", "🎤", "📷", "🖼️", "📎", "📌", "✅", "❌", "⚠️", "🕹️", "🎬"];
 
-function __clearChildren(el){ while(el && el.firstChild) el.removeChild(el.firstChild); }
-
-function __patchKeyedList(container, items, keyFn, createFn, updateFn){
-  if(!container) return;
-  const map = container.__keyedMap || (container.__keyedMap = new Map());
-  const nextKeys = new Set();
-  const frag = document.createDocumentFragment();
-
-  // Build nodes in desired order
-  for(const item of (items||[])){
-    const key = keyFn(item);
-    nextKeys.add(key);
-    let node = map.get(key);
-    if(!node){
-      node = createFn(item);
-      if(!node) continue;
-      node.__k = key;
-      map.set(key, node);
-    }else if(updateFn){
-      updateFn(node, item);
-    }
-    frag.appendChild(node);
-  }
-
-  // Remove stale
-  for(const [k,node] of Array.from(map.entries())){
-    if(!nextKeys.has(k)){
-      try{ node.remove(); }catch(_){}
-      map.delete(k);
-    }
-  }
-
-  // Replace children efficiently
-  __clearChildren(container);
-  container.appendChild(frag);
-}
-
-function __fmtTs(ts){
-  try{
-    const d = new Date(ts);
-    if(isNaN(d.getTime())) return "";
-    return d.toLocaleString();
-  }catch(_){ return ""; }
-}
 
 // CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
 const T = {
@@ -140,221 +98,6 @@ try {
 function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
 function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
 
-
-
-/* =======================
-   No-inline handlers (pro)
-   - Converts legacy inline onclick/onsubmit generated HTML to data-* actions
-   - Centralized event delegation (works for dynamic content)
-======================= */
-
-function __parseArgTokens(argStr){
-  const s = (argStr || "").trim();
-  if(!s) return [];
-  // split by commas not inside quotes
-  const out=[];
-  let cur="", inQ=false, q="", esc=false, depth=0;
-  for(const ch of s){
-    if(inQ){
-      cur+=ch;
-      if(esc){ esc=false; continue; }
-      if(ch==="\\"){ esc=true; continue; }
-      if(ch===q){ inQ=false; q=""; }
-      continue;
-    }
-    if(ch==="'" || ch==='"'){ inQ=true; q=ch; cur+=ch; continue; }
-    if(ch==="("){ depth++; cur+=ch; continue; }
-    if(ch===")"){ depth=Math.max(0, depth-1); cur+=ch; continue; }
-    if(ch==="," && depth===0){
-      if(cur.trim()) out.push(cur.trim());
-      cur="";
-      continue;
-    }
-    cur+=ch;
-  }
-  if(cur.trim()) out.push(cur.trim());
-  return out;
-}
-
-function __evalArg(expr, ctx, evt){
-  const e = (expr||"").trim();
-  if(!e) return undefined;
-  if(e==="this") return ctx;
-  if(e==="event") return evt;
-  // allow simple literals / window props safely-ish (comes from our own templates)
-  try{
-    // eslint-disable-next-line no-new-func
-    return Function("ctx","event","return ("+e+");")(ctx, evt);
-  }catch(_){
-    return e; // fallback: pass raw string
-  }
-}
-
-function callAction(actionName, args, ctx, evt){
-  const fn = globalThis[actionName];
-  if(typeof fn !== "function"){
-    console.warn("[actions] missing function:", actionName);
-    return;
-  }
-  const realArgs = (args||[]).map(a => __evalArg(a, ctx, evt));
-  return fn.apply(ctx, realArgs);
-}
-
-function bindInlineHandlers(root=document){
-  // Convert legacy onclick="fn(...)" -> data-action
-  root.querySelectorAll("[onclick]").forEach(el=>{
-    const code = (el.getAttribute("onclick") || "").trim();
-    if(!code) return;
-    // pattern: event.stopPropagation();fn(...)
-    let stopProp = false;
-    let c = code;
-    if(c.startsWith("event.stopPropagation();")){
-      stopProp = true;
-      c = c.replace("event.stopPropagation();","").trim();
-      el.setAttribute("data-stop-prop","1");
-    }
-
-    // window.deleteTarget={type:'post', id:123}; document.getElementById('modal-delete').classList.remove('hidden');
-    if(c.includes("window.deleteTarget") && c.includes("modal-delete")){
-      const typeMatch = c.match(/type:\s*'([^']+)'/);
-      const idMatch = c.match(/id:\s*([0-9]+)/);
-      if(typeMatch && idMatch){
-        el.setAttribute("data-action","openDeleteModal");
-        el.setAttribute("data-args", JSON.stringify([JSON.stringify({type:typeMatch[1], id: Number(idMatch[1])})]));
-        el.removeAttribute("onclick");
-        return;
-      }
-    }
-
-    // document.getElementById('X').click()
-    let m = c.match(/^document\.getElementById\('([^']+)'\)\.click\(\)$/);
-    if(m){
-      el.setAttribute("data-click", m[1]);
-      el.removeAttribute("onclick");
-      return;
-    }
-    // document.getElementById('X').classList.remove('hidden')
-    m = c.match(/^document\.getElementById\('([^']+)'\)\.classList\.remove\('hidden'\)$/);
-    if(m){
-      el.setAttribute("data-show", m[1]);
-      el.removeAttribute("onclick");
-      return;
-    }
-    // document.getElementById('X').classList.add('hidden')
-    m = c.match(/^document\.getElementById\('([^']+)'\)\.classList\.add\('hidden'\)$/);
-    if(m){
-      el.setAttribute("data-hide", m[1]);
-      el.removeAttribute("onclick");
-      return;
-    }
-
-    // fn(args)
-    m = c.match(/^([A-Za-z_][\w]*)\((.*)\)$/);
-    if(m){
-      el.setAttribute("data-action", m[1]);
-      el.setAttribute("data-args", JSON.stringify(__parseArgTokens(m[2])));
-      el.removeAttribute("onclick");
-      return;
-    }
-    // fallback: just remove to avoid inline execution
-    el.removeAttribute("onclick");
-    if(stopProp) el.setAttribute("data-stop-prop","1");
-  });
-
-  // Convert legacy onsubmit="fn(...); return false;"
-  root.querySelectorAll("form[onsubmit]").forEach(form=>{
-    const code = (form.getAttribute("onsubmit") || "").trim();
-    if(!code) return;
-    const m = code.match(/^([A-Za-z_][\w]*)\((.*)\);\s*return\s+false;?$/);
-    if(m){
-      form.setAttribute("data-submit-action", m[1]);
-      form.setAttribute("data-args", JSON.stringify(__parseArgTokens(m[2])));
-      form.removeAttribute("onsubmit");
-    }
-  });
-}
-
-// Central delegation: click / change / submit / Enter
-document.addEventListener("click", (evt)=>{
-  const el = evt.target.closest("[data-action],[data-hide],[data-show],[data-click]");
-  if(!el) return;
-
-  if(el.getAttribute("data-stop-prop")==="1") evt.stopPropagation();
-
-  const hideId = el.getAttribute("data-hide");
-  if(hideId){
-    const target = document.getElementById(hideId);
-    if(target) target.classList.add("hidden");
-    return;
-  }
-
-  const showId = el.getAttribute("data-show");
-  if(showId){
-    const target = document.getElementById(showId);
-    if(target) target.classList.remove("hidden");
-    return;
-  }
-
-  const clickId = el.getAttribute("data-click");
-  if(clickId){
-    const target = document.getElementById(clickId);
-    if(target) target.click();
-    return;
-  }
-
-  const action = el.getAttribute("data-action");
-  if(!action) return;
-  let args=[];
-  try{ args = JSON.parse(el.getAttribute("data-args") || "[]"); }catch(_){}
-  callAction(action, args, el, evt);
-});
-
-document.addEventListener("change", (evt)=>{
-  const el = evt.target.closest("[data-change-action]");
-  if(!el) return;
-  const action = el.getAttribute("data-change-action");
-  if(!action) return;
-  callAction(action, ["this"], el, evt);
-});
-
-document.addEventListener("submit", (evt)=>{
-  const form = evt.target.closest("form[data-submit-action]");
-  if(!form) return;
-  evt.preventDefault();
-  let args=[];
-  try{ args = JSON.parse(form.getAttribute("data-args") || "[]"); }catch(_){}
-  callAction(form.getAttribute("data-submit-action"), args, form, evt);
-});
-
-document.addEventListener("keydown", (evt)=>{
-  if(evt.key !== "Enter") return;
-  const el = evt.target;
-  if(!el || !(el instanceof HTMLElement)) return;
-  const action = el.getAttribute && el.getAttribute("data-enter-action");
-  if(!action) return;
-  evt.preventDefault();
-  callAction(action, [], el, evt);
-});
-
-function openDeleteModal(payloadJson){
-  try{
-    const payload = typeof payloadJson === "string" ? JSON.parse(payloadJson) : payloadJson;
-    if(payload && payload.type && payload.id != null){
-      window.deleteTarget = payload;
-      const modal = document.getElementById("modal-delete");
-      if(modal) modal.classList.remove("hidden");
-    }
-  }catch(e){ console.error(e); }
-}
-
-function prepareDeleteChannel(){
-  try{
-    window.deleteTarget = { type:"channel", id: window.currentEditChannelId };
-    const modal = document.getElementById("modal-delete");
-    if(modal) modal.classList.remove("hidden");
-  }catch(e){ console.error(e); }
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
     // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
@@ -385,7 +128,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         localStorage.removeItem('token');
     }
     // Modal de login já está visível no HTML por padrão — não precisa fazer nada
-    bindInlineHandlers(document);
 });
 
 function showLoginScreen() {
@@ -692,9 +434,7 @@ function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-pi
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
 
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && user){ fetchUnread(); fetchOnlineUsers(); if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId); } });
-async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots();
-        bindInlineHandlers(document);
-    }catch(e){ console.error(e); } }
+async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
 function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
 
 async function fetchUnread(){
@@ -723,142 +463,24 @@ async function fetchUnread(){
 }
 
 async function loadInbox(){
-  try{
-    await fetchUnread();
-    const r = await fetch('/inbox?nocache=' + new Date().getTime(), { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-    const d = await r.json();
-    const b = document.getElementById('inbox-list');
-    if(!b) return;
-
-    const groups = (d.groups||[]).map(g=>({kind:"group", id:g.id, name:g.name, avatar:g.avatar}));
-    const friends = (d.friends||[]).map(f=>({kind:"dm", id:f.id, name:f.username || f.name || f.codename || "DM", avatar:f.avatar}));
-    const items = [...groups, ...friends];
-
-    if(items.length===0){
-      __clearChildren(b);
-      const p=document.createElement("p");
-      p.style.textAlign="center";
-      p.style.color="#888";
-      p.style.marginTop="20px";
-      p.textContent=t('empty_box');
-      b.appendChild(p);
-      return;
-    }
-
-    __patchKeyedList(
-      b,
-      items,
-      (it)=> `${it.kind}:${it.id}`,
-      (it)=>{
-        const wrap=document.createElement("div");
-        wrap.className="inbox-item";
-        wrap.dataset.id=String(it.id);
-        wrap.dataset.type=it.kind==="group" ? "group" : "dm";
-        wrap.style.display="flex";
-        wrap.style.alignItems="center";
-        wrap.style.gap="15px";
-        wrap.style.padding="12px";
-        wrap.style.background="var(--card-bg)";
-        wrap.style.borderRadius="12px";
-        wrap.style.cursor="pointer";
-        wrap.style.border="1px solid rgba(102,252,241,0.2)";
-        wrap.setAttribute("data-action","openChat");
-        wrap.setAttribute("data-args", JSON.stringify([
-          String(it.id),
-          JSON.stringify(it.name),
-          JSON.stringify(it.kind==="group" ? "group" : "dm")
-        ]));
-
-        const img=document.createElement("img");
-        img.src=it.avatar || "https://via.placeholder.com/45";
-        img.style.width="45px";
-        img.style.height="45px";
-        img.style.borderRadius="50%";
-
-        const mid=document.createElement("div");
-        mid.style.flex="1";
-
-        const bname=document.createElement("b");
-        bname.className="inbox-name";
-        bname.style.color="white";
-        bname.style.fontSize="16px";
-        bname.textContent=it.name;
-
-        const sub=document.createElement("span");
-        sub.className="inbox-sub";
-        sub.style.fontSize="12px";
-        sub.style.color="var(--primary)";
-        sub.textContent = it.kind==="group" ? t('squad') : t('direct_msg');
-
-        mid.appendChild(bname);
-        mid.appendChild(document.createElement("br"));
-        mid.appendChild(sub);
-
-        const badge=document.createElement("span");
-        badge.className="inbox-unread";
-        badge.style.minWidth="22px";
-        badge.style.height="22px";
-        badge.style.borderRadius="999px";
-        badge.style.display="none";
-        badge.style.alignItems="center";
-        badge.style.justifyContent="center";
-        badge.style.fontSize="12px";
-        badge.style.background="var(--primary)";
-        badge.style.color="black";
-        badge.style.fontWeight="700";
-
-        wrap.appendChild(img);
-        wrap.appendChild(mid);
-        wrap.appendChild(badge);
-
-        // set unread
-        __updateInboxUnreadBadge(wrap, it);
-
-        return wrap;
-      },
-      (wrap,it)=>{
-        const img=wrap.querySelector("img");
-        if(img) img.src=it.avatar || img.src;
-        const name=wrap.querySelector(".inbox-name");
-        if(name) name.textContent=it.name;
-        const sub=wrap.querySelector(".inbox-sub");
-        if(sub) sub.textContent = it.kind==="group" ? t('squad') : t('direct_msg');
-        wrap.setAttribute("data-args", JSON.stringify([
-          String(it.id),
-          JSON.stringify(it.name),
-          JSON.stringify(it.kind==="group" ? "group" : "dm")
-        ]));
-        __updateInboxUnreadBadge(wrap, it);
-      }
-    );
-
-  }catch(e){ console.error(e); }
+    try {
+        await fetchUnread();
+        let r = await fetch('/inbox?nocache=' + new Date().getTime(), { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+        let d = await r.json();
+        let b = document.getElementById('inbox-list'); b.innerHTML = '';
+        if((d.groups || []).length === 0 && (d.friends || []).length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
+        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
+        (d.friends || []).forEach(f => {
+            let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
+            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
+        });
+        updateStatusDots();
+    } catch(e) { console.error(e); }
 }
-
-function __updateInboxUnreadBadge(wrap, it){
-  try{
-    const badge = wrap.querySelector(".inbox-unread");
-    if(!badge) return;
-    let n=0;
-    if(it.kind==="dm"){
-      const by = (window.unreadData||{});
-      n = Number(by[String(it.id)] || 0);
-    }
-    if(n>0){
-      badge.textContent = String(n);
-      badge.style.display="inline-flex";
-    }else{
-      badge.style.display="none";
-    }
-  }catch(_){}
-}
-
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
 async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
-async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots();
-        bindInlineHandlers(document);
-    }catch(e){ console.error(e); } }
+async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
 async function handleCommReq(rid,act){try{let r=await authFetch('/community/request/handle',{method:'POST',body:JSON.stringify({req_id:rid,action:act})});if(r.ok){showToast("Membro atualizado!");fetchUnread();await openCommunity(activeCommId, true);}}catch(e){ console.error(e); }}
@@ -1046,55 +668,7 @@ async function toggleRecord(type) {
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
-async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});// Incremental feed patch (não recria vídeo a cada update)
-        const feed = document.getElementById('feed-container');
-        const incomingIds = new Set(p.map(x => String(x.id)));
-
-        // remove posts que sumiram
-        feed.querySelectorAll('.post-card[data-post-id], .post-card[id^="post-"]').forEach(el => {
-            const pid = el.getAttribute('data-post-id') || (el.id ? el.id.replace('post-','') : null);
-            if (pid && !incomingIds.has(String(pid))) el.remove();
-        });
-
-        // atualiza/inserir posts
-        p.forEach(x => {
-            const pid = String(x.id);
-            let el = document.getElementById(`post-${pid}`);
-            if (!el) {
-                // inserir novo (HTML pronto) sem rebuild do feed inteiro
-                feed.insertAdjacentHTML('beforeend', (function(){
-                    let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;
-                    m=`<div class="post-media-wrapper">${m}</div>`;
-                    let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">⋮</span>`:'';
-                    let heartClass=x.user_liked?'liked':'';
-                    let heartIcon=x.user_liked?'❤️':'🤍';
-                    let rankHtml = x.rank_html || '';
-                    return `<div class="post-card" id="post-${x.id}" data-post-id="${x.id}"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" id="like-btn-${x.id}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" id="like-count-${x.id}" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" id="comment-count-${x.id}" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`;
-                })());
-                el = document.getElementById(`post-${pid}`);
-                // bind actions para o novo bloco
-                bindInlineHandlers(el);
-            } else {
-                // atualizar counters/estado (sem tocar no vídeo)
-                const likeCount = el.querySelector(`#like-count-${pid}`);
-                if (likeCount) likeCount.textContent = x.likes;
-                const commentCount = el.querySelector(`#comment-count-${pid}`);
-                if (commentCount) commentCount.textContent = x.comments;
-
-                const likeBtn = el.querySelector(`#like-btn-${pid}`);
-                if (likeBtn) {
-                    likeBtn.classList.toggle('liked', !!x.user_liked);
-                    const icon = likeBtn.querySelector('.icon');
-                    if (icon) icon.textContent = x.user_liked ? '❤️' : '🤍';
-                }
-            }
-        });
-
-        // restaurar UI: comentários abertos e texto digitado
-        openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec)sec.style.display='block';});
-        Object.keys(activeInputs).forEach(k=>{let inp=document.getElementById(k);if(inp)inp.value=activeInputs[k];});
-        if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}
-        updateStatusDots();}catch(e){ console.error(e); }}
+async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
 document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){try{ bumpCommentCount(pid, 1); }catch(e){};
                     await loadComments(pid);loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){try{ bumpCommentCount(pid, 1); }catch(e){};
@@ -1136,102 +710,24 @@ function bumpCommentCount(pid, delta=1){
     }catch(e){}
 }
 
-async function loadComments(pid){
-  try{
-    const r = await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);
-    const list = document.getElementById(`comment-list-${pid}`);
-    if(!list) return;
-    if(!r.ok){ return; }
-    const comments = await r.json();
-    if(!(comments||[]).length){
-      __clearChildren(list);
-      const p=document.createElement("p");
-      p.textContent="Vazio";
-      p.style.color="#888"; p.style.fontSize="12px"; p.style.textAlign="center";
-      list.appendChild(p);
-      return;
-    }
-
-    __patchKeyedList(
-      list,
-      comments,
-      (c)=> String(c.id),
-      (c)=>{
-        const row=document.createElement("div");
-        row.className="comment-row";
-        row.style.display="flex";
-        row.style.alignItems="flex-start";
-        row.style.gap="8px";
-        row.style.padding="6px 0";
-
-        const avatar=document.createElement("img");
-        avatar.src=c.author_avatar || "https://via.placeholder.com/32";
-        avatar.alt="";
-        avatar.style.width="28px";
-        avatar.style.height="28px";
-        avatar.style.borderRadius="50%";
-
-        const body=document.createElement("div");
-        body.style.flex="1";
-
-        const top=document.createElement("div");
-        top.style.display="flex";
-        top.style.alignItems="center";
-        top.style.gap="8px";
-
-        const name=document.createElement("b");
-        name.textContent=c.author_name || "Usuário";
-        name.style.color="white";
-        name.style.fontSize="13px";
-
-        const time=document.createElement("span");
-        time.textContent = c.created_at ? __fmtTs(c.created_at) : "";
-        time.style.color="#777";
-        time.style.fontSize="11px";
-
-        top.appendChild(name);
-        if(time.textContent) top.appendChild(time);
-
-        // delete button (only if author)
-        const canDel = user && (c.author_id === user.id);
-        if(canDel){
-          const del=document.createElement("span");
-          del.textContent="🗑";
-          del.title="Apagar";
-          del.style.marginLeft="auto";
-          del.style.cursor="pointer";
-          del.setAttribute("data-action","openDeleteModal");
-          del.setAttribute("data-args", JSON.stringify([JSON.stringify({type:"comment", id:Number(c.id)})]));
-          top.appendChild(del);
+async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${c.author_avatar}" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
+async function sendComment(pid) {
+    try {
+        let inp = document.getElementById(`comment-inp-${pid}`);
+        let text = inp.value.trim();
+        if (!text) return;
+        let r = await authFetch('/post/comment', {
+            method: 'POST',
+            body: JSON.stringify({ post_id: pid, text: text })
+        });
+        if (r.ok) {
+            inp.value = '';
+            toggleEmoji(true);
+            try{ bumpCommentCount(pid, 1); }catch(e){};
+                    await loadComments(pid);
         }
-
-        const text=document.createElement("div");
-        text.textContent = (c.text ?? "");
-        text.style.color="#ddd";
-        text.style.fontSize="13px";
-        text.style.whiteSpace="pre-wrap";
-        text.style.wordBreak="break-word";
-
-        body.appendChild(top);
-        body.appendChild(text);
-
-        row.appendChild(avatar);
-        row.appendChild(body);
-        return row;
-      },
-      (row,c)=>{
-        // update minimal fields (keep DOM stable)
-        const img=row.querySelector("img");
-        if(img && c.author_avatar) img.src=c.author_avatar;
-        const b=row.querySelector("b");
-        if(b) b.textContent=c.author_name || "Usuário";
-        const text=row.querySelector("div > div + div");
-        if(text) text.textContent=(c.text ?? "");
-      }
-    );
-  }catch(e){ console.error(e); }
+    } catch (e) { console.error(e); }
 }
-
 async function fetchChatMessages(id, type) {
     let list = document.getElementById('dm-list');
     let url = type === 'group' ? `/group/${id}/messages?nocache=${new Date().getTime()}` : `/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;
@@ -1650,16 +1146,6 @@ async function searchUsers(){
         let res=document.getElementById('search-results');
         if(!d||d.length===0){res.innerHTML=`<p style='color:#888;text-align:center;margin-top:10px;'>${t('no_results')}</p>`;return;}
         res.innerHTML=d.map(u=>`<div class="friend-row" onclick="openPublicProfile(${u.id})" style="cursor:pointer;"><div class="av-wrap"><img src="${u.avatar_url}" class="friend-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${u.id}"></div></div><div style="flex:1"><b style="color:white;">${u.username}</b></div><button class="glass-btn" style="padding:5px 12px;margin:0;" onclick="event.stopPropagation();sendFriendReq(${u.id})">${t('add_friend')}</button></div>`).join('');
-        bindInlineHandlers(res);
         updateStatusDots();
     }catch(e){ console.error(e); }
-}
-
-// --- Make key handlers available for inline HTML attributes (desktop/mobile) ---
-try {
-  if (typeof doLogin === "function") window.doLogin = doLogin;
-  if (typeof doRegister === "function") window.doRegister = doRegister;
-  if (typeof toggleAuth === "function") window.toggleAuth = toggleAuth;
-} catch (e) {
-  console.warn("Handler export failed:", e);
 }

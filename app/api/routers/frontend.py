@@ -16,12 +16,5 @@ def favicon():
 
 @router.get("/", response_class=HTMLResponse)
 def get(request: Request):
-    # Cache-bust static assets to avoid stale 404s after deploys
-    asset_version = (os.getenv("RENDER_GIT_COMMIT") or os.getenv("ASSET_VERSION") or "dev")[:12]
-    resp = templates.TemplateResponse("index.html", {"request": request, "asset_version": asset_version})
-    # Ensure HTML isn't cached aggressively on mobile/desktop
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    resp.headers["Pragma"] = "no-cache"
-    resp.headers["Expires"] = "0"
-    return resp
+    return templates.TemplateResponse("index.html", {"request": request})
 
