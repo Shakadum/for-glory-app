@@ -222,6 +222,15 @@ function safeAvatarUrl(u) {
 }
 
 
+function safeDisplayName(obj) {
+    if (!obj) return 'Usuário';
+    return (obj.display_name || obj.name || obj.username || obj.user || obj.nickname || '').toString().trim() || 'Usuário';
+}
+// expõe helpers para handlers que rodam antes (evita "not defined" se algo falhar no parse parcial)
+window.safeAvatarUrl = safeAvatarUrl;
+window.safeDisplayName = safeDisplayName;
+
+
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('token');
     if (token) {
@@ -362,6 +371,13 @@ if (rtc.client) { await rtc.client.leave(); }
         catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
         
         await rtc.client.publish([rtc.localAudioTrack]);
+        try {
+            window.callStartedAt = Date.now();
+            if (window.currentCallType === 'dm' && dmWS && dmWS.readyState === 1) {
+                dmWS.send(`📞 Call iniciada • ${new Date(window.callStartedAt).toLocaleString()}`);
+            }
+        } catch(e) { console.warn('call chat start event failed', e); }
+
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
     } catch(e) { console.error("Call Connect Error:", e); showToast("Falha ao conectar na Call."); leaveCall(); }
@@ -425,7 +441,7 @@ async function renderCallPanel() {
         let uData = window.callUsersCache[uid];
         lastUser = uData;
         let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
-        list.innerHTML += `<div class="call-participant-card"><img src="${uData.avatar}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" oninput="changeRemoteVol(${uid}, this.value)"></div>`;
+        list.innerHTML += `<div class="call-participant-card"><img src="${safeAvatarUrl(uData.avatar, safeDisplayName(uData))}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" oninput="changeRemoteVol(${uid}, this.value)"></div>`;
     }
     
     let profDiv = document.getElementById('call-active-profile');
@@ -855,9 +871,9 @@ async function fetchChatMessages(id, type) {
                         delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
                     }
                     let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
-                        <img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                        <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                         <div>
-                            <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
+                            <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                             <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
                         </div>
                     </div>`;
@@ -944,9 +960,9 @@ function connectDmWS(id, name, type) {
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
             }
             let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
-                <img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                 <div>
-                    <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
+                    <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                     <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
                 </div>
             </div>`;
@@ -1074,7 +1090,7 @@ async function fetchCommMessages(chid){
                         }
                         delBtn=(m&&d.can_delete)?`<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>`:'';
                     }
-                    let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${d.avatar}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${d.username} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
+                    let h=`<div id="${msgId}" class="msg-row ${m?'mine':''}"><img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div><div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank,d.special_emblem,d.color)}</div><div class="msg-bubble">${c}${timeHtml}${delBtn}</div></div></div>`;
                     list.insertAdjacentHTML('beforeend',h);
                 }
             });
