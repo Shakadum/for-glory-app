@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import hashlib
+from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form
 from starlette.requests import Request
@@ -45,6 +46,11 @@ from fastapi import status
 # LOGGER (definido cedo para uso nas funções de segurança)
 # ----------------------------------------------------------------------
 logger = logging.getLogger("ForGlory")
+
+BASE_DIR = Path(__file__).resolve().parents[2]  # project root
+TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+STATIC_DIR = BASE_DIR / "app" / "static"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # ----------------------------------------------------------------------
 # CONFIGURAÇÕES DE SEGURANÇA
@@ -294,8 +300,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-if not os.path.exists("static"):
-    os.makedirs("static")
+if not STATIC_DIR.exists():
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 class ConnectionManager:
@@ -487,14 +493,6 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
     db.commit()
     db.refresh(new_msg)
     return new_msg, None
-
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parents[2]  # project root
-TEMPLATES_DIR = BASE_DIR / "app" / "templates"
-STATIC_DIR = BASE_DIR / "app" / "static"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
 
 
 # ----------------------------------------------------------------------
