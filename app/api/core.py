@@ -296,7 +296,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 if not os.path.exists("static"):
     os.makedirs("static")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 class ConnectionManager:
     def __init__(self):
@@ -490,7 +490,9 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
 
 from pathlib import Path
 
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+BASE_DIR = Path(__file__).resolve().parents[2]  # project root
+TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+STATIC_DIR = BASE_DIR / "app" / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
