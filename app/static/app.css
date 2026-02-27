@@ -147,6 +147,41 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .profile-header-container { height: 140px; margin-bottom: 50px; }
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
+/* ===== BASE (PC + geral) ===== */
+body{
+  margin: 0;
+  font-family: Inter, Arial, sans-serif;
+  background: #0b0f14;
+  color: #fff;
+}
+
+#toast{
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+}
+
+.modal{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+
+.modal.hidden{ display:none; }
+
+.modal-box{
+  width: 420px;
+  max-width: 92vw;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.85);
+  border: 2px solid #2ecc71;
+}
 /* ================= MOBILE FIX ================= */
 @media (max-width: 768px) {
   body { padding: 10px !important; overflow-x: hidden; }
