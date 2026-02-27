@@ -100,7 +100,11 @@ try {
 } catch(e) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; }
 
 function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
-function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } 
+// Salva o idioma e recarrega a página (compatível com handlers inline do HTML)
+function changeLanguage(lang) {
+    try { localStorage.setItem('lang', lang); } catch (e) {}
+    location.reload();
+}
 
 function setLangDropdownVisible(visible){
     const dd = document.querySelector('.lang-dropdown');
@@ -113,17 +117,23 @@ function initLangDropdown(){
     const dd = document.querySelector('.lang-dropdown');
     const btn = document.getElementById('lang-btn-current');
     if(!dd || !btn) return;
+
     btn.addEventListener('click', (e)=>{
         e.preventDefault();
         e.stopPropagation();
         dd.classList.toggle('open');
     });
+
+    // Fecha ao clicar fora
     document.addEventListener('click', (e)=>{
-        if(!dd.contains(e.target)) dd.classList.remove('open');
+        if(!dd.contains(e.target) && e.target !== btn) dd.classList.remove('open');
     });
-    dd.addEventListener('keydown', (e)=>{ if(e.key==='Escape') dd.classList.remove('open'); });
+
+    // Fecha com ESC
+    document.addEventListener('keydown', (e)=>{
+        if(e.key === 'Escape') dd.classList.remove('open');
+    });
 }
-catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", async () => {
     // Tradução da interface
