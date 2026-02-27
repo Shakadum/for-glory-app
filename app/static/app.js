@@ -200,23 +200,27 @@ function safePlaySound(snd) {
     try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado", e)); } } catch(err){}
 }
 function stopSounds() {
-    if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
-
-function buildDmCallChannel(a, b){
-    const x = Math.min(Number(a||0), Number(b||0));
-    const y = Math.max(Number(a||0), Number(b||0));
-    return `dm_${x}_${y}`;
-}
-function safeAvatarUrl(url, name){
-    if(url && typeof url === 'string' && url.trim() !== '' && url.trim().toLowerCase() !== 'undefined' && !url.trim().endsWith('/undefined')){
-        return url;
-    }
-    const nm = (name || 'User').toString().slice(0, 40);
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(nm)}&background=0b0c10&color=66fcf1&size=128`;
+    try {
+        if (window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    } catch (e) {}
+    try {
+        if (window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+    } catch (e) {}
 }
 
-    if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+function buildDmCallChannel(a, b) {
+    const x = Number(a), y = Number(b);
+    const low = Math.min(x, y), high = Math.max(x, y);
+    return `dm_${low}_${high}`;
 }
+
+function safeAvatarUrl(u) {
+    if (!u || typeof u !== 'string') return '/static/default-avatar.svg';
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    if (u.startsWith('/')) return u;
+    return `/${u}`;
+}
+
 
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('token');
@@ -322,10 +326,15 @@ async function connectToAgora(channelName, typeParam) {
     try {
         const safeCh = window.currentAgoraChannel;
         let res = await authFetch(`/agora/token?channel=${encodeURIComponent(safeCh)}&uid=${user.id}`);
+        if (!res.ok) {
+            console.error('Agora token error:', res.status);
+            showToast('⚠️ Sessão expirada ou sem permissão para a call. Faça login novamente.');
+            leaveCall();
+            return;
+        }
         let conf = await res.json();
         if (!conf.app_id || conf.app_id.trim() === "") { showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)"); leaveCall(); return; }
-        if (!conf.token || (typeof conf.token === "string" && conf.token.trim() === "")) { showToast("⚠️ ERRO: Token Agora inválido (AGORA_APP_CERTIFICATE / endpoint /agora/token)"); leaveCall(); return; }
-        if (rtc.client) { await rtc.client.leave(); }
+if (rtc.client) { await rtc.client.leave(); }
         
         try {
             let rBg = await fetch(`/call/bg/call/${encodeURIComponent(window.currentAgoraChannel)}`); let resBg = await rBg.json();
