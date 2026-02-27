@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
     <script async defer src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
     <title>For Glory</title>
     <link rel="stylesheet" href="/static/app.css">
@@ -18,9 +18,9 @@
         <img id="incoming-call-av" src="" style="width:80px;height:80px;border-radius:50%;border:3px solid #2ecc71; margin:10px auto; display:block; object-fit:cover;">
         <h3 id="incoming-call-name" style="color:white; margin:10px 0;">...</h3>
         <p style="color:#aaa; font-size:14px; margin-bottom:20px;">está chamando...</p>
-        <div style="display:flex; gap:10px;">
-            <button onclick="acceptCall()" class="btn-main" style="background:#2ecc71; color:white; margin-top:0;">ACEITAR</button>
-            <button onclick="declineCall()" class="btn-main" style="background:#ff5555; color:white; margin-top:0;">RECUSAR</button>
+        <div style="display:flex; gap:10px; margin-top:8px;">
+            <button onclick="acceptCall()" class="btn-main" style="background:linear-gradient(135deg,#2ecc71,#1a9e56);color:#050709;margin-top:0;border-radius:50px;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> ACEITAR</button>
+            <button onclick="declineCall()" class="btn-main" style="background:linear-gradient(135deg,#ff4d6d,#c0392b);color:white;margin-top:0;border-radius:50px;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> RECUSAR</button>
         </div>
     </div>
 </div>
@@ -42,33 +42,56 @@
     <div id="emoji-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:10px;max-height:220px;overflow-y:auto"></div>
 </div>
 
-<div id="floating-call-btn" onclick="toggleCallPanel()">📞</div>
+<!-- Botão flutuante da call - redesenhado -->
+<div id="floating-call-btn" onclick="toggleCallPanel()" title="Abrir painel da call">
+    <div class="fcb-ring"></div>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+</div>
+
+<!-- Painel da call - completamente redesenhado -->
 <div id="expanded-call-panel">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:15px; margin-bottom:15px;">
-        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;">
-            <span id="call-hud-status-icon" style="animation:pulse 1s infinite; display:inline-block;">🔴</span> 
-            <span id="call-hud-status">AGUARDANDO...</span>
-        </span>
-        <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:22px; font-weight:bold; text-shadow:0 0 10px rgba(255,255,255,0.5);">00:00</span>
-    </div>
-    
-    <div id="call-active-profile" style="text-align:center; margin-bottom:15px; display:none;">
-        <img id="call-active-avatar" src="" style="width:80px; height:80px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; margin:0 auto; display:block; box-shadow:0 0 15px rgba(102,252,241,0.5);">
-        <div id="call-active-name" style="color:white; font-weight:bold; margin-top:10px; font-size:18px; font-family:'Rajdhani'; letter-spacing:1px;"></div>
+    <!-- Overlay de fundo -->
+    <div class="cp-backdrop"></div>
+
+    <!-- Header: status + tempo -->
+    <div class="cp-header">
+        <div class="cp-status-dot" id="call-hud-status-icon">●</div>
+        <span class="cp-status-text" id="call-hud-status">AGUARDANDO...</span>
+        <span class="cp-timer" id="call-hud-time">00:00</span>
+        <button class="cp-minimize-btn" onclick="toggleCallPanel()" title="Minimizar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
     </div>
 
-    <div id="call-users-list" style="max-height:150px; overflow-y:auto; margin-bottom:15px; padding-right:5px;"></div>
-    
-    <div id="call-bg-action" style="text-align:center; margin-bottom:15px; display:none;">
+    <!-- Avatar e nome do participante ativo -->
+    <div id="call-active-profile" class="cp-avatar-section">
+        <div class="cp-avatar-ring">
+            <img id="call-active-avatar" src="" class="cp-avatar-img" onerror="this.src='/static/default-avatar.svg'">
+        </div>
+        <div id="call-active-name" class="cp-active-name">Conectando...</div>
+    </div>
+
+    <!-- Lista de participantes -->
+    <div id="call-users-list" class="cp-users-list"></div>
+
+    <!-- Botão de fundo -->
+    <div id="call-bg-action" class="cp-bg-action" style="display:none;">
         <input type="file" id="call-bg-file" style="display:none;" accept="image/*" onchange="uploadCallBg(this)">
-        <button class="glass-btn" style="padding:8px 15px; font-size:11px; width:100%;" onclick="document.getElementById('call-bg-file').click()">🖼️ TROCAR FUNDO DA CALL</button>
+        <button class="cp-bg-btn" onclick="document.getElementById('call-bg-file').click()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            TROCAR FUNDO
+        </button>
     </div>
 
-    <div style="display:flex; gap:15px; justify-content:center;">
-        <button id="btn-mute-call" class="call-btn-circle" onclick="toggleMuteCall()" title="Mutar Microfone">🎤</button>
-        <button class="call-btn-circle" onclick="toggleCallPanel()" title="Minimizar">🔽</button>
+    <!-- Controles -->
+    <div class="cp-controls">
+        <button id="btn-mute-call" class="cp-ctrl-btn cp-ctrl-mic" onclick="toggleMuteCall()" title="Mutar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button class="cp-ctrl-btn cp-ctrl-end" onclick="leaveCall()" title="Encerrar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+        </button>
     </div>
-    <button class="call-btn-hangup" onclick="leaveCall()" title="Desligar">📞 CANCELAR</button>
 </div>
 
 <div id="modal-login" class="modal">
@@ -119,8 +142,8 @@
         <h2 style="color:#ff5555; font-family:'Rajdhani'; margin-top:0;" data-i18n="confirm_action">CONFIRMAR AÇÃO</h2>
         <p style="color:#ccc; margin: 15px 0; font-size:15px;" data-i18n="confirm_del">Tem certeza que deseja apagar isto?</p>
         <div style="display:flex; gap:10px; margin-top:20px;">
-            <button id="btn-confirm-delete" class="btn-main" style="background:#ff5555; color:white; margin-top:0;" data-i18n="delete">APAGAR</button>
-            <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:transparent; border:1px solid #444; color:#888; margin-top:0;" data-i18n="cancel">CANCELAR</button>
+            <button id="btn-confirm-delete" class="btn-main" style="background:linear-gradient(135deg,#ff4d6d,#c0392b);color:white;margin-top:0;border-radius:50px;" data-i18n="delete">APAGAR</button>
+            <button onclick="document.getElementById('modal-delete').classList.add('hidden')" class="btn-main" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;margin-top:0;border-radius:50px;" data-i18n="cancel">CANCELAR</button>
         </div>
     </div>
 </div>
@@ -214,7 +237,7 @@
         <span style="color:#ffaa00; font-size:11px; display:block; text-align:left; padding-left:5px; font-weight:bold;">⚠️ Max 100MB</span>
         <div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;margin-top:10px">
             <input type="text" id="caption-upload" class="inp" placeholder="Legenda..." data-i18n="caption_placeholder" style="margin:0">
-            <button type="button" class="icon-btn" onclick="openEmoji('caption-upload')">😀</button>
+            <button type="button" class="icon-btn" onclick="openEmoji('caption-upload')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
         </div>
         <div id="upload-progress" style="display:none;background:#333;height:6px;border-radius:3px;margin-top:10px;overflow:hidden">
             <div id="progress-bar" style="width:0%;height:100%;background:var(--primary);transition:width 0.2s"></div>
@@ -244,11 +267,11 @@
             <img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
             <div id="profile-badge" class="nav-badge"></div>
         </button>
-        <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;">📩<div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn" onclick="goView('feed', this)">🎬</button>
-        <button class="nav-btn" onclick="goView('mycomms', this)" style="position:relative;">🛡️<div id="bases-badge" class="nav-badge"></div></button>
-        <button class="nav-btn" onclick="goView('explore', this)">🌐</button>
-        <button class="nav-btn" onclick="goView('history', this)">🕒</button>
+        <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><div id="inbox-badge" class="nav-badge"></div></button>
+        <button class="nav-btn" onclick="goView('feed', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+        <button class="nav-btn" onclick="goView('mycomms', this)" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div id="bases-badge" class="nav-badge"></div></button>
+        <button class="nav-btn" onclick="goView('explore', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+        <button class="nav-btn" onclick="goView('history', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
     </div>
     
     <div id="content-area">
@@ -302,7 +325,7 @@
         
         <div id="view-feed" class="view active">
             <div id="feed-container"></div>
-            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')">+</button>
+            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
         
         <div id="view-mycomms" class="view">
@@ -341,25 +364,25 @@
         <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
                 <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
-                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">⬅</button>
+                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:#9ca3af;font-size:18px;cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
                     <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;flex:1;">Chat</div>
                     <button onclick="initCall(currentChatType, currentChatId)" class="glass-btn btn-call-header" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
                 </div>
                 <div id="dm-list"></div>
                 <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">
                     <input type="file" id="dm-file" class="hidden" onchange="uploadDMImage()" accept="image/*,video/*,audio/*">
-                    <button type="button" class="icon-btn" onclick="document.getElementById('dm-file').click()">📎</button>
-                    <button type="button" class="icon-btn" id="btn-mic-dm" onclick="toggleRecord('dm')">🎤</button>
+                    <button type="button" class="icon-btn" onclick="document.getElementById('dm-file').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                    <button type="button" class="icon-btn" id="btn-mic-dm" onclick="toggleRecord('dm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                     <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" autocomplete="off">
-                    <button type="button" class="icon-btn" onclick="openEmoji('dm-msg')">😀</button>
-                    <button type="submit" class="btn-send-msg">➤</button>
+                    <button type="button" class="icon-btn" onclick="openEmoji('dm-msg')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                    <button type="submit" class="btn-send-msg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                 </form>
             </div>
         </div>
         
         <div id="view-comm-dashboard" class="view comm-layout">
             <div class="comm-topbar" id="comm-header">
-                <button onclick="closeComm()" style="background:rgba(0,0,0,0.5); border:1px solid #444; border-radius:8px; padding:5px 10px; color:white; font-size:18px; cursor:pointer;">⬅</button>
+                <button onclick="closeComm()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:50%;width:36px;height:36px;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
                 <div id="active-comm-name">NOME DA BASE</div>
                 <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
             </div>
@@ -369,11 +392,11 @@
                 <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
                 <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
                     <input type="file" id="comm-file" class="hidden" onchange="uploadCommImage()" accept="image/*,video/*,audio/*">
-                    <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()">📎</button>
-                    <button type="button" id="btn-comm-mic" class="icon-btn" onclick="toggleRecord('comm')">🎤</button>
+                    <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                    <button type="button" id="btn-comm-mic" class="icon-btn" onclick="toggleRecord('comm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                     <input id="comm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="base_msg_placeholder" autocomplete="off">
-                    <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')">😀</button>
-                    <button type="submit" id="btn-comm-send" class="btn-send-msg">➤</button>
+                    <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                    <button type="submit" id="btn-comm-send" class="btn-send-msg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                 </form>
             </div>
             
@@ -407,7 +430,7 @@
         </div>
         
         <div id="view-public-profile" class="view">
-            <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.5);color:white;border:1px solid #444;padding:8px 15px;border-radius:8px;backdrop-filter:blur(5px);cursor:pointer;" data-i18n="back">⬅ Voltar</button>
+            <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);color:white;border:1px solid rgba(255,255,255,0.12);padding:9px 16px;border-radius:50px;backdrop-filter:blur(12px);cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;" data-i18n="back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar</button>
             <div class="profile-header-container">
                 <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
