@@ -25,7 +25,7 @@
     </div>
 </div>
 
-<div class="lang-dropdown">
+<div class="lang-dropdown" id="lang-dropdown-global" style="display:none;">
     <div class="lang-btn" id="lang-btn-current">🌍 Idioma</div>
     <div class="lang-content">
         <div class="lang-item" onclick="changeLanguage('pt')">🇧🇷 Português</div>
@@ -81,6 +81,16 @@
             <div style="margin-top:20px;display:flex;justify-content:space-between">
                 <span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;" data-i18n="create_acc">Criar Conta</span>
                 <span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;" data-i18n="forgot">Esqueci Senha</span>
+            </div>
+            <div style="margin-top:15px;border-top:1px solid #333;padding-top:15px;">
+                <div class="lang-dropdown" id="lang-dropdown-login">
+                    <div class="lang-btn" id="lang-btn-login">🌍 Idioma</div>
+                    <div class="lang-content">
+                        <div class="lang-item" onclick="changeLanguage('pt')">🇧🇷 Português</div>
+                        <div class="lang-item" onclick="changeLanguage('en')">🇺🇸 English</div>
+                        <div class="lang-item" onclick="changeLanguage('es')">🇪🇸 Español</div>
+                    </div>
+                </div>
             </div>
         </div>
         <div id="register-form" class="hidden">
@@ -270,7 +280,15 @@
                     <button onclick="toggleRequests('friends')" class="glass-btn" data-i18n="friends">👥 Amigos</button>
                 </div>
                 <div id="requests-list" style="margin-top:15px; background:rgba(0,0,0,0.3); border-radius:10px;"></div>
-                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:40px;" data-i18n="disconnect">DESCONECTAR</button>
+                <div style="margin-top:30px;border-top:1px solid #333;padding-top:20px;text-align:center;">
+                    <p style="color:#888;font-size:12px;margin-bottom:10px;">🌍 Idioma / Language</p>
+                    <div style="display:flex;justify-content:center;gap:10px;">
+                        <button onclick="changeLanguage('pt')" class="glass-btn" style="padding:6px 12px;margin:0;font-size:13px;">🇧🇷 PT</button>
+                        <button onclick="changeLanguage('en')" class="glass-btn" style="padding:6px 12px;margin:0;font-size:13px;">🇺🇸 EN</button>
+                        <button onclick="changeLanguage('es')" class="glass-btn" style="padding:6px 12px;margin:0;font-size:13px;">🇪🇸 ES</button>
+                    </div>
+                </div>
+                <button onclick="logout()" class="glass-btn danger-btn" style="margin-top:20px;" data-i18n="disconnect">DESCONECTAR</button>
             </div>
         </div>
         

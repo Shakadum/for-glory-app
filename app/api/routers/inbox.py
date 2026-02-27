@@ -117,6 +117,16 @@ async def delete_msg(
             return {"status": "timeout", "msg": "Tempo limite excedido."}
         msg.content = "[DELETED]"
         db.commit()
+        # Broadcast delete para ambos os lados do chat verem a mensagem sumir
+        delete_payload = {"type": "message_deleted", "msg_id": d.msg_id}
+        if d.type == "dm":
+            other_id = msg.receiver_id if msg.sender_id == current_user.id else msg.sender_id
+            low, high = min(current_user.id, other_id), max(current_user.id, other_id)
+            await manager.broadcast(delete_payload, f"dm_{low}_{high}")
+        elif d.type == "group":
+            await manager.broadcast(delete_payload, f"group_{msg.group_id}")
+        elif d.type == "comm":
+            await manager.broadcast(delete_payload, f"comm_{msg.channel_id}")
         return {"status": "ok"}
     return {"status": "error"}
 

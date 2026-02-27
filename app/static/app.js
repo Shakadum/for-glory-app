@@ -198,31 +198,29 @@ function setLangDropdownVisible(visible){
 }
 
 function initLangDropdown(){
-    const dd = document.querySelector('.lang-dropdown');
-    const btn = document.getElementById('lang-btn-current');
-    if(!dd || !btn) return;
-
-    btn.addEventListener('click', (e)=>{
-        e.preventDefault();
-        e.stopPropagation();
-        dd.classList.toggle('open');
-    });
-
-    // Fecha ao clicar fora
-    document.addEventListener('click', (e)=>{
-        if(!dd.contains(e.target) && e.target !== btn) dd.classList.remove('open');
-    });
-
-    // Fecha com ESC
-    document.addEventListener('keydown', (e)=>{
-        if(e.key === 'Escape') dd.classList.remove('open');
-    });
+    // Inicializa o dropdown do login (dentro do modal)
+    const dd = document.getElementById('lang-dropdown-login');
+    const btn = document.getElementById('lang-btn-login');
+    if(dd && btn) {
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            dd.classList.toggle('open');
+        });
+        document.addEventListener('click', (e)=>{
+            if(!dd.contains(e.target) && e.target !== btn) dd.classList.remove('open');
+        });
+        document.addEventListener('keydown', (e)=>{
+            if(e.key === 'Escape') dd.classList.remove('open');
+        });
+    }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
     // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
-    document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag}`;
+    let langBtnLogin = document.getElementById('lang-btn-login');
+    if(langBtnLogin) langBtnLogin.innerHTML = `🌍 ${flag}`;
     initLangDropdown();
     document.querySelectorAll('[data-i18n]').forEach(el => {
         let k = el.getAttribute('data-i18n');
@@ -441,18 +439,18 @@ if (rtc.client) { await rtc.client.leave(); }
             window.callHasConnected = true; 
             stopSounds();
             await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(); }
+            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(rtc, user.id); }
         });
         
         rtc.client.on("user-unpublished", (remoteUser) => {
             // Remote stopped publishing (mute/disable) — do NOT end the call.
             delete rtc.remoteUsers[remoteUser.uid];
-            renderCallPanel();
+            renderCallPanel(rtc, user.id);
         });
         rtc.client.on("user-left", (remoteUser) => {
             // Remote actually left the channel — end the call.
             delete rtc.remoteUsers[remoteUser.uid];
-            renderCallPanel();
+            renderCallPanel(rtc, user.id);
             if (window.callHasConnected) {
                 showToast("O aliado saiu da chamada.");
                 leaveCall();
@@ -617,7 +615,7 @@ async function toggleMuteCall() {
 }
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
-function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(); }
+function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
@@ -652,6 +650,29 @@ async function doLogin() {
 async function doRegister(){ let btn=document.querySelector('#register-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ REGISTRANDO..."; btn.disabled=true; try{ let r=await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})}); if(!r.ok) throw new Error("Erro"); showToast("✔ Registrado! Faça login."); toggleAuth('login'); }catch(e){ console.error(e); showToast("❌ Erro no registro."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
 function formatMsgTime(iso){ if(!iso) return ""; let d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${t('at')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatRankInfo(rank, special, color){ return `${special ? `<span class="special-badge">${special}</span>` : ''}${rank ? `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>` : ''}`; }
+
+// Detecta se uma mensagem é evento de sistema (call iniciada/finalizada)
+function isCallSystemMsg(text) {
+    return typeof text === 'string' && (
+        text.startsWith('📞 Chamada iniciada') ||
+        text.startsWith('📞 Chamada finalizada') ||
+        text.startsWith('📞 Call ini')
+    );
+}
+
+// Gera HTML especial para mensagens de sistema (centralizadas, sem avatar)
+function buildCallEventHtml(msgId, text, timeHtml) {
+    // Separa ícone e texto para estilizar melhor
+    const clean = text.replace('📞 ', '');
+    return `<div id="${msgId}" class="msg-system-event">
+        <div class="msg-system-bubble">
+            <span class="msg-system-icon">📞</span>
+            <span class="msg-system-text">${escapeHtml(clean)}</span>
+            ${timeHtml}
+        </div>
+    </div>`;
+}
+
 
 // Sanitiza channel name pro Agora (<=64 bytes e caracteres permitidos)
 function sanitizeChannelName(raw){
@@ -1013,13 +1034,18 @@ async function fetchChatMessages(id, type) {
                         }
                         delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
                     }
-                    let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
+                    let h;
+                    if(isCallSystemMsg(d.content || '')) {
+                        h = buildCallEventHtml(msgId, d.content || '', timeHtml);
+                    } else {
+                        h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                         <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                         <div>
                             <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                             <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
                         </div>
                     </div>`;
+                    }
                     list.insertAdjacentHTML('beforeend', h);
                 }
             });
@@ -1102,13 +1128,18 @@ function connectDmWS(id, name, type) {
                 }
                 delBtn = (m && d.can_delete) ? `<span class="del-msg-btn" onclick="window.deleteTarget={type:'${prefix}', id:${d.id}}; document.getElementById('modal-delete').classList.remove('hidden');">🗑️</span>` : '';
             }
-            let h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
+            let h;
+            if(isCallSystemMsg(d.content || '')) {
+                h = buildCallEventHtml(msgId, d.content || '', timeHtml);
+            } else {
+                h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                 <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
                 <div>
                     <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                     <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
                 </div>
             </div>`;
+            }
             b.insertAdjacentHTML('beforeend', h);
             b.scrollTop = b.scrollHeight;
         }

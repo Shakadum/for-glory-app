@@ -215,3 +215,51 @@ body{
     max-width: 100% !important;
   }
 }
+/* ===== Mensagens de evento de sistema (call iniciada/finalizada) ===== */
+.msg-system-event {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 12px 0;
+    padding: 0 20px;
+}
+.msg-system-bubble {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: rgba(102, 252, 241, 0.08);
+    border: 1px solid rgba(102, 252, 241, 0.25);
+    border-radius: 16px;
+    padding: 10px 20px;
+    max-width: 80%;
+    text-align: center;
+}
+.msg-system-icon {
+    font-size: 20px;
+}
+.msg-system-text {
+    color: var(--primary);
+    font-size: 13px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+.msg-system-bubble .msg-time {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+}
+
+/* ===== Lang dropdown dentro do login ===== */
+#lang-dropdown-login {
+    position: relative;
+    display: inline-block;
+}
+#lang-dropdown-login .lang-content {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 5px;
+}
