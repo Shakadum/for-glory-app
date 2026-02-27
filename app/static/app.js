@@ -1,9 +1,5 @@
 window.deleteTarget = {type: null, id: null};
 
-// Lista de emojis (frontend puro). Se quiser, você pode expandir.
-const EMOJIS = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😭", "😡", "👍", "👎", "🙏", "👏", "🔥", "💯", "🎉", "✨", "💪", "🤝", "💔", "❤️", "🎮", "⚔️", "🛡️", "🏆", "🥇", "🎧", "🎤", "📷", "🖼️", "📎", "📌", "✅", "❌", "⚠️", "🕹️", "🎬"];
-
-
 // CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
 const T = {
     'pt': {
@@ -219,7 +215,8 @@ async function initCall(typeParam, targetId) {
         return;
     } else { return showToast("Alvo inválido."); }
     
-    window.currentAgoraChannel = channelName;
+    window.currentAgoraChannel = sanitizeChannelName(channelName);
+    if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; }
     window.callHasConnected = false;
     
     document.getElementById('call-active-profile').style.display = 'none';
@@ -255,7 +252,8 @@ async function acceptCall() {
 }
 
 async function connectToAgora(channelName, typeParam) {
-    window.currentAgoraChannel = channelName; 
+    window.currentAgoraChannel = sanitizeChannelName(channelName);
+    if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
     document.getElementById('call-active-profile').style.display = 'none';
     document.getElementById('call-hud-status').innerText = "CONECTANDO...";
     
@@ -427,6 +425,21 @@ async function doLogin() {
 async function doRegister(){ let btn=document.querySelector('#register-form .btn-main'); let oldText=btn.innerText; btn.innerText="⏳ REGISTRANDO..."; btn.disabled=true; try{ let r=await fetch('/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: document.getElementById('r-user').value, email: document.getElementById('r-email').value, password: document.getElementById('r-pass').value})}); if(!r.ok) throw new Error("Erro"); showToast("✔ Registrado! Faça login."); toggleAuth('login'); }catch(e){ console.error(e); showToast("❌ Erro no registro."); }finally{ btn.innerText=oldText; btn.disabled=false; } }
 function formatMsgTime(iso){ if(!iso) return ""; let d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${t('at')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatRankInfo(rank, special, color){ return `${special ? `<span class="special-badge">${special}</span>` : ''}${rank ? `<span class="rank-badge" style="color:${color}; border-color:${color};">${rank}</span>` : ''}`; }
+
+// Sanitiza channel name pro Agora (<=64 bytes e caracteres permitidos)
+function sanitizeChannelName(raw){
+    if(!raw) return null;
+    let s = String(raw).trim();
+    if(!s) return null;
+    // caracteres permitidos: a-zA-Z0-9 espaço e alguns símbolos. Pra garantir, trocamos o resto por "_"
+    s = s.replace(/[^a-zA-Z0-9 !#$%&()+\-:;<=>.?@\[\]^_{}|~ ,]/g, "_");
+    // Agora limita em bytes (UTF-8). Como estamos com ASCII, 1 char = 1 byte.
+    if(s.length > 60) s = s.slice(0, 60);
+    // evita vazio/invalid
+    if(!s) return null;
+    return s;
+}
+
 function initEmojis(){ let g=document.getElementById('emoji-grid'); if(!g)return; EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
 function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } }
 function closeUpload(){ document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value=''; document.getElementById('caption-upload').value=''; }
@@ -578,6 +591,10 @@ function connectGlobalWS(){
             document.getElementById('modal-incoming-call').classList.add('hidden'); 
             stopSounds();
         }
+        if(d.type === 'message_deleted') {
+            applyRemoteDelete(d.msg_id);
+        }
+
 
         if(d.type === 'incoming_call') {
             window.pendingCallerId = d.caller_id;
@@ -1148,4 +1165,27 @@ async function searchUsers(){
         res.innerHTML=d.map(u=>`<div class="friend-row" onclick="openPublicProfile(${u.id})" style="cursor:pointer;"><div class="av-wrap"><img src="${u.avatar_url}" class="friend-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${u.id}"></div></div><div style="flex:1"><b style="color:white;">${u.username}</b></div><button class="glass-btn" style="padding:5px 12px;margin:0;" onclick="event.stopPropagation();sendFriendReq(${u.id})">${t('add_friend')}</button></div>`).join('');
         updateStatusDots();
     }catch(e){ console.error(e); }
+
+
+function applyRemoteDelete(msgNumericId){
+    const candidates = [
+        `dm_msg-${msgNumericId}`,
+        `comm_msg-${msgNumericId}`,
+        `geral_msg-${msgNumericId}`,
+        `msg-${msgNumericId}`,
+    ];
+    for(const id of candidates){
+        const el = document.getElementById(id);
+        if(!el) continue;
+        // marca visualmente como apagada
+        const bubble = el.querySelector('.msg-bubble');
+        if(bubble){
+            bubble.innerHTML = '<span style="color:#888;font-style:italic;">[mensagem apagada]</span>';
+        } else {
+            el.innerHTML = '<span style="color:#888;font-style:italic;">[mensagem apagada]</span>';
+        }
+        // remove botão de delete se existir
+        el.querySelectorAll('.del-msg-btn').forEach(b=>b.remove());
+    }
+}
 }

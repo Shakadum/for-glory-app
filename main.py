@@ -985,7 +985,7 @@ def mark_read(
     return {"status": "ok"}
 
 @app.post("/message/delete")
-def delete_msg(
+async def delete_msg(
     d: DeleteMsgData,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -1003,6 +1003,18 @@ def delete_msg(
             return {"status": "timeout", "msg": "Tempo limite excedido."}
         msg.content = "[DELETED]"
         db.commit()
+
+# Notifica todos conectados para apagar no outro cliente também
+try:
+    await manager.broadcast_json("Geral", {
+        "type": "message_deleted",
+        "msg_id": int(d.msg_id),
+        "scope": d.type,
+        "by": current_user.id,
+    })
+except Exception as e:
+    logger.warning(f"broadcast message_deleted failed: {e}")
+
         return {"status": "ok"}
     return {"status": "error"}
 
