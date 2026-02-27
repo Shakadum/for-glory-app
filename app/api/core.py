@@ -288,6 +288,22 @@ redis_storage = os.getenv('REDIS_URL') or 'memory://'
 limiter = Limiter(key_func=get_remote_address, storage_uri=redis_storage)
 app = FastAPI(title="For Glory Cloud")
 
+# --- Basic security headers (safe defaults) ---
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # If you later add HTTPS-only cookies, enable HSTS at the proxy level (Render) as well.
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
 @app.on_event("startup")
 async def _startup():
     await init_redis()
