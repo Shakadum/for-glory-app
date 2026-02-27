@@ -7,6 +7,72 @@ const EMOJIS = window.EMOJIS || [
 window.EMOJIS = EMOJIS;
 
 window.deleteTarget = {type: null, id: null};
+// ===== Helpers (safety) =====
+function escapeHtml(input) {
+    const s = String(input ?? "");
+    return s.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    }[ch]));
+}
+
+function safeDisplayName(u) {
+    const name =
+        (u && (u.username || u.name || u.display_name || u.nickname || u.user)) ||
+        "";
+    const trimmed = String(name).trim();
+    return trimmed ? trimmed : "Usuário";
+}
+
+function safeAvatarUrl(url) {
+    const u = String(url ?? "").trim();
+    if (!u || u === "undefined" || u === "null") return "/static/default-avatar.svg";
+    return u;
+}
+
+function normalizeUserBasic(u, fallbackUid = null) {
+    const id = (u && (u.id ?? u.uid)) ?? fallbackUid;
+    const name = safeDisplayName(u);
+    const avatar = safeAvatarUrl(u && (u.avatar_url || u.avatar || u.photo_url || u.photo || u.picture || u.profile_pic));
+    return { id, name, avatar };
+}
+
+const __userBasicCache = window.__userBasicCache || (window.__userBasicCache = {});
+async function getUserBasic(uid) {
+    if (!uid && uid !== 0) return normalizeUserBasic({}, uid);
+    if (__userBasicCache[uid]) return __userBasicCache[uid];
+    try {
+        const r = await fetch(`/users/basic/${uid}`);
+        if (r.ok) {
+            const data = await r.json();
+            __userBasicCache[uid] = normalizeUserBasic(data, uid);
+            return __userBasicCache[uid];
+        }
+    } catch (e) {}
+    __userBasicCache[uid] = normalizeUserBasic({ username: `Usuário ${uid}` }, uid);
+    return __userBasicCache[uid];
+}
+
+
+function showRanksModal() {
+    const modal =
+        document.getElementById('ranks-modal') ||
+        document.getElementById('rank-modal') ||
+        document.getElementById('modal-ranks');
+    if (modal) {
+        modal.style.display = 'block';
+        modal.classList.add('open');
+        return;
+    }
+    alert('Ranks: em breve.');
+}
+window.showRanksModal = showRanksModal;
+
+
+
 
 // CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
 const T = {
@@ -423,40 +489,69 @@ async function leaveCall() {
 }
 
 window.callUsersCache = {};
-async function renderCallPanel() {
-    let list = document.getElementById('call-users-list'); list.innerHTML = ''; let count = 0;
-    let isAdmin = window.currentCommIsAdmin || false;
-    let lastUser = null;
-    
-    for(let uid in rtc.remoteUsers) {
-        if (String(uid) === String(user.id)) continue;
-        count++; 
-        if(!window.callUsersCache[uid]) {
-            try {
-                let req = await fetch(`/users/basic/${uid}`);
-                window.callUsersCache[uid] = await req.json();
-            } catch(e) { console.error("Erro fetch user call:", e); window.callUsersCache[uid] = {name: "Aliado", avatar: "https://ui-avatars.com/api/?name=A"}; }
+async function renderCallPanel(rtc, localUid) {
+    try {
+        const panel = document.getElementById('expanded-call-panel');
+        if (!panel) return;
+
+        const usersList = document.getElementById('call-users-list');
+        const activeProfile = document.getElementById('call-active-profile');
+
+        const statusText = document.getElementById('call-status');
+        const timeText = document.getElementById('call-time');
+        const nameText = document.getElementById('call-active-name');
+        const avatarImg = document.getElementById('call-active-avatar');
+
+        // Build participant list (local + remote)
+        const remoteUids = (rtc?.remoteUsers || []).map(u => u.uid).filter(u => u !== undefined && u !== null);
+        const allUids = Array.from(new Set([localUid, ...remoteUids]));
+
+        const basics = [];
+        for (const uid of allUids) basics.push(await getUserBasic(uid));
+
+        // UI: list
+        if (usersList) {
+            usersList.innerHTML = '';
+            basics.forEach(b => {
+                const item = document.createElement('div');
+                item.className = 'call-user';
+                item.innerHTML = `
+                    <img src="${escapeHtml(b.avatar)}" class="call-user-avatar" alt="">
+                    <span class="call-user-name">${escapeHtml(b.name)}</span>
+                `;
+                usersList.appendChild(item);
+            });
         }
-        
-        let uData = window.callUsersCache[uid];
-        lastUser = uData;
-        let kickBtn = isAdmin ? `<button class="call-kick-btn" onclick="kickFromCall(${uid})" title="Expulsar">❌</button>` : '';
-        list.innerHTML += `<div class="call-participant-card"><img src="${safeAvatarUrl(uData.avatar, safeDisplayName(uData))}" class="call-avatar"><span class="call-name">${uData.name}</span>${kickBtn}<input type="range" min="0" max="100" value="100" class="vol-slider" oninput="changeRemoteVol(${uid}, this.value)"></div>`;
-    }
-    
-    let profDiv = document.getElementById('call-active-profile');
-    let st = document.getElementById('call-hud-status');
-    
-    if(count > 0 && lastUser) {
-        profDiv.style.display = 'block';
-        document.getElementById('call-active-avatar').src = lastUser.avatar;
-        document.getElementById('call-active-name').innerText = lastUser.name;
-        st.innerText = "EM CHAMADA";
-        stopSounds();
-    } else {
-        profDiv.style.display = 'none';
-        list.innerHTML = `<p style="color:#888; font-size:12px; text-align:center; margin:0;">Aguardando na escuta...</p>`;
-        st.innerText = window.isCaller ? "CHAMANDO..." : "AGUARDANDO...";
+
+        // Pick "active" = first remote (if exists), otherwise local
+        let activeUid = remoteUids.length ? remoteUids[0] : localUid;
+        const activeBasic = await getUserBasic(activeUid);
+
+        if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic.avatar);
+        if (nameText) nameText.textContent = activeBasic.name;
+
+        // Status + timer
+        if (statusText) statusText.textContent = 'EM CHAMADA';
+        const startedAt = window.__callStartedAt || Date.now();
+        window.__callStartedAt = startedAt;
+        if (timeText) {
+            const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+            const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+            const ss = String(sec % 60).padStart(2, '0');
+            timeText.textContent = `${mm}:${ss}`;
+        }
+
+        // If group call, show "X participantes" as subtitle
+        const subtitle = document.getElementById('call-subtitle');
+        if (subtitle) {
+            if (allUids.length > 2) subtitle.textContent = `${allUids.length} participantes`;
+            else subtitle.textContent = '';
+        }
+
+        // Ensure panel visible (some flows rely on this)
+        panel.style.display = 'block';
+    } catch (e) {
+        console.warn("renderCallPanel failed:", e);
     }
 }
 
