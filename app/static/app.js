@@ -1,3 +1,11 @@
+// ===== Emoji data (fallback) =====
+const EMOJIS = window.EMOJIS || [
+  "😀","😁","😂","🤣","😊","😍","😘","😎","🤔","😅","😭","😡",
+  "👍","👎","🙏","💪","🔥","⭐","🎉","❤️","💔","😴","🤯","🥶",
+  "😈","🤝","🎮","🏆","⚔️","🛡️","📌","📎","✅","❌","⚠️","💬"
+];
+window.EMOJIS = EMOJIS;
+
 window.deleteTarget = {type: null, id: null};
 
 // CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
@@ -428,9 +436,11 @@ function formatRankInfo(rank, special, color){ return `${special ? `<span class=
 
 // Sanitiza channel name pro Agora (<=64 bytes e caracteres permitidos)
 function sanitizeChannelName(raw){
-    if(!raw) return null;
+    if(raw===null || raw===undefined) return null;
     let s = String(raw).trim();
     if(!s) return null;
+    const lower = s.toLowerCase();
+    if(lower==='null' || lower==='undefined') return null;
     // caracteres permitidos: a-zA-Z0-9 espaço e alguns símbolos. Pra garantir, trocamos o resto por "_"
     s = s.replace(/[^a-zA-Z0-9 !#$%&()+\-:;<=>.?@\[\]^_{}|~ ,]/g, "_");
     // Agora limita em bytes (UTF-8). Como estamos com ASCII, 1 char = 1 byte.
@@ -440,7 +450,7 @@ function sanitizeChannelName(raw){
     return s;
 }
 
-function initEmojis(){ let g=document.getElementById('emoji-grid'); if(!g)return; EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
+function initEmojis(){let g=document.getElementById('emoji-grid'); if(!g) return; if(!window.EMOJIS||!Array.isArray(window.EMOJIS)){console.warn('EMOJIS missing'); return;} window.EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
 function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } }
 function closeUpload(){ document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value=''; document.getElementById('caption-upload').value=''; }
 function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-picker').style.display='flex'; }
@@ -689,7 +699,7 @@ async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&
 
 document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){try{ bumpCommentCount(pid, 1); }catch(e){};
                     await loadComments(pid);loadMyHistory();updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){try{ bumpCommentCount(pid, 1); }catch(e){};
-                    await loadComments(pid);}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
+                    await loadComments(pid);}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){try{ if(mainType==='dm' && typeof dmWS!=='undefined' && dmWS && dmWS.readyState===1){ dmWS.send(JSON.stringify({type:'message_deleted', msg_id:id})); } }catch(e){} let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
 async function updateProfileState() { try { let r = await authFetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`); let d = await r.json(); Object.assign(user, d); updateUI(); } catch(e) { console.error(e); } }
 async function toggleLike(pid, btn) {
@@ -758,7 +768,7 @@ async function fetchChatMessages(id, type) {
                 let msgId = `${prefix}-${d.id}`;
                 if (!document.getElementById(msgId)) {
                     let m = (d.user_id === user.id);
-                    let c = d.content;
+                    let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';
                     let delBtn = '';
                     let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                     if (c === '[DELETED]') {
@@ -827,8 +837,23 @@ function connectDmWS(id, name, type) {
         let d = JSON.parse(e.data);
         let b = document.getElementById('dm-list');
         let m = parseInt(d.user_id) === parseInt(user.id);
-        let c = d.content;
+        let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';
         if (d.type === 'ping' || d.type === 'pong') return;
+        if (d.type === 'message_deleted' && (d.msg_id || d.id)) {
+            const delId = String(d.msg_id || d.id);
+            const el = document.getElementById(`dm_msg-${delId}`) || document.getElementById(`group_msg-${delId}`);
+            if (el) {
+                const bubble = el.querySelector('.msg-bubble');
+                if (bubble) {
+                    const timeSpan = bubble.querySelector('.msg-time');
+                    const timeHtml = timeSpan ? timeSpan.outerHTML : '';
+                    bubble.innerHTML = `<span class="msg-deleted">${t('deleted_msg')}</span>${timeHtml}`;
+                    const btn = el.querySelector('.del-msg-btn');
+                    if (btn) btn.remove();
+                }
+            }
+            return;
+        }
         if (c.startsWith('[CALL_BG]')) { return; }
         let prefix = type === 'group' ? 'group_msg' : 'dm_msg';
         let msgId = `${prefix}-${d.id}`;
