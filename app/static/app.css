@@ -147,3 +147,32 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .profile-header-container { height: 140px; margin-bottom: 50px; }
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
+/* ================= MOBILE FIX ================= */
+@media (max-width: 768px) {
+  body { padding: 10px !important; overflow-x: hidden; }
+
+  img, video { max-width: 100% !important; height: auto !important; }
+
+  /* Modal de chamada */
+  .modal-box {
+    width: 92vw !important;
+    max-width: 420px !important;
+    margin: 0 auto !important;
+  }
+
+  /* Força qualquer flex inline dentro do modal a virar coluna */
+  #modal-incoming-call div[style*="display:flex"] {
+    flex-direction: column !important;
+  }
+
+  .btn-main {
+    width: 100% !important;
+    padding: 14px !important;
+    font-size: 16px !important;
+  }
+
+  input, select, textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
