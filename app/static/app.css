@@ -11,6 +11,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 .lang-btn:hover { background:rgba(102,252,241,0.2); box-shadow:0 0 15px rgba(102,252,241,0.3); }
 .lang-content { display:none; position:absolute; top:100%; right:0; background:rgba(20,25,35,0.95); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:8px; flex-direction:column; min-width:120px; box-shadow:0 10px 20px rgba(0,0,0,0.5); backdrop-filter:blur(10px); }
 .lang-dropdown:hover .lang-content { display:flex; animation:fadeIn 0.2s; }
+.lang-dropdown.open .lang-content { display:flex; animation:fadeIn 0.2s; }
 .lang-item { padding:10px 15px; color:white; cursor:pointer; font-size:14px; font-weight:bold; transition:0.2s; text-align:left; border-bottom:1px solid #333; }
 .lang-item:last-child { border:none; }
 .lang-item:hover { background:var(--primary); color:#0b0c10; }

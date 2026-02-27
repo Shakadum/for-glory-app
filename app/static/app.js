@@ -100,12 +100,36 @@ try {
 } catch(e) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; }
 
 function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
-function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } catch(e){} location.reload(); }
+function changeLanguage(lang) { try { localStorage.setItem('lang', lang); } 
+
+function setLangDropdownVisible(visible){
+    const dd = document.querySelector('.lang-dropdown');
+    if(!dd) return;
+    dd.style.display = visible ? 'block' : 'none';
+    if(!visible) dd.classList.remove('open');
+}
+
+function initLangDropdown(){
+    const dd = document.querySelector('.lang-dropdown');
+    const btn = document.getElementById('lang-btn-current');
+    if(!dd || !btn) return;
+    btn.addEventListener('click', (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        dd.classList.toggle('open');
+    });
+    document.addEventListener('click', (e)=>{
+        if(!dd.contains(e.target)) dd.classList.remove('open');
+    });
+    dd.addEventListener('keydown', (e)=>{ if(e.key==='Escape') dd.classList.remove('open'); });
+}
+catch(e){} location.reload(); }
 
 document.addEventListener("DOMContentLoaded", async () => {
     // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
     document.getElementById('lang-btn-current').innerHTML = `🌍 ${flag}`;
+    initLangDropdown();
     document.querySelectorAll('[data-i18n]').forEach(el => {
         let k = el.getAttribute('data-i18n');
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
@@ -135,6 +159,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function showLoginScreen() {
+    setLangDropdownVisible(true);
     document.getElementById('app').style.display = 'none';
     document.getElementById('modal-login').classList.remove('hidden');
     toggleAuth('login');
@@ -166,6 +191,20 @@ function safePlaySound(snd) {
 }
 function stopSounds() {
     if(window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+
+function buildDmCallChannel(a, b){
+    const x = Math.min(Number(a||0), Number(b||0));
+    const y = Math.max(Number(a||0), Number(b||0));
+    return `dm_${x}_${y}`;
+}
+function safeAvatarUrl(url, name){
+    if(url && typeof url === 'string' && url.trim() !== '' && url.trim().toLowerCase() !== 'undefined' && !url.trim().endsWith('/undefined')){
+        return url;
+    }
+    const nm = (name || 'User').toString().slice(0, 40);
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(nm)}&background=0b0c10&color=66fcf1&size=128`;
+}
+
     if(window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
 }
 
@@ -256,7 +295,8 @@ async function acceptCall() {
         globalWS.send(`CALL_SIGNAL:${window.pendingCallerId}:accepted:${window.currentAgoraChannel}`);
     }
     
-    await connectToAgora(window.currentAgoraChannel, window.pendingCallType); 
+    const ch = window.pendingCallChannel || window.currentAgoraChannel;
+    await connectToAgora(ch, window.pendingCallType); 
 }
 
 async function connectToAgora(channelName, typeParam) {
@@ -270,14 +310,15 @@ async function connectToAgora(channelName, typeParam) {
     else { bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; }
     
     try {
-        let res = await authFetch(`/agora/token?channel=${encodeURIComponent(channelName)}&uid=${user.id}`);
+        const safeCh = window.currentAgoraChannel;
+        let res = await authFetch(`/agora/token?channel=${encodeURIComponent(safeCh)}&uid=${user.id}`);
         let conf = await res.json();
         if (!conf.app_id || conf.app_id.trim() === "") { showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)"); leaveCall(); return; }
         if (!conf.token || (typeof conf.token === "string" && conf.token.trim() === "")) { showToast("⚠️ ERRO: Token Agora inválido (AGORA_APP_CERTIFICATE / endpoint /agora/token)"); leaveCall(); return; }
         if (rtc.client) { await rtc.client.leave(); }
         
         try {
-            let rBg = await fetch(`/call/bg/call/${channelName}`); let resBg = await rBg.json();
+            let rBg = await fetch(`/call/bg/call/${encodeURIComponent(window.currentAgoraChannel)}`); let resBg = await rBg.json();
             if(resBg && resBg.bg_url) { document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`; } 
             else { document.getElementById('expanded-call-panel').style.backgroundImage = 'none'; }
         } catch(e) { console.error(e); }
@@ -296,7 +337,7 @@ async function connectToAgora(channelName, typeParam) {
             if(Object.keys(rtc.remoteUsers).length === 0 && window.callHasConnected) { showToast("O aliado desligou."); leaveCall(); }
         });
         
-        await rtc.client.join(conf.app_id, channelName, conf.token, user.id);
+        await rtc.client.join(conf.app_id, window.currentAgoraChannel, conf.token, user.id);
         
         try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
         catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
@@ -588,7 +629,8 @@ function connectGlobalWS(){
 
         if(d.type === 'call_accepted') {
             stopSounds();
-            connectToAgora(d.channel, window.pendingCallType);
+            window.currentAgoraChannel = sanitizeChannelName(d.channel || window.pendingCallChannel);
+            connectToAgora(window.currentAgoraChannel, window.pendingCallType);
         }
 
         if(d.type === 'call_rejected') {
@@ -608,9 +650,17 @@ function connectGlobalWS(){
 
         if(d.type === 'incoming_call') {
             window.pendingCallerId = d.caller_id;
-            document.getElementById('incoming-call-name').innerText = d.caller_name;
-            document.getElementById('incoming-call-av').src = d.caller_avatar;
-            window.pendingCallChannel = d.channel_name; window.pendingCallType = d.call_type;
+            document.getElementById('incoming-call-name').innerText = d.caller_name || 'Usuário';
+            document.getElementById('incoming-call-av').src = safeAvatarUrl(d.caller_avatar, d.caller_name);
+
+            // Canal: nunca pode ser null (Agora exige nome válido <= 64 bytes)
+            let ch = d.channel_name;
+            if(!ch && d.call_type === 'dm') ch = buildDmCallChannel(user.id, d.caller_id);
+            if(!ch) ch = `call_${Date.now()}_${d.caller_id}_${user.id}`;
+            window.pendingCallChannel = sanitizeChannelName(ch);
+            window.currentAgoraChannel = window.pendingCallChannel;
+            window.pendingCallType = d.call_type;
+
             document.getElementById('modal-incoming-call').classList.remove('hidden');
             safePlaySound(window.ringtone);
         }
