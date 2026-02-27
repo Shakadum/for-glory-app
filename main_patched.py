@@ -1423,29 +1423,10 @@ def get_agora_token(channel: str, uid: int = 0, current_user: User = Depends(get
     uid_int = int(uid) if uid else int(current_user.id)
     # role: 1 = publisher, 2 = subscriber (conforme token builder)
     role = 1
-    expire = int(
-    os.getenv("AGORA_TOKEN_EXPIRE_SECONDS")
-    or os.getenv("AGORA_TOKEN_EXPIRE")
-    or "3600"
-)
-    current_ts = int(datetime.now(timezone.utc).timestamp())
-privilege_expired_ts = current_ts + expire
-
-token = RtcTokenBuilder.buildTokenWithUid(
-    app_id,
-    app_cert,
-    channel_name,
-    uid_int,
-    role,
-    privilege_expired_ts
-)
-
-return {
-    "app_id": app_id,
-    "token": token,
-    "uid": uid_int,
-    "expires_in": expire
-}
+    expire_seconds = int(os.environ.get("AGORA_TOKEN_EXPIRE_SECONDS", "3600"))
+    privilege_expired_ts = int((datetime.utcnow() + timedelta(seconds=expire_seconds)).timestamp())
+    token = RtcTokenBuilder.buildTokenWithUid(app_id, app_cert, channel_name, uid_int, role, privilege_expired_ts)
+    return {"app_id": app_id, "token": token, "uid": uid_int, "expires_in": expire_seconds}
 
 @app.post("/call/bg/set")
 def set_call_bg(d: SetWallpaperData, db: Session = Depends(get_db)):
