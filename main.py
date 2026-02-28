@@ -1490,6 +1490,46 @@ def get_channel_bg(channel_id: int, db: Session = Depends(get_db)):
 def handle_dm_message(db: Session, ch: str, uid: int, txt: str):
     parts = ch.split("_")
     rec_id = int(parts[2]) if uid == int(parts[1]) else int(parts[1])
+
+    # ------------------------------------------------------------
+    # DEDUPE: Call system messages.
+    #
+    # Both clients were sending the same "📞 Chamada iniciada" and
+    # "📞 Chamada finalizada" messages into the DM websocket, which
+    # makes the chat show duplicated call cards.
+    #
+    # Keep only ONE call log per DM in a short time window.
+    # This also prevents double "finalizada" when a client triggers
+    # leaveCall twice (e.g. user-left + manual hangup).
+    # ------------------------------------------------------------
+    try:
+        t = (txt if isinstance(txt, str) else str(txt)).strip()
+        is_call_log = t.startswith("📞 Chamada iniciada") or t.startswith("📞 Chamada finalizada")
+        if is_call_log:
+            from datetime import timedelta
+            from sqlalchemy import and_, or_
+
+            cutoff = datetime.utcnow() - timedelta(seconds=25)
+            prefix = "📞 Chamada iniciada" if t.startswith("📞 Chamada iniciada") else "📞 Chamada finalizada"
+
+            recent = (
+                db.query(PrivateMessage)
+                .filter(
+                    PrivateMessage.timestamp >= cutoff,
+                    or_(
+                        and_(PrivateMessage.sender_id == uid, PrivateMessage.receiver_id == rec_id),
+                        and_(PrivateMessage.sender_id == rec_id, PrivateMessage.receiver_id == uid),
+                    ),
+                    PrivateMessage.content.startswith(prefix),
+                )
+                .order_by(PrivateMessage.timestamp.desc())
+                .first()
+            )
+            if recent:
+                return None, None
+    except Exception:
+        # Never block normal chat if dedupe fails.
+        pass
     new_msg = PrivateMessage(sender_id=uid, receiver_id=rec_id, content=txt, is_read=0)
     db.add(new_msg)
     db.commit()
