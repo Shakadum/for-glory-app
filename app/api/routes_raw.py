@@ -1433,21 +1433,6 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 0; }
 #expanded-call-panel > * { position: relative; z-index: 1; }
 
-/* Call participants list rows */
-.call-user{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;}
-.call-user-avatar-wrap{position:relative;width:38px;height:38px;flex:0 0 38px;}
-.call-user-avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);}
-.call-user-muted-badge{position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(220,38,38,0.95);border:2px solid rgba(0,0,0,0.6);box-shadow:0 0 10px rgba(220,38,38,0.45);}
-.call-user-muted-badge svg{width:12px;height:12px;color:#fff;}
-.call-user-name{flex:1;color:white;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.95;}
-.call-user-controls{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
-.call-user-btn{width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:white;display:flex;align-items:center;justify-content:center;}
-.call-user-btn.muted{border-color:rgba(220,38,38,0.65);box-shadow:0 0 0 2px rgba(220,38,38,0.15) inset;}
-.call-vol{width:92px;accent-color: var(--primary);}
-.call-vol-label{min-width:38px;text-align:right;color:rgba(255,255,255,0.85);font-size:11px;font-family:'Rajdhani';letter-spacing:0.6px;}
-@media (max-width:480px){#expanded-call-panel{right:14px;left:14px;width:auto;} .call-vol{width:110px;}}
-
-
 .call-participant-card { display:flex; align-items:center; gap:12px; margin-bottom:10px; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(5px); transition:0.3s;}
 .call-participant-card:hover { background:rgba(255,255,255,0.1); border-color:var(--primary); }
 .call-avatar { width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; }
@@ -1562,6 +1547,220 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
     .profile-header-container { height: 140px; margin-bottom: 50px; }
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
 }
+
+/* ===== Premium Call UI ===== */
+:root{
+  --glass: rgba(18, 26, 40, .55);
+  --glass2: rgba(12, 18, 28, .45);
+  --stroke: rgba(140, 170, 255, .14);
+  --stroke2: rgba(255,255,255,.10);
+  --text: rgba(235,245,255,.92);
+  --muted: rgba(235,245,255,.62);
+  --accent: rgba(76, 209, 255, .95);
+  --danger: rgba(255, 72, 88, .95);
+  --shadow: 0 18px 50px rgba(0,0,0,.45);
+}
+
+.call-panel{
+  background: linear-gradient(180deg, var(--glass), var(--glass2)) !important;
+  border: 1px solid var(--stroke) !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.call-panel-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--stroke);
+  background: rgba(0,0,0,.15);
+  position: relative;
+  z-index: 1;
+}
+
+.call-panel-header .title{
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.call-panel-header .timer{
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.call-users{
+  padding: 10px 12px 12px;
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.call-user-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  padding: 10px 10px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+}
+
+.call-user-left{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.call-user-avatar{
+  position:relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow:hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 10px 25px rgba(0,0,0,.35);
+  flex: 0 0 auto;
+}
+
+.call-user-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.call-user-name{
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.1;
+  max-width: 46vw;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-user-sub{
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.call-user-controls{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.call-chip{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.18);
+  color: var(--text);
+  cursor:pointer;
+  user-select:none;
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+.call-chip:active{ transform: scale(.98); }
+.call-chip:hover{
+  background: rgba(0,0,0,.24);
+  border-color: rgba(140,170,255,.18);
+}
+
+.call-chip .ico{
+  width: 18px; height: 18px; display:inline-block;
+  opacity: .95;
+}
+
+.call-chip.danger{
+  border-color: rgba(255,72,88,.22);
+}
+
+.call-chip.danger .ico{ filter: drop-shadow(0 6px 16px rgba(255,72,88,.25)); }
+.call-chip.accent{
+  border-color: rgba(76,209,255,.22);
+}
+.call-chip.accent .ico{ filter: drop-shadow(0 6px 16px rgba(76,209,255,.25)); }
+
+.call-volume-pop{
+  position: relative;
+}
+
+.call-volume-panel{
+  position:absolute;
+  right: 0;
+  top: 40px;
+  width: 190px;
+  padding: 10px 10px 10px;
+  border-radius: 14px;
+  background: rgba(10,14,22,.86);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display:none;
+  z-index: 9999;
+}
+
+.call-volume-panel.open{ display:block; }
+
+.call-volume-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.call-volume-row b{
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.call-vol{
+  width: 100%;
+  accent-color: rgba(76,209,255,.85);
+}
+
+.call-muted-badge{
+  position:absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,72,88,.95);
+  border: 2px solid rgba(10,14,22,.95);
+  box-shadow: 0 10px 25px rgba(0,0,0,.45);
+}
+
+.call-muted-badge svg{ width: 12px; height: 12px; }
+
+@media (max-width: 520px){
+  .call-user-name{ max-width: 44vw; }
+  .call-chip{ height: 36px; padding: 0 12px; }
+  .call-volume-panel{ width: 200px; }
+}
+
 </style>
 </head>
 <body>
@@ -1598,13 +1797,13 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 </div>
 
 <div id="floating-call-btn" onclick="toggleCallPanel()">📞</div>
-<div id="expanded-call-panel">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:15px; margin-bottom:15px;">
-        <span style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;">
+<div id="expanded-call-panel" class="call-panel">
+    <div class="call-panel-header">
+        <span class="title" style="color:#2ecc71; font-weight:bold; font-family:'Inter'; text-shadow:0 0 5px #2ecc71;">
             <span id="call-hud-status-icon" style="animation:pulse 1s infinite; display:inline-block;">🔴</span> 
             <span id="call-hud-status">AGUARDANDO...</span>
         </span>
-        <span id="call-hud-time" style="color:white; font-family:'Rajdhani'; font-size:22px; font-weight:bold; text-shadow:0 0 10px rgba(255,255,255,0.5);">00:00</span>
+        <span id="call-hud-time" class="timer" style="color:white; font-family:'Rajdhani'; font-size:22px; font-weight:bold; text-shadow:0 0 10px rgba(255,255,255,0.5);">00:00</span>
     </div>
     
     <div id="call-active-profile" style="text-align:center; margin-bottom:15px; display:none;">
@@ -1612,7 +1811,7 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
         <div id="call-active-name" style="color:white; font-weight:bold; margin-top:10px; font-size:18px; font-family:'Rajdhani'; letter-spacing:1px;"></div>
     </div>
 
-    <div id="call-users-list" style="max-height:150px; overflow-y:auto; margin-bottom:15px; padding-right:5px;"></div>
+    <div id="call-users-list" class="call-users" style="max-height:210px; overflow-y:auto; margin-bottom:15px; padding-right:5px;"></div>
     
     <div id="call-bg-action" style="text-align:center; margin-bottom:15px; display:none;">
         <input type="file" id="call-bg-file" style="display:none;" accept="image/*" onchange="uploadCallBg(this)">
