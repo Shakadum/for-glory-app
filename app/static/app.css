@@ -768,16 +768,187 @@ body {
     img, video { max-width: 100% !important; }
 }
 
-/* ── call-user (renderCallPanel user list items) ── */
-.call-user {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 12px; margin-bottom: 6px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-}
-.call-user-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(102,252,241,0.2); }
-.call-user-name { color: #d1d5db; font-size: 13px; font-weight: 600; }
+
 
 /* ── msg-bubble inline delete btn visibility fix ── */
 .msg-row:hover .del-msg-btn { opacity: 0.6; }
+
+/* ════════════════════════════════════════════════════
+   CALL PANEL — Participant cards com volume + mute
+   ════════════════════════════════════════════════════ */
+
+/* Container da lista de participantes */
+.cp-users-list {
+    max-height: 140px;
+    overflow-y: auto;
+    margin: 0 12px 4px;
+    padding: 0 2px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(102,252,241,0.15) transparent;
+}
+
+/* Card de cada participante */
+.call-user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    transition: background 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.call-user-row:hover { background: rgba(255,255,255,0.07); }
+
+/* Lado esquerdo: avatar + nome */
+.call-user-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 1;
+    min-width: 0;
+}
+.call-user-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+.call-user-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(102,252,241,0.25);
+    display: block;
+}
+/* Badge mutado sobre avatar */
+.call-muted-badge {
+    position: absolute;
+    bottom: -2px; right: -2px;
+    background: var(--card-bg);
+    border-radius: 50%;
+    font-size: 11px;
+    line-height: 1;
+    padding: 1px;
+}
+.call-user-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.call-user-name {
+    color: #e5e7eb;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'DM Sans', sans-serif;
+}
+.call-user-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+    font-family: 'DM Sans', sans-serif;
+}
+
+/* Lado direito: controles de volume + mute (só para remotos) */
+.call-user-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+    flex-shrink: 0;
+    min-width: 90px;
+}
+.call-user-controls--local {
+    min-width: 0;
+}
+
+/* Botão de mute rápido */
+.call-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+.call-chip.accent {
+    background: rgba(102,252,241,0.1);
+    color: var(--primary);
+    border: 1px solid rgba(102,252,241,0.25);
+}
+.call-chip.accent:hover {
+    background: rgba(102,252,241,0.2);
+    box-shadow: 0 0 10px rgba(102,252,241,0.2);
+}
+.call-chip.danger {
+    background: rgba(255,77,109,0.12);
+    color: var(--danger);
+    border: 1px solid rgba(255,77,109,0.3);
+}
+.call-chip.danger:hover {
+    background: rgba(255,77,109,0.22);
+}
+
+/* Box de volume: label + slider em coluna */
+.call-vol-box {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    width: 100%;
+}
+.call-vol-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: 0.5px;
+    min-width: 32px;
+    text-align: right;
+    transition: color 0.2s;
+}
+/* Deixa o label teal quando não está em 100% */
+.call-user-row:has(.call-vol:not([value="100"])) .call-vol-label { color: var(--primary); }
+
+/* Slider de volume customizado */
+.call-vol {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 84px;
+    height: 3px;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    /* track: gradiente dinâmico via JS ou default */
+    background: linear-gradient(to right, var(--primary) 50%, rgba(255,255,255,0.12) 50%);
+    accent-color: var(--primary);
+    transition: opacity 0.2s;
+}
+.call-vol::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(102,252,241,0.5);
+    transition: transform 0.15s;
+}
+.call-vol::-webkit-slider-thumb:hover { transform: scale(1.3); }
+.call-vol::-moz-range-thumb {
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: none; cursor: pointer;
+}
+/* Quando mutado, slider fica opaco */
+.call-user-row .call-chip.danger ~ .call-vol-box .call-vol { opacity: 0.35; pointer-events: none; }
