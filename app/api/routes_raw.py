@@ -1761,6 +1761,28 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
   .call-volume-panel{ width: 200px; }
 }
 
+/* ===== Premium overrides for existing panel id (fix clipping/layout) ===== */
+#expanded-call-panel{
+  padding: 14px !important;
+  width: 340px !important;
+  border-radius: 18px !important;
+  overflow: visible !important; /* allow volume popover */
+  background: linear-gradient(180deg, rgba(18,26,40,.62), rgba(10,14,22,.55)) !important;
+  border: 1px solid rgba(140,170,255,.18) !important;
+}
+#expanded-call-panel::before{
+  background: rgba(0,0,0,.35) !important;
+}
+#call-users-list{
+  max-height: 150px !important;
+  overflow-y: auto !important;
+  padding-right: 6px !important;
+}
+.call-volume-panel{
+  top: auto !important;
+  bottom: 42px !important; /* open upward */
+}
+
 </style>
 </head>
 <body>
