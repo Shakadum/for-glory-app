@@ -1433,6 +1433,21 @@ body{background-color:var(--dark-bg);background-image:radial-gradient(circle at 
 #expanded-call-panel::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 0; }
 #expanded-call-panel > * { position: relative; z-index: 1; }
 
+/* Call participants list rows */
+.call-user{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;}
+.call-user-avatar-wrap{position:relative;width:38px;height:38px;flex:0 0 38px;}
+.call-user-avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);}
+.call-user-muted-badge{position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(220,38,38,0.95);border:2px solid rgba(0,0,0,0.6);box-shadow:0 0 10px rgba(220,38,38,0.45);}
+.call-user-muted-badge svg{width:12px;height:12px;color:#fff;}
+.call-user-name{flex:1;color:white;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.95;}
+.call-user-controls{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+.call-user-btn{width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:white;display:flex;align-items:center;justify-content:center;}
+.call-user-btn.muted{border-color:rgba(220,38,38,0.65);box-shadow:0 0 0 2px rgba(220,38,38,0.15) inset;}
+.call-vol{width:92px;accent-color: var(--primary);}
+.call-vol-label{min-width:38px;text-align:right;color:rgba(255,255,255,0.85);font-size:11px;font-family:'Rajdhani';letter-spacing:0.6px;}
+@media (max-width:480px){#expanded-call-panel{right:14px;left:14px;width:auto;} .call-vol{width:110px;}}
+
+
 .call-participant-card { display:flex; align-items:center; gap:12px; margin-bottom:10px; background:rgba(255,255,255,0.05); padding:10px 15px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(5px); transition:0.3s;}
 .call-participant-card:hover { background:rgba(255,255,255,0.1); border-color:var(--primary); }
 .call-avatar { width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit:cover; }

@@ -439,17 +439,23 @@ if (rtc.client) { await rtc.client.leave(); }
             window.callHasConnected = true; 
             stopSounds();
             await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; remoteUser.audioTrack.play(); renderCallPanel(rtc, user.id); }
+            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; playRemoteWithGain(remoteUser); rtc.remoteSelfMuted = rtc.remoteSelfMuted || {}; rtc.remoteSelfMuted[remoteUser.uid] = false; renderCallPanel(rtc, user.id); }
         });
         
         rtc.client.on("user-unpublished", (remoteUser) => {
-            // Remote stopped publishing (mute/disable) — do NOT end the call.
-            delete rtc.remoteUsers[remoteUser.uid];
+            // Remote muted/disabled audio — keep in UI, mark as muted.
+            rtc.remoteSelfMuted = rtc.remoteSelfMuted || {};
+            rtc.remoteSelfMuted[remoteUser.uid] = true;
+            stopRemoteAudio(remoteUser.uid);
             renderCallPanel(rtc, user.id);
         });
         rtc.client.on("user-left", (remoteUser) => {
             // Remote actually left the channel — end the call.
             delete rtc.remoteUsers[remoteUser.uid];
+            if (rtc.remoteSelfMuted) delete rtc.remoteSelfMuted[remoteUser.uid];
+            if (rtc.remoteMutedByMe) delete rtc.remoteMutedByMe[remoteUser.uid];
+            if (rtc.remoteVolume) delete rtc.remoteVolume[remoteUser.uid];
+            stopRemoteAudio(remoteUser.uid);
             renderCallPanel(rtc, user.id);
             if (window.callHasConnected) {
                 showToast("O aliado saiu da chamada.");
@@ -535,7 +541,7 @@ async function leaveCall() {
 }
 
 window.callUsersCache = {};
-async function renderCallPanel(rtc, localUid) {
+async async function renderCallPanel(rtc, localUid) {
     try {
         const panel = document.getElementById('expanded-call-panel');
         if (!panel) return;
@@ -561,10 +567,38 @@ async function renderCallPanel(rtc, localUid) {
             basics.forEach(b => {
                 const item = document.createElement('div');
                 item.className = 'call-user';
-                item.innerHTML = `
-                    <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="call-user-avatar" alt="">
-                    <span class="call-user-name">${escapeHtml(b.name)}</span>
-                `;
+                {
+                    const uid = Number(b.id || b.uid || b.user_id || b?.userId || b?.id);
+                    const isLocal = (uid === Number(localUid));
+                    rtc.remoteVolume = rtc.remoteVolume || {};
+                    rtc.remoteMutedByMe = rtc.remoteMutedByMe || {};
+                    rtc.remoteSelfMuted = rtc.remoteSelfMuted || {};
+                    const vol = (rtc.remoteVolume[uid] ?? 100);
+                    const effMuted = (!isLocal) && (rtc.remoteMutedByMe[uid] || rtc.remoteSelfMuted[uid]);
+
+                    item.innerHTML = `
+                        <div class="call-user-avatar-wrap">
+                            <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="call-user-avatar" alt="">
+                            ${effMuted ? `<div class="call-user-muted-badge" title="Áudio mutado">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            </div>` : ``}
+                        </div>
+                        <span class="call-user-name">${escapeHtml(b.name)}</span>
+                        ${isLocal ? `` : `
+                            <div class="call-user-controls">
+                                <button class="call-user-btn ${rtc.remoteMutedByMe[uid] ? 'muted' : ''}" onclick="toggleRemoteMute(${uid})" title="${rtc.remoteMutedByMe[uid] ? 'Desmutar usuário' : 'Mutar usuário'}">
+                                    ${rtc.remoteMutedByMe[uid] ? '🔇' : '🔈'}
+                                </button>
+                                <input class="call-vol" id="call-vol-${uid}" type="range" min="0" max="200" value="${vol}" oninput="setRemoteVolume(${uid}, this.value)">
+                                <div class="call-vol-label" id="call-vol-label-${uid}">${vol}%</div>
+                            </div>
+                        `}
+                    `;
+                }
                 usersList.appendChild(item);
             });
         }
@@ -601,7 +635,102 @@ async function renderCallPanel(rtc, localUid) {
     }
 }
 
-function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
+
+// --- Remote audio gain/volume (0%..200%) + remote mute (local only) ---
+function ensureAudioCtx() {
+    if (!window.__callAudioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) window.__callAudioCtx = new Ctx();
+    }
+    // resume if suspended (mobile)
+    if (window.__callAudioCtx && window.__callAudioCtx.state === 'suspended') {
+        window.__callAudioCtx.resume().catch(()=>{});
+    }
+    return window.__callAudioCtx;
+}
+
+function stopRemoteAudio(uid) {
+    try {
+        if (!rtc) return;
+        rtc.__remoteAudio = rtc.__remoteAudio || {};
+        const node = rtc.__remoteAudio[uid];
+        if (node) {
+            try { node.source && node.source.disconnect(); } catch(e){}
+            try { node.gain && node.gain.disconnect(); } catch(e){}
+            delete rtc.__remoteAudio[uid];
+        }
+    } catch(e){}
+}
+
+function playRemoteWithGain(remoteUser) {
+    try {
+        const uid = Number(remoteUser.uid);
+        const ctx = ensureAudioCtx();
+        if (!ctx) { remoteUser.audioTrack.play(); return; }
+
+        // Avoid double audio if Agora already playing internally
+        try { remoteUser.audioTrack.stop(); } catch(e){}
+
+        rtc.__remoteAudio = rtc.__remoteAudio || {};
+        stopRemoteAudio(uid);
+
+        const track = remoteUser.audioTrack.getMediaStreamTrack ? remoteUser.audioTrack.getMediaStreamTrack() : null;
+        if (!track) { remoteUser.audioTrack.play(); return; }
+
+        const stream = new MediaStream([track]);
+        const source = ctx.createMediaStreamSource(stream);
+        const gain = ctx.createGain();
+        source.connect(gain);
+        gain.connect(ctx.destination);
+
+        // Default 100% = 1.0 gain
+        rtc.remoteVolume = rtc.remoteVolume || {};
+        rtc.remoteMutedByMe = rtc.remoteMutedByMe || {};
+        rtc.remoteSelfMuted = rtc.remoteSelfMuted || {};
+        const vol = (rtc.remoteVolume[uid] ?? 100);
+        const effMuted = !!rtc.remoteMutedByMe[uid] || !!rtc.remoteSelfMuted[uid];
+        gain.gain.value = effMuted ? 0 : Math.max(0, Math.min(2, Number(vol) / 100));
+
+        rtc.__remoteAudio[uid] = { source, gain, stream };
+    } catch(e) {
+        console.warn("playRemoteWithGain failed:", e);
+        try { remoteUser.audioTrack.play(); } catch(_){}
+    }
+}
+
+function setRemoteVolume(uid, val) {
+    uid = Number(uid);
+    const v = Math.max(0, Math.min(200, Number(val)));
+    rtc.remoteVolume = rtc.remoteVolume || {};
+    rtc.remoteVolume[uid] = v;
+
+    // Update gain if we have a node
+    rtc.__remoteAudio = rtc.__remoteAudio || {};
+    const node = rtc.__remoteAudio[uid];
+    const muted = (rtc.remoteMutedByMe && rtc.remoteMutedByMe[uid]) || (rtc.remoteSelfMuted && rtc.remoteSelfMuted[uid]);
+    if (node && node.gain) node.gain.gain.value = muted ? 0 : (v / 100);
+
+    // Update UI label
+    const lbl = document.getElementById(`call-vol-label-${uid}`);
+    if (lbl) lbl.textContent = `${v}%`;
+}
+
+function toggleRemoteMute(uid) {
+    uid = Number(uid);
+    rtc.remoteMutedByMe = rtc.remoteMutedByMe || {};
+    rtc.remoteMutedByMe[uid] = !rtc.remoteMutedByMe[uid];
+
+    // Apply to gain
+    rtc.__remoteAudio = rtc.__remoteAudio || {};
+    const node = rtc.__remoteAudio[uid];
+    const muted = !!rtc.remoteMutedByMe[uid] || (rtc.remoteSelfMuted && rtc.remoteSelfMuted[uid]);
+    const vol = (rtc.remoteVolume && rtc.remoteVolume[uid] != null) ? rtc.remoteVolume[uid] : 100;
+    if (node && node.gain) node.gain.gain.value = muted ? 0 : (vol / 100);
+
+    renderCallPanel(rtc, window.user?.id || uid);
+}
+
+function changeRemoteVol(uid, val) { setRemoteVolume(uid, val); } }
 
 let isMicMuted = false;
 async function toggleMuteCall() { 
