@@ -238,6 +238,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let langBtnLogin = document.getElementById('lang-btn-login');
     if(langBtnLogin) langBtnLogin.innerHTML = `🌍 ${flag}`;
     initLangDropdown();
+    initDraggableFloatingCallButton();
     document.querySelectorAll('[data-i18n]').forEach(el => {
         let k = el.getAttribute('data-i18n');
         if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(k);
@@ -327,6 +328,101 @@ function safeDisplayName(obj) {
 // expõe helpers para handlers que rodam antes (evita "not defined" se algo falhar no parse parcial)
 window.safeAvatarUrl = safeAvatarUrl;
 window.safeDisplayName = safeDisplayName;
+
+function initDraggableFloatingCallButton(){
+    const btn = document.getElementById('floating-call-btn');
+    if(!btn) return;
+
+    // Restora posição salva (mobile/desktop)
+    try{
+        const saved = JSON.parse(localStorage.getItem('floatingCallBtnPos') || 'null');
+        if(saved && typeof saved.x === 'number' && typeof saved.y === 'number'){
+            btn.style.left = saved.x + 'px';
+            btn.style.top  = saved.y + 'px';
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+            btn.style.position = 'fixed';
+        }
+    }catch(e){}
+
+    // Evita "scroll" capturar o gesto durante o arrasto
+    btn.style.touchAction = 'none';
+
+    // Remove onclick inline e controla clique vs arrasto
+    btn.onclick = null;
+
+    let dragging = false;
+    let pointerId = null;
+    let startX=0, startY=0, startLeft=0, startTop=0;
+
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    btn.addEventListener('pointerdown', (e)=>{
+        // Só arrasta com toque/mouse principal
+        if(e.button !== undefined && e.button !== 0) return;
+        dragging = false;
+        pointerId = e.pointerId;
+        btn.setPointerCapture(pointerId);
+
+        const rect = btn.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+
+        // Se estiver no modo right/bottom do CSS, converte pra left/top antes de arrastar
+        startLeft = rect.left;
+        startTop  = rect.top;
+        btn.style.left = startLeft + 'px';
+        btn.style.top  = startTop + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+        btn.style.position = 'fixed';
+    });
+
+    btn.addEventListener('pointermove', (e)=>{
+        if(pointerId === null || e.pointerId !== pointerId) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if(Math.abs(dx) + Math.abs(dy) > 6) dragging = true;
+
+        const rect = btn.getBoundingClientRect();
+        const w = rect.width, h = rect.height;
+
+        const maxX = window.innerWidth  - w - 8;
+        const maxY = window.innerHeight - h - 8;
+
+        const x = clamp(startLeft + dx, 8, maxX);
+        const y = clamp(startTop  + dy, 8, maxY);
+
+        btn.style.left = x + 'px';
+        btn.style.top  = y + 'px';
+
+        if(dragging){
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, { passive:false });
+
+    btn.addEventListener('pointerup', (e)=>{
+        if(pointerId === null || e.pointerId !== pointerId) return;
+        try{
+            const rect = btn.getBoundingClientRect();
+            localStorage.setItem('floatingCallBtnPos', JSON.stringify({x: Math.round(rect.left), y: Math.round(rect.top)}));
+        }catch(err){}
+        btn.releasePointerCapture(pointerId);
+        pointerId = null;
+
+        // Clique real abre/fecha painel; arrasto não
+        if(!dragging){
+            toggleCallPanel();
+        }
+    });
+
+    btn.addEventListener('pointercancel', ()=>{
+        pointerId = null;
+    });
+}
+
 
 
 async function authFetch(url, options = {}) {
@@ -861,7 +957,8 @@ async function loadInbox(){
 }
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
-async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
+async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0){ showToast('Selecione ao menos 1 membro'); return; } try{ let r=await authFetch('/group/create',{method:'POST',body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox(); showToast('✅ Grupo criado');} else { let t=await r.text(); console.warn('group/create failed', r.status, t); if(r.status===401){ showToast('⚠️ Faça login novamente'); } else if(r.status===403){ showToast('⚠️ Sem permissão para criar grupo'); } else { showToast('⚠️ Erro ao criar grupo'); } } }catch(e){ console.error(e); showToast('⚠️ Erro ao criar grupo'); } }
+,body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
 async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
