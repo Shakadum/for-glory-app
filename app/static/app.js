@@ -263,7 +263,6 @@ window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
 
 let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
-window.rtc = rtc;
 let callDuration = 0, callInterval = null; 
 window.pendingCallChannel = null; window.pendingCallType = null;
 window.currentAgoraChannel = null;
@@ -440,40 +439,13 @@ if (rtc.client) { await rtc.client.leave(); }
             window.callHasConnected = true; 
             stopSounds();
             await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") {
-                rtc.remoteUsers[remoteUser.uid] = remoteUser;
-                rtc.remoteMeta = rtc.remoteMeta || {};
-                const m = rtc.remoteMeta[remoteUser.uid] || (rtc.remoteMeta[remoteUser.uid] = { mutedByMe:false, unpublished:false, volumePct:100 });
-                m.unpublished = false;
-
-                // Premium: route audio through WebAudio gain when available (0-200%)
-                setupRemoteAudioGraph(rtc, remoteUser);
-
-                // Fallback: if graph not possible, still play normally
-                if (!rtc.remoteAudioNodes || !rtc.remoteAudioNodes[remoteUser.uid]) {
-                    try { remoteUser.audioTrack.play(); } catch(e) {}
-                }
-
-                renderCallPanel(rtc, user.id);
-            }
+            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; __getRemoteState(remoteUser.uid).remoteUnpub = false; remoteUser.audioTrack.play(); renderCallPanel(rtc, user.id); }
         });
         
-        rtc.client.on("user-unpublished", (remoteUser) => {
-            // Remote stopped publishing (mute/disable) — keep user visible and show muted badge.
-            rtc.remoteMeta = rtc.remoteMeta || {};
-            const m = rtc.remoteMeta[remoteUser.uid] || (rtc.remoteMeta[remoteUser.uid] = { mutedByMe:false, unpublished:false, volumePct:100 });
-            m.unpublished = true;
-
-            // Disconnect audio graph if exists
-            if (rtc.remoteAudioNodes && rtc.remoteAudioNodes[remoteUser.uid]) {
-                try { rtc.remoteAudioNodes[remoteUser.uid].source.disconnect(); } catch(e) {}
-                try { rtc.remoteAudioNodes[remoteUser.uid].gain.disconnect(); } catch(e) {}
-                delete rtc.remoteAudioNodes[remoteUser.uid];
-            }
-
-            // Keep remoteUser in map (if exists)
-            if (!rtc.remoteUsers[remoteUser.uid]) rtc.remoteUsers[remoteUser.uid] = remoteUser;
-
+        rtc.client.on("user-unpublished", (remoteUser, mediaType) => {
+            // Remote stopped publishing audio/video — keep user visible and mark status.
+            rtc.remoteUsers[remoteUser.uid] = remoteUser;
+            if (mediaType === "audio" || !mediaType) __getRemoteState(remoteUser.uid).remoteUnpub = true;
             renderCallPanel(rtc, user.id);
         });
         rtc.client.on("user-left", (remoteUser) => {
@@ -564,141 +536,101 @@ async function leaveCall() {
 }
 
 window.callUsersCache = {};
-async 
-function svgMic(on = true){
-    if(on){
-        return `<svg viewBox="0 0 24 24" fill="none">
-            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M19 11a7 7 0 0 1-14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>`;
-    }
-    return `<svg viewBox="0 0 24 24" fill="none">
-        <path d="M9 9v2a3 3 0 0 0 5 2" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M12 14a3 3 0 0 0 3-3V8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M19 11a7 7 0 0 1-2 5" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M5 11a7 7 0 0 0 9 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M12 18v3" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M8 21h8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-        <path d="M4 4l16 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
-    </svg>`;
-}
-
-function svgVolume(){
-    return `<svg viewBox="0 0 24 24" fill="none">
-        <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M15 9a4 4 0 0 1 0 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M17.5 6.5a7 7 0 0 1 0 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>`;
-}
-
-function ensureCallAudioCtx(){
-    window.__callAudioCtx = window.__callAudioCtx || (window.AudioContext ? new AudioContext() : (window.webkitAudioContext ? new webkitAudioContext() : null));
-    const ctx = window.__callAudioCtx;
-    if (ctx && ctx.state === 'suspended') ctx.resume().catch(()=>{});
-    return ctx;
-}
-
-function setupRemoteAudioGraph(rtc, remoteUser){
-    try{
-        const uid = Number(remoteUser.uid);
-        rtc.remoteMeta = rtc.remoteMeta || {};
-        rtc.remoteAudioNodes = rtc.remoteAudioNodes || {};
-
-        const ctx = ensureCallAudioCtx();
-        const track = remoteUser.audioTrack;
-        if (!ctx || !track) {
-            // fallback
-            if (track && track.setVolume) track.setVolume(100);
-            return;
-        }
-
-        // If already wired, disconnect old
-        const existing = rtc.remoteAudioNodes[uid];
-        if (existing && existing.source) {
-            try{ existing.source.disconnect(); }catch(e){}
-            try{ existing.gain.disconnect(); }catch(e){}
-        }
-
-        const mst = track.getMediaStreamTrack ? track.getMediaStreamTrack() : null;
-        if (!mst) {
-            // fallback to Agora volume (0-100)
-            return;
-        }
-        const stream = new MediaStream([mst]);
-        const source = ctx.createMediaStreamSource(stream);
-        const gain = ctx.createGain();
-        source.connect(gain);
-        gain.connect(ctx.destination);
-
-        rtc.remoteAudioNodes[uid] = { source, gain };
-
-        // Apply current volume/mute
-        applyRemoteAudioState(rtc, uid);
-    }catch(e){
-        console.warn("setupRemoteAudioGraph failed:", e);
-    }
-}
-
-function applyRemoteAudioState(rtc, uid){
-    rtc.remoteMeta = rtc.remoteMeta || {};
-    const meta = rtc.remoteMeta[uid] || (rtc.remoteMeta[uid] = { mutedByMe:false, unpublished:false, volumePct:100 });
-
-    const vol = Math.max(0, Math.min(200, Number(meta.volumePct ?? 100)));
-    const muted = !!meta.mutedByMe || !!meta.unpublished;
-
-    const node = rtc.remoteAudioNodes && rtc.remoteAudioNodes[uid];
-    const remoteUser = rtc.remoteUsers && rtc.remoteUsers[uid];
-
-    if (node && node.gain) {
-        node.gain.gain.value = muted ? 0 : (vol / 100);
-    } else if (remoteUser && remoteUser.audioTrack && remoteUser.audioTrack.setVolume) {
-        // Agora built-in only supports 0-100; clamp
-        remoteUser.audioTrack.setVolume(muted ? 0 : Math.max(0, Math.min(100, vol)));
-    }
-}
-
-function toggleRemoteMute(uid){
-    if (!window.rtc) return;
-    window.rtc.remoteMeta = window.rtc.remoteMeta || {};
-    const meta = window.rtc.remoteMeta[uid] || (window.rtc.remoteMeta[uid] = { mutedByMe:false, unpublished:false, volumePct:100 });
-    meta.mutedByMe = !meta.mutedByMe;
-    applyRemoteAudioState(window.rtc, uid);
-}
-
-function setRemoteVolume(uid, pct){
-    if (!window.rtc) return;
-    window.rtc.remoteMeta = window.rtc.remoteMeta || {};
-    const meta = window.rtc.remoteMeta[uid] || (window.rtc.remoteMeta[uid] = { mutedByMe:false, unpublished:false, volumePct:100 });
-    meta.volumePct = Math.max(0, Math.min(200, Number(pct)));
-    applyRemoteAudioState(window.rtc, uid);
-}
-
-
-async function renderCallPanel(rtc, localUid) {
+async async function renderCallPanel(rtc, localUid) {
     try {
         const panel = document.getElementById('expanded-call-panel');
         if (!panel) return;
 
-        // Ensure meta containers
-        rtc.remoteMeta = rtc.remoteMeta || {};
-        rtc.remoteAudioNodes = rtc.remoteAudioNodes || {};
-
         const usersList = document.getElementById('call-users-list');
-        const statusText = document.getElementById('call-hud-status');
-        const timeText = document.getElementById('call-hud-time');
+        const activeProfile = document.getElementById('call-active-profile');
+
+        const statusText = document.getElementById('call-status');
+        const timeText = document.getElementById('call-time');
+        const nameText = document.getElementById('call-active-name');
+        const avatarImg = document.getElementById('call-active-avatar');
 
         // Build participant list (local + remote)
         const remoteUids = Object.keys(rtc?.remoteUsers || {}).map(k => Number(k)).filter(n => !Number.isNaN(n));
         const allUids = Array.from(new Set([localUid, ...remoteUids]));
 
-        // Load basics
         const basics = [];
-        for (const uid of allUids) basics.push({ uid, ...(await getUserBasic(uid)) });
+        for (const uid of allUids) basics.push(await getUserBasic(uid));
 
-        // Update status + timer
-        if (statusText) statusText.textContent = (window.callHasConnected ? 'EM CHAMADA' : 'CONECTANDO...');
+        // UI: list
+        if (usersList) {
+            usersList.innerHTML = '';
+            // remote control state
+            window.__remoteAudioState = window.__remoteAudioState || {};
+
+            basics.forEach(b => {
+                const uid = Number(b.uid);
+                const isLocal = (uid === Number(localUid));
+                const st = window.__remoteAudioState[uid] || (window.__remoteAudioState[uid] = { muted:false, volume:100, remoteUnpub:false, prevVolume:100 });
+
+                const item = document.createElement('div');
+                item.className = 'call-user-row';
+
+                const muted = !!st.muted || !!st.remoteUnpub;
+                const vol = Math.max(0, Math.min(200, parseInt(st.volume ?? 100)));
+
+                item.innerHTML = `
+                    <div class="call-user-left">
+                        <div class="call-user-avatar-wrap">
+                            <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="call-user-avatar" alt="">
+                            ${muted ? `<span class="call-muted-badge" title="Mutado">🔇</span>` : ``}
+                        </div>
+                        <div class="call-user-meta">
+                            <div class="call-user-name">${escapeHtml(b.name)}</div>
+                            <div class="call-user-sub">${isLocal ? 'Você' : (muted ? 'Áudio mutado' : 'Áudio ativo')}</div>
+                        </div>
+                    </div>
+
+                    ${isLocal ? `<div class="call-user-controls call-user-controls--local"></div>` : `
+                    <div class="call-user-controls">
+                        <button class="call-chip ${st.muted ? 'danger' : 'accent'}" data-action="toggle-remote-mute" data-uid="${uid}" title="${st.muted ? 'Desmutar' : 'Mutar'}">
+                            ${st.muted ? '🔇' : '🔊'}
+                        </button>
+                        <div class="call-vol-box">
+                            <div class="call-vol-label">${vol}%</div>
+                            <input class="call-vol" type="range" min="0" max="200" value="${vol}" data-action="remote-volume" data-uid="${uid}">
+                        </div>
+                    </div>`}
+                `;
+
+                // wire events (only for remote)
+                if (!isLocal) {
+                    const muteBtn = item.querySelector('[data-action="toggle-remote-mute"]');
+                    const slider = item.querySelector('[data-action="remote-volume"]');
+                    if (muteBtn) {
+                        muteBtn.addEventListener('click', async () => {
+                            await toggleRemoteMute(uid);
+                            renderCallPanel(rtc, localUid);
+                        });
+                    }
+                    if (slider) {
+                        slider.addEventListener('input', () => {
+                            const v = parseInt(slider.value);
+                            st.volume = v;
+                            const lab = item.querySelector('.call-vol-label');
+                            if (lab) lab.textContent = `${v}%`;
+                            setRemoteVolume(uid, v);
+                        });
+                    }
+                }
+
+                usersList.appendChild(item);
+            });
+        }
+
+        // Pick "active" = first remote (if exists), otherwise local
+        let activeUid = remoteUids.length ? remoteUids[0] : localUid;
+        const activeBasic = await getUserBasic(activeUid);
+
+        if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic?.avatar);
+        if (nameText) nameText.textContent = (activeBasic?.name || 'Usuário');
+
+        // Status + timer
+        if (statusText) statusText.textContent = 'EM CHAMADA';
         const startedAt = window.__callStartedAt || Date.now();
         window.__callStartedAt = startedAt;
         if (timeText) {
@@ -708,141 +640,62 @@ async function renderCallPanel(rtc, localUid) {
             timeText.textContent = `${mm}:${ss}`;
         }
 
-        // Premium UI: list
-        if (usersList) {
-            usersList.innerHTML = '';
-            for (const b of basics) {
-                const uid = b.uid;
-                const isLocal = (uid === localUid);
-                const meta = rtc.remoteMeta[uid] || { mutedByMe:false, unpublished:false, volumePct:100 };
-                if (!isLocal && !rtc.remoteMeta[uid]) rtc.remoteMeta[uid] = meta;
-
-                const row = document.createElement('div');
-                row.className = 'call-user-row';
-                row.setAttribute('data-uid', String(uid));
-
-                const muted = !!meta.mutedByMe || !!meta.unpublished;
-                const safeName = escapeHtml(b.name || (isLocal ? 'Você' : 'Usuário'));
-                const safeAv = escapeHtml(safeAvatarUrl(b.avatar));
-
-                if (isLocal) {
-                    row.innerHTML = `
-                        <div class="call-user-left">
-                            <div class="call-user-avatar">
-                                <img src="${safeAv}" alt="">
-                            </div>
-                            <div style="min-width:0;">
-                                <div class="call-user-name">${safeName}</div>
-                                <div class="call-user-sub">Você</div>
-                            </div>
-                        </div>
-                        <div class="call-user-controls"></div>
-                    `;
-                } else {
-                    const vol = Math.max(0, Math.min(200, Number(meta.volumePct ?? 100)));
-                    row.innerHTML = `
-                        <div class="call-user-left">
-                            <div class="call-user-avatar">
-                                <img src="${safeAv}" alt="">
-                                ${muted ? `<div class="call-muted-badge">${svgMic(false)}</div>` : ``}
-                            </div>
-                            <div style="min-width:0;">
-                                <div class="call-user-name">${safeName}</div>
-                                <div class="call-user-sub">${muted ? 'Áudio mutado' : 'Áudio ativo'}</div>
-                            </div>
-                        </div>
-
-                        <div class="call-user-controls">
-                            <div class="call-chip ${meta.mutedByMe ? 'danger' : 'accent'}" data-action="toggle-remote-mute" title="${meta.mutedByMe ? 'Desmutar' : 'Mutar'}">
-                                <span class="ico">${svgMic(!meta.mutedByMe)}</span>
-                            </div>
-
-                            <div class="call-volume-pop">
-                                <div class="call-chip" data-action="toggle-volume-pop" title="Volume">
-                                    <span class="ico">${svgVolume()}</span>
-                                    <span class="call-chip-pct" style="font-variant-numeric: tabular-nums; color: rgba(235,245,255,.78); font-size:12px;">${vol}%</span>
-                                </div>
-
-                                <div class="call-volume-panel">
-                                    <div class="call-volume-row">
-                                        <span>Volume</span>
-                                        <b class="call-vol-label">${vol}%</b>
-                                    </div>
-                                    <input class="call-vol" type="range" min="0" max="200" value="${vol}" data-action="set-remote-volume">
-                                    <div style="display:flex; justify-content:space-between; margin-top:6px; color: rgba(235,245,255,.45); font-size:11px;">
-                                        <span>0%</span><span>100%</span><span>200%</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-                usersList.appendChild(row);
-            }
+        // If group call, show "X participantes" as subtitle
+        const subtitle = document.getElementById('call-subtitle');
+        if (subtitle) {
+            if (allUids.length > 2) subtitle.textContent = `${allUids.length} participantes`;
+            else subtitle.textContent = '';
         }
 
         // Ensure panel visible (some flows rely on this)
-        panel.style.display = 'flex';
-
-        // One-time premium handlers
-        if (!window.__callPremiumBound) {
-            window.__callPremiumBound = true;
-
-            // Close open volume popovers when clicking outside
-            document.addEventListener("click", (e) => {
-                document.querySelectorAll(".call-volume-panel.open").forEach(p => {
-                    const wrap = p.closest(".call-volume-pop");
-                    if (wrap && !wrap.contains(e.target)) p.classList.remove("open");
-                });
-            });
-
-            // Click handlers
-            document.addEventListener("click", async (e) => {
-                const btn = e.target.closest("[data-action]");
-                if (!btn) return;
-
-                const action = btn.getAttribute("data-action");
-                const row = e.target.closest(".call-user-row");
-                const uid = row?.getAttribute("data-uid");
-
-                if (action === "toggle-volume-pop") {
-                    const panel = btn.parentElement.querySelector(".call-volume-panel");
-                    if (panel) panel.classList.toggle("open");
-                }
-
-                if (action === "toggle-remote-mute") {
-                    if (!uid) return;
-                    toggleRemoteMute(Number(uid));
-                    await new Promise(r => setTimeout(r, 0));
-                    renderCallPanel(rtc, localUid);
-                }
-            });
-
-            // Slider input handlers
-            document.addEventListener("input", (e) => {
-                const el = e.target;
-                if (!el || !el.matches(".call-vol")) return;
-
-                const row = el.closest(".call-user-row");
-                const uid = row?.getAttribute("data-uid");
-                if (!uid) return;
-
-                const v = Number(el.value);
-                const label = row.querySelector(".call-vol-label");
-                if (label) label.textContent = `${v}%`;
-                const chipPct = row.querySelector(".call-chip-pct");
-                if (chipPct) chipPct.textContent = `${v}%`;
-
-                setRemoteVolume(Number(uid), v);
-            });
-        }
+        panel.style.display = 'block';
     } catch (e) {
         console.warn("renderCallPanel failed:", e);
     }
 }
 
 
-function changeRemoteVol(uid, val) { if(rtc.remoteUsers[uid] && rtc.remoteUsers[uid].audioTrack) { rtc.remoteUsers[uid].audioTrack.setVolume(parseInt(val)); } }
+// ===== Remote audio controls (mute other + volume 0..200) =====
+window.__remoteAudioState = window.__remoteAudioState || {};
+
+function __getRemoteState(uid) {
+    uid = Number(uid);
+    if (!window.__remoteAudioState[uid]) window.__remoteAudioState[uid] = { muted:false, volume:100, remoteUnpub:false, prevVolume:100 };
+    return window.__remoteAudioState[uid];
+}
+
+function setRemoteVolume(uid, volumePct) {
+    uid = Number(uid);
+    const st = __getRemoteState(uid);
+    const v = Math.max(0, Math.min(200, parseInt(volumePct)));
+    st.volume = v;
+
+    const user = rtc?.remoteUsers?.[uid];
+    const track = user?.audioTrack;
+    if (!track || !track.setVolume) return;
+
+    // Agora Web SDK volume is typically 0..100; for >100 we clamp but keep UI at 200.
+    const sdkVol = Math.max(0, Math.min(100, v));
+    try { track.setVolume(sdkVol); } catch(e){ console.warn("setRemoteVolume failed", e); }
+}
+
+async function toggleRemoteMute(uid) {
+    uid = Number(uid);
+    const st = __getRemoteState(uid);
+
+    if (!st.muted) {
+        st.prevVolume = (st.volume ?? 100);
+        st.muted = true;
+        setRemoteVolume(uid, 0);
+    } else {
+        st.muted = false;
+        setRemoteVolume(uid, st.prevVolume ?? 100);
+    }
+}
+
+// Backward compatibility (old name used elsewhere)
+function changeRemoteVol(uid, val) { setRemoteVolume(uid, val); }
+
 
 let isMicMuted = false;
 async function toggleMuteCall() { 
