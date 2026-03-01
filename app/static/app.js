@@ -294,9 +294,9 @@ document.body.addEventListener('click', () => {
     if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
 }, { once: true });
 
-window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
-window.callingSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'); window.callingSound.loop = true;
-window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
+window.ringtone = new Audio('/static/sounds/ringtone.wav'); window.ringtone.loop = true;
+window.callingSound = new Audio('/static/sounds/calling.wav'); window.callingSound.loop = true;
+window.msgSound = new Audio('/static/sounds/message.wav');
 
 function safePlaySound(snd) {
     try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado", e)); } } catch(err){}
@@ -395,6 +395,7 @@ function initDraggableFloatingCallButton() {
     let dragging = false;
     let startX = 0, startY = 0;
     let origX = 0, origY = 0;
+    let btnW = 0, btnH = 0;
     let moved = 0;
 
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -420,12 +421,12 @@ function initDraggableFloatingCallButton() {
         startY = e.clientY;
         origX = rect.left;
         origY = rect.top;
-        // init last committed position
+        // Captura tamanho uma única vez aqui — evita getBoundingClientRect no onMove
+        btnW = rect.width;
+        btnH = rect.height;
         lastNX = origX;
         lastNY = origY;
-        // smoother drag on mobile: render movement via transform
-        btn.style.willChange = 'transform';
-        btn.style.transform = 'translate3d(0,0,0)';
+        btn.style.willChange = 'left, top';
 
         try { btn.setPointerCapture && btn.setPointerCapture(ev.pointerId); } catch(_) {}
         ev.preventDefault && ev.preventDefault();
@@ -439,20 +440,16 @@ function initDraggableFloatingCallButton() {
         const dy = e.clientY - startY;
         moved = Math.max(moved, Math.abs(dx), Math.abs(dy));
 
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-
-        const rect = btn.getBoundingClientRect();
-        const nx = clamp(origX + dx, 6, w - rect.width - 6);
-        const ny = clamp(origY + dy, 6, h - rect.height - 6);
-
+        // Clamp usando tamanho capturado no onDown (sem getBoundingClientRect aqui)
+        const nx = clamp(origX + dx, 6, window.innerWidth  - btnW - 6);
+        const ny = clamp(origY + dy, 6, window.innerHeight - btnH - 6);
         lastNX = nx; lastNY = ny;
-        lastTX = nx - origX;
-        lastTY = ny - origY;
+
         if (!rafId) {
             rafId = requestAnimationFrame(() => {
                 rafId = 0;
-                btn.style.transform = `translate3d(${lastTX}px, ${lastTY}px, 0)`;
+                btn.style.left = lastNX + 'px';
+                btn.style.top  = lastNY + 'px';
             });
         }
 
@@ -463,10 +460,7 @@ function initDraggableFloatingCallButton() {
         if (!dragging) return;
         dragging = false;
 
-        // Commit final position and clear transform
-        btn.style.left = lastNX + 'px';
-        btn.style.top = lastNY + 'px';
-        btn.style.transform = 'translate3d(0,0,0)';
+        // Posição já commitada via left/top no rAF, só limpa willChange
         btn.style.willChange = 'auto';
 
         // Save position
@@ -996,7 +990,33 @@ async function loadInbox(){
         let d = await r.json();
         let b = document.getElementById('inbox-list'); b.innerHTML = '';
         if((d.groups || []).length === 0 && (d.friends || []).length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
-        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group', '${g.avatar}')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
+        (d.groups || []).forEach(g => {
+            const previews = (g.member_previews || []).slice(0, 4);
+            const extraCount = (g.member_count || 0) - previews.length;
+            const avatarsHtml = previews.map((m, i) =>
+                `<img class="squad-av-preview" src="${safeAvatarUrl(m.avatar)}" style="z-index:${previews.length - i}" onerror="this.src='/static/default-avatar.svg'">`
+            ).join('') + (extraCount > 0 ? `<span class="squad-av-extra">+${extraCount}</span>` : '');
+
+            b.innerHTML += `
+            <div class="inbox-item squad-card" data-id="${g.id}" data-type="group" onclick="openChat(${g.id}, '${g.name.replace(/'/g, "\\'")}', 'group', '${g.avatar}')">
+                <div class="squad-card-left">
+                    <div class="squad-avatar-wrap">
+                        <img class="squad-avatar" src="${safeAvatarUrl(g.avatar)}" onerror="this.src='/static/default-avatar.svg'">
+                        <span class="squad-icon-badge">
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </span>
+                    </div>
+                    <div class="squad-info">
+                        <div class="squad-name">${escapeHtml(g.name)}</div>
+                        <div class="squad-meta">
+                            <div class="squad-av-stack">${avatarsHtml}</div>
+                            <span class="squad-count">${g.member_count || 0} membros</span>
+                        </div>
+                    </div>
+                </div>
+                <svg class="squad-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>`;
+        });
         (d.friends || []).forEach(f => {
             let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
             b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1', '${f.avatar}')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
@@ -1849,7 +1869,7 @@ async function loadGroupSettings(){
         if (nameEl) nameEl.innerText = data.name || 'Grupo';
         const members = Array.isArray(data.members) ? data.members : [];
         if (metaEl) metaEl.innerText = `${members.length} membros`;
-        if (avEl) avEl.src = data.avatar_url ? safeAvatarUrl(data.avatar_url) : '/static/default-avatar.svg';
+        if (avEl) avEl.src = (data.avatar || data.avatar_url) ? safeAvatarUrl(data.avatar || data.avatar_url) : '/static/default-avatar.svg';
         renderGroupMembers(members);
     }catch(e){
         console.error(e);

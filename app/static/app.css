@@ -1234,3 +1234,142 @@ body {
   border-color: rgba(255,90,120,.35);
   color: #ff9bb0;
 }
+
+/* ═══════════════════════════════════════════════
+   SQUAD CARD — grupo no inbox redesenhado
+   ═══════════════════════════════════════════════ */
+
+.squad-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 14px;
+    cursor: pointer;
+    gap: 8px;
+    border-color: rgba(102,252,241,0.15) !important;
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+}
+/* brilho teal sutil no hover */
+.squad-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(102,252,241,0.03) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.squad-card:hover::before { opacity: 1; }
+.squad-card:hover {
+    border-color: rgba(102,252,241,0.3) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(102,252,241,0.06);
+}
+
+/* Lado esquerdo: avatar + info */
+.squad-card-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+}
+
+/* Avatar do grupo */
+.squad-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+.squad-avatar {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    object-fit: cover;
+    border: 1.5px solid rgba(102,252,241,0.2);
+    display: block;
+    background: var(--card-2);
+}
+/* Badge de grupo sobre o avatar */
+.squad-icon-badge {
+    position: absolute;
+    bottom: -3px; right: -3px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #050709;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--card-bg);
+    font-size: 9px;
+}
+
+/* Info: nome + meta */
+.squad-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+.squad-name {
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Linha de meta: avatares + contagem */
+.squad-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+/* Stack de avatares empilhados */
+.squad-av-stack {
+    display: flex;
+    align-items: center;
+}
+.squad-av-preview {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid var(--card-bg);
+    margin-left: -6px;
+    position: relative;
+    background: var(--card-2);
+}
+.squad-av-preview:first-child { margin-left: 0; }
+
+.squad-av-extra {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1.5px solid var(--card-bg);
+    margin-left: -6px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #9ca3af;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Sans', sans-serif;
+}
+
+.squad-count {
+    font-size: 11px;
+    color: rgba(102,252,241,0.6);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Chevron direito */
+.squad-chevron {
+    color: rgba(255,255,255,0.2);
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+.squad-card:hover .squad-chevron {
+    color: rgba(102,252,241,0.5);
+    transform: translateX(2px);
+}
