@@ -536,7 +536,7 @@ async function leaveCall() {
 }
 
 window.callUsersCache = {};
-async async function renderCallPanel(rtc, localUid) {
+async function renderCallPanel(rtc, localUid) {
     try {
         const panel = document.getElementById('expanded-call-panel');
         if (!panel) return;
