@@ -55,7 +55,7 @@ def get_inbox(
     for gm in my_groups:
         group = db.query(ChatGroup).filter_by(id=gm.group_id).first()
         if group:
-            groups_data.append({"id": group.id, "name": group.name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"})
+            groups_data.append({"id": group.id, "name": group.name, "avatar": (group.avatar_url or "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1")})
     return {"friends": friends_data, "groups": groups_data}
 
 

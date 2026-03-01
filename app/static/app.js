@@ -418,6 +418,8 @@ function initDraggableFloatingCallButton() {
         ev.preventDefault && ev.preventDefault();
     };
 
+    let rafId = 0, lastNX = 0, lastNY = 0;
+
     const onMove = (ev) => {
         if (!dragging) return;
         const e = ev.touches ? ev.touches[0] : ev;
@@ -428,13 +430,19 @@ function initDraggableFloatingCallButton() {
 
         const w = window.innerWidth;
         const h = window.innerHeight;
-        const rect = btn.getBoundingClientRect();
 
+        const rect = btn.getBoundingClientRect();
         const nx = clamp(origX + dx, 6, w - rect.width - 6);
         const ny = clamp(origY + dy, 6, h - rect.height - 6);
 
-        btn.style.left = nx + 'px';
-        btn.style.top = ny + 'px';
+        lastNX = nx; lastNY = ny;
+        if (!rafId) {
+            rafId = requestAnimationFrame(() => {
+                rafId = 0;
+                btn.style.left = lastNX + 'px';
+                btn.style.top = lastNY + 'px';
+            });
+        }
 
         ev.preventDefault && ev.preventDefault();
     };
@@ -1327,16 +1335,14 @@ async function openChat(id, name, type, avatar) {
 
     // Show/hide call button (groups may not support calls)
     const callBtn = document.getElementById('dm-call-btn');
-    if (callBtn) callBtn.style.display = type === 'group' ? 'none' : 'flex';
+    if (callBtn) callBtn.style.display = 'flex';
 
     goView('dm');
     if (type === '1v1') {
         await fetch(`/inbox/read/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ uid: user.id }) });
         fetchUnread();
     }
-    if (changingChat) {
-        document.getElementById('dm-list').innerHTML = '';
-    }
+    document.getElementById('dm-list').innerHTML = '';
     await fetchChatMessages(id, type);
     if (changingChat || !dmWS || dmWS.readyState !== WebSocket.OPEN) {
         connectDmWS(id, name, type);
@@ -1359,6 +1365,13 @@ function connectDmWS(id, name, type) {
     };
     dmWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
+
+        // Não misturar mensagens de outra conversa (mobile alterna rápido e pode chegar msg de chat antigo)
+        if (currentChatId !== id || currentChatType !== type) {
+            // Só atualiza contadores (sem renderizar no chat aberto)
+            try { fetchUnread(); } catch(_) {}
+            return;
+        }
         let b = document.getElementById('dm-list');
         let m = parseInt(d.user_id) === parseInt(user.id);
         let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';

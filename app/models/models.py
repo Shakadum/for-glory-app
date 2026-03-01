@@ -114,7 +114,8 @@ class ChatGroup(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-
+    creator_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    avatar_url = Column(String, default="")
 
 class GroupMember(Base):
     __tablename__ = 'group_members'
