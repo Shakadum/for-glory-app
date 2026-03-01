@@ -574,33 +574,39 @@ async function renderCallPanel(rtc, localUid) {
                 const vol = Math.max(0, Math.min(200, parseInt(st.volume ?? 100)));
 
                 item.innerHTML = `
-                    <div class="call-user-left">
-                        <div class="call-user-avatar-wrap">
-                            <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="call-user-avatar" alt="">
-                            ${muted ? `<span class="call-muted-badge" title="Mutado"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></span>` : ``}
-                        </div>
-                        <div class="call-user-meta">
-                            <div class="call-user-name">${escapeHtml(b.name)}</div>
-                            <div class="call-user-sub">${isLocal ? 'Você' : (muted ? 'Áudio mutado' : 'Áudio ativo')}</div>
-                        </div>
+                    <div class="cu-avatar-wrap">
+                        <img src="${escapeHtml(safeAvatarUrl(b.avatar))}" class="cu-avatar" alt="">
+                        ${muted ? `<span class="cu-muted-dot"></span>` : ``}
                     </div>
 
-                    ${isLocal ? `<div class="call-user-controls call-user-controls--local"></div>` : `
-                    <div class="call-user-controls">
-                        <button class="call-chip ${st.muted ? 'danger' : 'accent'}" data-action="toggle-remote-mute" data-uid="${uid}" title="${st.muted ? 'Desmutar' : 'Mutar'}">
-                            ${st.muted ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`}
-                        </button>
-                        <div class="call-vol-box">
-                            <div class="call-vol-label">${vol}%</div>
-                            <input class="call-vol" type="range" min="0" max="200" value="${vol}" data-action="remote-volume" data-uid="${uid}">
-                        </div>
-                    </div>`}
+                    <div class="cu-info">
+                        <div class="cu-name">${escapeHtml(b.name)}</div>
+                        <div class="cu-sub">${isLocal ? 'Você' : (muted ? 'Mutado' : 'Ativo')}</div>
+                    </div>
+
+                    ${isLocal ? `` : `
+                    <div class="cu-vol-inline">
+                        <input class="cu-slider" type="range" min="0" max="200" value="${vol}" data-action="remote-volume" data-uid="${uid}">
+                        <span class="cu-vol-pct" data-action="vol-label">${vol}%</span>
+                    </div>
+
+                    <button class="cu-mute-btn ${st.muted ? 'is-muted' : ''}" data-action="toggle-remote-mute" data-uid="${uid}" title="${st.muted ? 'Desmutar' : 'Mutar'}">
+                        ${st.muted ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>` : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`}
+                    </button>
+                    `}
                 `;
 
                 // wire events (only for remote)
                 if (!isLocal) {
                     const muteBtn = item.querySelector('[data-action="toggle-remote-mute"]');
-                    const slider = item.querySelector('[data-action="remote-volume"]');
+                    const slider  = item.querySelector('[data-action="remote-volume"]');
+                    const label   = item.querySelector('[data-action="vol-label"]');
+
+                    const updateSliderTrack = (slider, v) => {
+                        const pct = Math.round((v / 200) * 100);
+                        slider.style.background = `linear-gradient(to right, var(--primary) ${pct}%, rgba(255,255,255,0.15) ${pct}%)`;
+                    };
+
                     if (muteBtn) {
                         muteBtn.addEventListener('click', async () => {
                             await toggleRemoteMute(uid);
@@ -608,19 +614,12 @@ async function renderCallPanel(rtc, localUid) {
                         });
                     }
                     if (slider) {
-                        // Set initial gradient to match starting value
-                        const pct0 = Math.round((parseInt(slider.value) / 200) * 100);
-                        slider.style.background = `linear-gradient(to right, var(--primary) ${pct0}%, rgba(255,255,255,0.12) ${pct0}%)`;
-
+                        updateSliderTrack(slider, parseInt(slider.value));
                         slider.addEventListener('input', () => {
                             const v = parseInt(slider.value);
                             st.volume = v;
-                            // Update label
-                            const lab = item.querySelector('.call-vol-label');
-                            if (lab) lab.textContent = `${v}%`;
-                            // Update track gradient fill (value goes 0-200, map to 0-100%)
-                            const pct = Math.round((v / 200) * 100);
-                            slider.style.background = `linear-gradient(to right, var(--primary) ${pct}%, rgba(255,255,255,0.12) ${pct}%)`;
+                            if (label) label.textContent = `${v}%`;
+                            updateSliderTrack(slider, v);
                             setRemoteVolume(uid, v);
                         });
                     }
@@ -656,7 +655,7 @@ async function renderCallPanel(rtc, localUid) {
         }
 
         // Ensure panel visible (some flows rely on this)
-        panel.style.display = 'block';
+        panel.style.display = 'flex';
     } catch (e) {
         console.warn("renderCallPanel failed:", e);
     }
