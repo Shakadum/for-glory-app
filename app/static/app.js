@@ -1,39 +1,4 @@
 
-// ===== Early login bootstrap (prevents PC break when later code throws) =====
-(function(){
-  try {
-    const t = localStorage.getItem('token');
-    // If token is not a JWT, remove it to avoid JSON/atob crashes.
-    if (t && t.split('.').length !== 3) localStorage.removeItem('token');
-  } catch (e) {}
-  if (!window.showToast) window.showToast = (msg)=>{ try{ alert(String(msg)); } catch(e){} };
-})();
-
-
-// Define doLogin early so inline handlers don't crash if the rest of the script fails to load.
-window.doLogin = window.doLogin || (async function(){
-  try {
-    const u = (document.getElementById('l-user')?.value || '').trim();
-    const p = (document.getElementById('l-pass')?.value || '').trim();
-    if (!u || !p) return window.showToast?.('Informe usuário e senha.');
-    const fd = new FormData();
-    fd.append('username', u);
-    fd.append('password', p);
-    const res = await fetch('/token', { method: 'POST', body: fd });
-    if (!res.ok) return window.showToast?.('Falha no login.');
-    const data = await res.json();
-    if (!data?.access_token) return window.showToast?.('Token inválido.');
-    localStorage.setItem('token', data.access_token);
-    // if app is already running, it will pick up the token; otherwise reload.
-    if (typeof window.startApp === 'function') window.startApp();
-    else location.reload();
-  } catch (e) {
-    console.error('doLogin early shim failed', e);
-    window.showToast?.('Erro no login (PC). Limpe cache e tente novamente.');
-  }
-});
-
-
 
 function sendSystemDmMessage(text) {
   try {
@@ -268,6 +233,7 @@ function initLangDropdown(){
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    initDraggableFloatingCallButton();
     // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
     let langBtnLogin = document.getElementById('lang-btn-login');
@@ -399,6 +365,120 @@ async function authFetch(url, options = {}) {
     return res;
 }
 
+
+// ===== Draggable floating call button (mobile + desktop) =====
+function initDraggableFloatingCallButton() {
+    const btn = document.getElementById('floating-call-btn');
+    if (!btn) return;
+
+    // Restore last position
+    try {
+        const raw = localStorage.getItem('floatingCallBtnPos');
+        if (raw) {
+            const p = JSON.parse(raw);
+            if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+                btn.style.left = p.x + 'px';
+                btn.style.top = p.y + 'px';
+                btn.style.right = 'auto';
+                btn.style.bottom = 'auto';
+                btn.style.position = 'fixed';
+            }
+        }
+    } catch(e) {}
+
+    btn.style.touchAction = 'none';
+    btn.style.userSelect = 'none';
+
+    let dragging = false;
+    let startX = 0, startY = 0;
+    let origX = 0, origY = 0;
+    let moved = 0;
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    const onDown = (ev) => {
+        const e = ev.touches ? ev.touches[0] : ev;
+        dragging = true;
+        moved = 0;
+
+        const rect = btn.getBoundingClientRect();
+        // ensure fixed positioning with top/left
+        btn.style.position = 'fixed';
+        btn.style.left = rect.left + 'px';
+        btn.style.top = rect.top + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+
+        startX = e.clientX;
+        startY = e.clientY;
+        origX = rect.left;
+        origY = rect.top;
+
+        try { btn.setPointerCapture && btn.setPointerCapture(ev.pointerId); } catch(_) {}
+        ev.preventDefault && ev.preventDefault();
+    };
+
+    const onMove = (ev) => {
+        if (!dragging) return;
+        const e = ev.touches ? ev.touches[0] : ev;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        moved = Math.max(moved, Math.abs(dx), Math.abs(dy));
+
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const rect = btn.getBoundingClientRect();
+
+        const nx = clamp(origX + dx, 6, w - rect.width - 6);
+        const ny = clamp(origY + dy, 6, h - rect.height - 6);
+
+        btn.style.left = nx + 'px';
+        btn.style.top = ny + 'px';
+
+        ev.preventDefault && ev.preventDefault();
+    };
+
+    const onUp = (ev) => {
+        if (!dragging) return;
+        dragging = false;
+
+        // Save position
+        try {
+            const rect = btn.getBoundingClientRect();
+            localStorage.setItem('floatingCallBtnPos', JSON.stringify({ x: rect.left, y: rect.top }));
+        } catch(e) {}
+
+        // If it was a drag, cancel click to avoid opening/closing by accident
+        if (moved > 6) {
+            btn.__justDragged = true;
+            setTimeout(() => { btn.__justDragged = false; }, 250);
+        }
+    };
+
+    // Use pointer events when available
+    if (window.PointerEvent) {
+        btn.addEventListener('pointerdown', onDown, { passive: false });
+        window.addEventListener('pointermove', onMove, { passive: false });
+        window.addEventListener('pointerup', onUp, { passive: true });
+        window.addEventListener('pointercancel', onUp, { passive: true });
+    } else {
+        btn.addEventListener('touchstart', onDown, { passive: false });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onUp, { passive: true });
+        btn.addEventListener('mousedown', onDown);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }
+
+    // Guard the existing click handler (if any)
+    btn.addEventListener('click', (e) => {
+        if (btn.__justDragged) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+}
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = true;
@@ -516,6 +596,7 @@ if (rtc.client) { await rtc.client.leave(); }
         
         await rtc.client.publish([rtc.localAudioTrack]);
         window.callHasConnected = true;
+        window.__callEndLogged = false;
         if (!window.__callStartedAt) window.__callStartedAt = Date.now();
         if (!window.__callStartLogged) {
           window.__callStartLogged = true;
@@ -524,9 +605,7 @@ if (rtc.client) { await rtc.client.leave(); }
         }
         try {
             window.callStartedAt = Date.now();
-            if (window.currentCallType === 'dm' && dmWS && dmWS.readyState === 1) {
-                dmWS.send(`📞 Call iniciada • ${new Date(window.callStartedAt).toLocaleString()}`);
-            }
+            // (evita duplicar) o sendSystemDmMessage acima já envia o evento de call no chat
         } catch(e) { console.warn('call chat start event failed', e); }
 
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
@@ -558,9 +637,12 @@ async function uploadCallBg(inputElem){
 }
 
 async function leaveCall() {
+    if (window.__leavingCall) return;
+    window.__leavingCall = true;
     try {
       const startedAt = window.__callStartedAt;
-      if (startedAt) {
+      if (startedAt && !window.__callEndLogged) {
+        window.__callEndLogged = true;
         const ms = Date.now() - startedAt;
         const sec = Math.max(0, Math.floor(ms/1000));
         const mm = String(Math.floor(sec/60)).padStart(2,"0");
@@ -586,6 +668,8 @@ async function leaveCall() {
     document.getElementById('expanded-call-panel').style.display = 'none'; 
     document.getElementById('floating-call-btn').style.display = 'none'; 
     let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`; isMicMuted = false;
+
+    window.__leavingCall = false;
 }
 
 window.callUsersCache = {};
@@ -896,7 +980,7 @@ async function loadInbox(){
 }
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
-async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
+async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await authFetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
 async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
