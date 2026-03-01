@@ -275,6 +275,9 @@ function showLoginScreen() {
 }
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
+// Prevent race conditions when switching chats quickly (especially on mobile).
+// Any async fetch/WS handler must check this token before mutating the DOM.
+var currentChatLoadToken = 0;
 var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
@@ -396,6 +399,10 @@ function initDraggableFloatingCallButton() {
 
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+    // rAF-driven drag state (declared before handlers to avoid TDZ issues)
+    let rafId = 0, lastNX = 0, lastNY = 0;
+    let lastTX = 0, lastTY = 0;
+
     const onDown = (ev) => {
         const e = ev.touches ? ev.touches[0] : ev;
         dragging = true;
@@ -413,12 +420,16 @@ function initDraggableFloatingCallButton() {
         startY = e.clientY;
         origX = rect.left;
         origY = rect.top;
+        // init last committed position
+        lastNX = origX;
+        lastNY = origY;
+        // smoother drag on mobile: render movement via transform
+        btn.style.willChange = 'transform';
+        btn.style.transform = 'translate3d(0,0,0)';
 
         try { btn.setPointerCapture && btn.setPointerCapture(ev.pointerId); } catch(_) {}
         ev.preventDefault && ev.preventDefault();
     };
-
-    let rafId = 0, lastNX = 0, lastNY = 0;
 
     const onMove = (ev) => {
         if (!dragging) return;
@@ -436,11 +447,12 @@ function initDraggableFloatingCallButton() {
         const ny = clamp(origY + dy, 6, h - rect.height - 6);
 
         lastNX = nx; lastNY = ny;
+        lastTX = nx - origX;
+        lastTY = ny - origY;
         if (!rafId) {
             rafId = requestAnimationFrame(() => {
                 rafId = 0;
-                btn.style.left = lastNX + 'px';
-                btn.style.top = lastNY + 'px';
+                btn.style.transform = `translate3d(${lastTX}px, ${lastTY}px, 0)`;
             });
         }
 
@@ -450,6 +462,12 @@ function initDraggableFloatingCallButton() {
     const onUp = (ev) => {
         if (!dragging) return;
         dragging = false;
+
+        // Commit final position and clear transform
+        btn.style.left = lastNX + 'px';
+        btn.style.top = lastNY + 'px';
+        btn.style.transform = 'translate3d(0,0,0)';
+        btn.style.willChange = 'auto';
 
         // Save position
         try {
@@ -1250,12 +1268,14 @@ async function sendComment(pid) {
         }
     } catch (e) { console.error(e); }
 }
-async function fetchChatMessages(id, type) {
+async function fetchChatMessages(id, type, loadToken) {
     let list = document.getElementById('dm-list');
     let url = type === 'group' ? `/group/${id}/messages?nocache=${new Date().getTime()}` : `/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;
     try {
         let r = await authFetch(url);
         if (r.ok) {
+            // If user switched chats while this request was in-flight, ignore the result.
+            if (loadToken !== undefined && loadToken !== currentChatLoadToken) return;
             let msgs = await r.json();
             let isAtBottom = (list.scrollHeight - list.scrollTop <= list.clientHeight + 50);
             (msgs || []).forEach(d => {
@@ -1306,6 +1326,8 @@ async function openChat(id, name, type, avatar) {
     let changingChat = (currentChatId !== id || currentChatType !== type);
     currentChatId = id;
     currentChatType = type;
+    // New token for this chat session (prevents DM/group mixing from async races)
+    const loadToken = ++currentChatLoadToken;
 
     // Populate header
     document.getElementById('dm-header-name').innerText = name;
@@ -1356,13 +1378,13 @@ async function openChat(id, name, type, avatar) {
         fetchUnread();
     }
     document.getElementById('dm-list').innerHTML = '';
-    await fetchChatMessages(id, type);
+    await fetchChatMessages(id, type, loadToken);
     if (changingChat || !dmWS || dmWS.readyState !== WebSocket.OPEN) {
-        connectDmWS(id, name, type);
+        connectDmWS(id, name, type, loadToken);
     }
 }
 
-function connectDmWS(id, name, type) {
+function connectDmWS(id, name, type, loadToken) {
     if (dmWS) dmWS.close();
     let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     let token = localStorage.getItem('token');
@@ -1370,9 +1392,11 @@ function connectDmWS(id, name, type) {
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
     dmWS.onclose = () => {
         setTimeout(() => {
-            if (currentChatId === id && document.getElementById('view-dm').classList.contains('active')) {
-                fetchChatMessages(id, type);
-                connectDmWS(id, name, type);
+            // If user switched chats, don't reconnect/fetch the old chat.
+            if (loadToken !== currentChatLoadToken) return;
+            if (currentChatId === id && currentChatType === type && document.getElementById('view-dm').classList.contains('active')) {
+                fetchChatMessages(id, type, loadToken);
+                connectDmWS(id, name, type, loadToken);
             }
         }, 2000);
     };
@@ -1380,7 +1404,8 @@ function connectDmWS(id, name, type) {
         let d = JSON.parse(e.data);
 
         // Não misturar mensagens de outra conversa (mobile alterna rápido e pode chegar msg de chat antigo)
-        if (currentChatId !== id || currentChatType !== type) {
+        // If user switched chats, never render into the current DOM
+        if (loadToken !== currentChatLoadToken || currentChatId !== id || currentChatType !== type) {
             // Só atualiza contadores (sem renderizar no chat aberto)
             try { fetchUnread(); } catch(_) {}
             return;
