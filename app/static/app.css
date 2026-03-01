@@ -412,6 +412,13 @@ body {
     display: flex; flex-direction: column; overflow: hidden;
     box-shadow: 0 16px 48px rgba(0,0,0,0.6);
 }
+/* DM view shell — padding e fundo base (sobrescrito no mobile) */
+.dm-view-shell {
+    justify-content: center;
+    padding: 15px;
+    background: rgba(0,0,0,0.5);
+}
+
 
 /* ── Floating CALL Button — redesenhado ────────────────────── */
 #floating-call-btn {
@@ -759,6 +766,50 @@ body {
     .profile-pic-lg-wrap { width: 100px; height: 100px; bottom: -50px; }
     .modal-box { width: 92vw !important; max-width: 400px !important; }
     img, video { max-width: 100% !important; }
+
+    /* ── DM view mobile: remove padding lateral e arredondamento da caixa ── */
+    .dm-view-shell {
+        padding: 0;
+        background: var(--dark-bg);
+    }
+    .chat-box-centered {
+        height: 100%;
+        max-width: 100%;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        box-shadow: none;
+    }
+
+    /* ── DM topbar mobile: um pouco mais compacto ── */
+    .dm-topbar {
+        padding: 10px 12px;
+        gap: 9px;
+    }
+    .dm-topbar-avatar {
+        width: 34px;
+        height: 34px;
+    }
+    .dm-topbar-name {
+        font-size: 14px;
+    }
+    .dm-topbar-sub {
+        display: none;   /* esconde "Mensagem Direta" no mobile — economiza espaço */
+    }
+    .dm-call-btn {
+        padding: 7px 12px;
+        font-size: 11px;
+        gap: 5px;
+        letter-spacing: 1px;
+    }
+    .dm-call-btn-dot {
+        width: 6px;
+        height: 6px;
+    }
+    .dm-back-btn {
+        width: 30px;
+        height: 30px;
+    }
 }
 
 
@@ -1057,10 +1108,10 @@ body {
 
 /* ── Botão CALL premium ──────────────────────────── */
 .dm-call-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 8px 16px;
+    padding: 8px 14px;
     background: rgba(46,204,113,0.08);
     border: 1px solid rgba(46,204,113,0.3);
     border-radius: 50px;
@@ -1073,6 +1124,9 @@ body {
     text-transform: uppercase;
     transition: var(--transition);
     flex-shrink: 0;
+    flex-grow: 0;       /* nunca cresce */
+    width: auto;        /* só o necessário */
+    white-space: nowrap;
     position: relative;
     overflow: hidden;
 }
