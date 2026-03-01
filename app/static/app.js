@@ -1314,6 +1314,19 @@ async function openChat(id, name, type, avatar) {
     const sub = document.getElementById('dm-header-sub');
     if (sub) sub.innerText = type === 'group' ? 'Grupo' : 'Mensagem Direta';
 
+    // Group settings button
+    const gear = document.getElementById('group-settings-btn');
+    if (gear) {
+        if (type === 'group') {
+            gear.style.display = 'inline-flex';
+            gear.dataset.groupId = String(id);
+        } else {
+            gear.style.display = 'none';
+            gear.dataset.groupId = '';
+        }
+    }
+
+
     // Avatar
     const av = document.getElementById('dm-header-avatar');
     if (av) {
@@ -1775,4 +1788,165 @@ function applyRemoteDelete(msgNumericId){
         el.querySelectorAll('.del-msg-btn').forEach(b=>b.remove());
     }
 }
+}
+
+// ===================== Group Settings Modal =====================
+function openGroupSettings(){
+    try{
+        if (currentChatType !== 'group' || !currentChatId) return;
+        const modal = document.getElementById('modal-group-settings');
+        if (!modal) return;
+        document.getElementById('group-settings-error').style.display = 'none';
+        modal.classList.remove('hidden');
+        loadGroupSettings();
+    }catch(e){ console.error(e); }
+}
+function closeGroupSettings(){
+    const modal = document.getElementById('modal-group-settings');
+    if (modal) modal.classList.add('hidden');
+}
+
+function gsError(msg){
+    const el = document.getElementById('group-settings-error');
+    if (!el) return;
+    el.innerText = msg || 'Falha.';
+    el.style.display = 'block';
+}
+
+async function loadGroupSettings(){
+    try{
+        const gid = currentChatId;
+        const data = await authFetch(`/group/${gid}`);
+        if (!data) return;
+        const nameEl = document.getElementById('group-settings-name');
+        const metaEl = document.getElementById('group-settings-meta');
+        const avEl = document.getElementById('group-settings-avatar');
+        if (nameEl) nameEl.innerText = data.name || 'Grupo';
+        const members = Array.isArray(data.members) ? data.members : [];
+        if (metaEl) metaEl.innerText = `${members.length} membros`;
+        if (avEl) avEl.src = data.avatar_url ? safeAvatarUrl(data.avatar_url) : '/static/default-avatar.svg';
+        renderGroupMembers(members);
+    }catch(e){
+        console.error(e);
+        gsError('Não foi possível carregar dados do grupo.');
+    }
+}
+
+function renderGroupMembers(members){
+    const list = document.getElementById('group-members-list');
+    if (!list) return;
+    list.innerHTML = '';
+    members.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'group-member-row';
+        const left = document.createElement('div');
+        left.className = 'group-member-left';
+
+        const av = document.createElement('img');
+        av.className = 'group-member-avatar';
+        av.src = m.avatar ? safeAvatarUrl(m.avatar) : '/static/default-avatar.svg';
+        av.onerror = ()=>{ av.src = '/static/default-avatar.svg'; };
+
+        const nm = document.createElement('div');
+        nm.className = 'group-member-name';
+        nm.innerText = m.username || m.name || `ID ${m.id}`;
+
+        left.appendChild(av);
+        left.appendChild(nm);
+
+        const actions = document.createElement('div');
+        actions.className = 'group-member-actions';
+
+        const btnRemove = document.createElement('button');
+        btnRemove.className = 'danger';
+        btnRemove.innerText = 'REMOVER';
+        btnRemove.onclick = ()=> removeGroupMember(m.id);
+
+        actions.appendChild(btnRemove);
+
+        row.appendChild(left);
+        row.appendChild(actions);
+        list.appendChild(row);
+    });
+}
+
+async function addGroupMember(){
+    try{
+        const inp = document.getElementById('group-add-username');
+        const username = (inp && inp.value || '').trim();
+        if (!username) return gsError('Informe o usuário para adicionar.');
+        document.getElementById('group-settings-error').style.display = 'none';
+        await authFetch(`/group/${currentChatId}/members/add`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ username })
+        });
+        if (inp) inp.value = '';
+        await loadGroupSettings();
+        await refreshInbox();
+    }catch(e){
+        console.error(e);
+        gsError('Não foi possível adicionar. Verifique o nome do usuário ou permissões.');
+    }
+}
+
+async function removeGroupMember(user_id){
+    try{
+        document.getElementById('group-settings-error').style.display = 'none';
+        await authFetch(`/group/${currentChatId}/members/remove`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ user_id })
+        });
+        await loadGroupSettings();
+        await refreshInbox();
+    }catch(e){
+        console.error(e);
+        gsError('Não foi possível remover. Você pode não ter permissão.');
+    }
+}
+
+async function leaveGroup(){
+    try{
+        document.getElementById('group-settings-error').style.display = 'none';
+        await authFetch(`/group/${currentChatId}/leave`, { method: 'POST' });
+        closeGroupSettings();
+        // Volta pra inbox
+        document.getElementById('dm-chat-area').classList.add('hidden');
+        await refreshInbox();
+    }catch(e){
+        console.error(e);
+        gsError('Não foi possível sair do grupo.');
+    }
+}
+
+async function changeGroupAvatar(){
+    try{
+        // Use existing upload modal flow if present; fallback to file input
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.onchange = async () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            const fd = new FormData();
+            fd.append('file', f);
+            const res = await fetch('/upload', { method:'POST', body: fd });
+            const data = await res.json().catch(()=> ({}));
+            const url = pickUploadedUrl(data);
+            if (!url) return gsError('Upload falhou.');
+            await authFetch(`/group/${currentChatId}/avatar`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ avatar_url: url })
+            });
+            await loadGroupSettings();
+            await refreshInbox();
+            // update header avatar if you have one specific to groups
+        };
+        fileInput.click();
+    }catch(e){
+        console.error(e);
+        gsError('Não foi possível trocar a foto do grupo.');
+    }
 }

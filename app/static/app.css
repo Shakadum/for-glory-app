@@ -1176,3 +1176,61 @@ body {
 .dm-call-btn-label {
     /* só o texto */
 }
+
+
+/* Group settings button next to group name */
+.dm-topbar-name-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.group-settings-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  height:34px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.25);
+  color: rgba(255,255,255,.85);
+  cursor:pointer;
+  backdrop-filter: blur(10px);
+  transition: transform .08s ease, background .12s ease;
+}
+.group-settings-btn:active{ transform: scale(.96); }
+.group-settings-btn:hover{ background: rgba(255,255,255,.06); }
+
+.group-members-list{
+  max-height: 260px;
+  overflow:auto;
+  padding-right: 4px;
+}
+.group-member-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 10px;
+  border-radius:14px;
+  background: rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+  margin-bottom:10px;
+}
+.group-member-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+.group-member-avatar{ width:34px; height:34px; border-radius:999px; object-fit:cover; }
+.group-member-name{ color: rgba(255,255,255,.88); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.group-member-actions{ display:flex; gap:8px; }
+.group-member-actions button{
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.25);
+  color: rgba(255,255,255,.8);
+  padding:8px 10px;
+  border-radius:12px;
+  cursor:pointer;
+}
+.group-member-actions button.danger{
+  border-color: rgba(255,90,120,.35);
+  color: #ff9bb0;
+}
