@@ -392,21 +392,62 @@ function initDraggableFloatingCallButton() {
     btn.style.touchAction = 'none';
     btn.style.userSelect  = 'none';
 
-    let dragging = false;
-    let startX = 0, startY = 0;   // pointer coords at drag start
-    let origLeft = 0, origTop = 0; // element left/top at drag start
-    let btnW = 0, btnH = 0;        // element size (captured once)
-    let curDX = 0, curDY = 0;      // last committed delta
-    let moved  = 0;
-    let rafId  = 0;
+    // ── Estado ──────────────────────────────────────────────────────
+    let dragging  = false;
+    let startX = 0, startY = 0;
+    let origLeft = 0, origTop = 0;
+    let btnW = 0, btnH = 0;
+    let curDX = 0, curDY = 0;
+    let moved  = 0, rafId = 0;
+
+    // Edge-snap state
+    let snapped = false;  // está colado na borda?
+    let snapSide = '';    // 'left' | 'right'
+    // Quanto de movimento (px) cancela o snap
+    const SNAP_PULL_THRESHOLD = 50;
+    const SNAP_ZONE = 28;   // px da borda para acionar snap
+    const SNAP_DELAY = 120; // ms depois de soltar na borda
 
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+    // ── Snap visual ──────────────────────────────────────────────────
+    function applySnap(side) {
+        snapped  = true;
+        snapSide = side;
+        btn.classList.add('fcb-snapped', side === 'left' ? 'fcb-snap-left' : 'fcb-snap-right');
+        btn.style.transform = 'translate3d(0,0,0)';
+    }
+    function releaseSnap() {
+        snapped  = false;
+        snapSide = '';
+        btn.classList.remove('fcb-snapped', 'fcb-snap-left', 'fcb-snap-right');
+    }
+    function checkSnap() {
+        const rect = btn.getBoundingClientRect();
+        const mid  = rect.left + rect.width / 2;
+        if (rect.left <= SNAP_ZONE) {
+            btn.style.left = '0px';
+            btn.style.top  = origTop + curDY + 'px';
+            btn.style.transform = 'translate3d(0,0,0)';
+            applySnap('left');
+            return true;
+        }
+        if (rect.right >= window.innerWidth - SNAP_ZONE) {
+            btn.style.left = (window.innerWidth - rect.width) + 'px';
+            btn.style.top  = origTop + curDY + 'px';
+            btn.style.transform = 'translate3d(0,0,0)';
+            applySnap('right');
+            return true;
+        }
+        releaseSnap();
+        return false;
+    }
+
+    // ── Handlers ────────────────────────────────────────────────────
     const onDown = (ev) => {
-        if (ev.button !== undefined && ev.button !== 0) return; // só botão esquerdo
+        if (ev.button !== undefined && ev.button !== 0) return;
         const e = ev.touches ? ev.touches[0] : ev;
 
-        // Snapshot posição e tamanho uma única vez (o único getBCR permitido)
         const rect = btn.getBoundingClientRect();
         btn.style.position = 'fixed';
         btn.style.right  = 'auto';
@@ -414,6 +455,9 @@ function initDraggableFloatingCallButton() {
         btn.style.left   = rect.left + 'px';
         btn.style.top    = rect.top  + 'px';
         btn.style.transform = 'translate3d(0,0,0)';
+
+        // Se estava snapped, re-ancora para posição atual
+        if (snapped) releaseSnap();
 
         origLeft = rect.left;
         origTop  = rect.top;
@@ -426,8 +470,9 @@ function initDraggableFloatingCallButton() {
         dragging  = true;
 
         btn.style.willChange = 'transform';
+        btn.style.transition = 'none';
 
-        try { ev.pointerId != null && btn.setPointerCapture(ev.pointerId); } catch(_){}
+        try { ev.pointerId != null && btn.setPointerCapture(ev.pointerId); } catch(_) {}
         ev.preventDefault && ev.preventDefault();
     };
 
@@ -435,7 +480,6 @@ function initDraggableFloatingCallButton() {
         if (!dragging) return;
         const e = ev.touches ? ev.touches[0] : ev;
 
-        // Delta clamped so button stays on screen
         const maxDX = window.innerWidth  - btnW - 6 - origLeft;
         const minDX = 6 - origLeft;
         const maxDY = window.innerHeight - btnH - 6 - origTop;
@@ -445,7 +489,6 @@ function initDraggableFloatingCallButton() {
         curDY = clamp(e.clientY - startY, minDY, maxDY);
         moved = Math.max(moved, Math.abs(curDX), Math.abs(curDY));
 
-        // GPU-only: translate3d nunca causa layout reflow
         if (!rafId) {
             rafId = requestAnimationFrame(() => {
                 rafId = 0;
@@ -461,13 +504,19 @@ function initDraggableFloatingCallButton() {
         dragging = false;
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
 
-        // Commitar posição final em left/top, limpar transform
         const finalLeft = origLeft + curDX;
         const finalTop  = origTop  + curDY;
         btn.style.left      = finalLeft + 'px';
         btn.style.top       = finalTop  + 'px';
         btn.style.transform = 'translate3d(0,0,0)';
         btn.style.willChange = 'auto';
+
+        // Transição suave para snap
+        btn.style.transition = 'left 0.25s cubic-bezier(.4,0,.2,1), top 0.25s cubic-bezier(.4,0,.2,1)';
+        setTimeout(() => { btn.style.transition = ''; }, 260);
+
+        // Verifica snap após animação
+        setTimeout(checkSnap, SNAP_DELAY);
 
         try {
             localStorage.setItem('floatingCallBtnPos',
@@ -481,17 +530,17 @@ function initDraggableFloatingCallButton() {
     };
 
     if (window.PointerEvent) {
-        btn.addEventListener('pointerdown',   onDown, { passive: false });
+        btn.addEventListener('pointerdown',    onDown, { passive: false });
         window.addEventListener('pointermove', onMove, { passive: false });
-        window.addEventListener('pointerup',   onUp,  { passive: true  });
-        window.addEventListener('pointercancel', onUp, { passive: true  });
+        window.addEventListener('pointerup',   onUp,  { passive: true });
+        window.addEventListener('pointercancel', onUp, { passive: true });
     } else {
-        btn.addEventListener('touchstart', onDown, { passive: false });
+        btn.addEventListener('touchstart',    onDown, { passive: false });
         window.addEventListener('touchmove',  onMove, { passive: false });
-        window.addEventListener('touchend',   onUp,  { passive: true  });
-        btn.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup',  onUp);
+        window.addEventListener('touchend',   onUp,  { passive: true });
+        btn.addEventListener('mousedown',     onDown);
+        window.addEventListener('mousemove',  onMove);
+        window.addEventListener('mouseup',    onUp);
     }
 
     // Cancela click se foi drag
@@ -499,6 +548,55 @@ function initDraggableFloatingCallButton() {
         if (btn.__justDragged) { e.preventDefault(); e.stopPropagation(); }
     }, true);
 }
+
+// ── Convidar para call em andamento ───────────────────────────────────
+function openCallInvite() {
+    document.getElementById('modal-call-invite').classList.remove('hidden');
+    document.getElementById('call-invite-username').value = '';
+    document.getElementById('call-invite-error').style.display = 'none';
+    setTimeout(() => document.getElementById('call-invite-username').focus(), 100);
+}
+
+async function sendCallInvite() {
+    const username = (document.getElementById('call-invite-username').value || '').trim();
+    if (!username) return;
+    const errEl = document.getElementById('call-invite-error');
+    errEl.style.display = 'none';
+    try {
+        // Busca o usuário pelo username
+        const r = await authFetch(`/user/search?q=${encodeURIComponent(username)}`);
+        const data = await r.json();
+        const found = Array.isArray(data) ? data[0] : (data.users && data.users[0]);
+        if (!found) { errEl.innerText = 'Usuário não encontrado.'; errEl.style.display = 'block'; return; }
+        // Envia incoming_call via ring/dm usando o canal atual
+        await fetch('/call/ring/dm', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}`},
+            body: JSON.stringify({
+                caller_id: user.id,
+                target_id: found.id,
+                channel_name: window.currentAgoraChannel
+            })
+        });
+        showToast(`📞 Convite enviado para ${found.username || found.name}`);
+        document.getElementById('modal-call-invite').classList.add('hidden');
+    } catch(e) {
+        errEl.innerText = 'Falha ao enviar convite.';
+        errEl.style.display = 'block';
+    }
+}
+
+// Entrar em call já em andamento (sem ring)
+async function joinActiveCall(channel, type) {
+    if (rtc.client) return showToast("Você já está em uma call!");
+    window.isCaller = false;
+    window.pendingCallType = type;
+    window.currentAgoraChannel = channel;
+    document.getElementById('floating-call-btn').style.display = 'flex';
+    showCallPanel();
+    await connectToAgora(channel, type);
+}
+
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = true;
@@ -600,12 +698,21 @@ if (rtc.client) { await rtc.client.leave(); }
             renderCallPanel(rtc, user.id);
         });
         rtc.client.on("user-left", (remoteUser) => {
-            // Remote actually left the channel — end the call.
             delete rtc.remoteUsers[remoteUser.uid];
+            delete window.__remoteAudioState[remoteUser.uid];
             renderCallPanel(rtc, user.id);
-            if (window.callHasConnected) {
-                showToast("O aliado saiu da chamada.");
-                leaveCall();
+            const remaining = Object.keys(rtc.remoteUsers).length;
+            if (window.callHasConnected && remaining === 0) {
+                // Só encerra sozinho se for 1v1 — em grupo espera
+                const isGroup = (window.pendingCallType === 'group' || window.pendingCallType === 'channel');
+                if (!isGroup) {
+                    showToast("O aliado saiu da chamada.");
+                    leaveCall();
+                } else {
+                    showToast("Um aliado saiu da chamada.");
+                }
+            } else if (window.callHasConnected) {
+                showToast("Um aliado saiu da chamada.");
             }
         });
         
@@ -616,6 +723,10 @@ if (rtc.client) { await rtc.client.leave(); }
         
         await rtc.client.publish([rtc.localAudioTrack]);
         window.callHasConnected = true;
+        // Registra call ativa no backend (permite others to join)
+        try {
+            await authFetch('/call/start', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})});
+        } catch(_) {}
         window.__callEndLogged = false;
         if (!window.__callStartedAt) window.__callStartedAt = Date.now();
         if (!window.__callStartLogged) {
@@ -681,6 +792,9 @@ async function leaveCall() {
         globalWS.send(`CALL_SIGNAL:${window.callTargetId}:cancelled:${window.currentAgoraChannel}`);
     }
     
+    _stopCallKeepAlive();
+    // Desregistra call ativa
+    try { if (window.currentAgoraChannel) authFetch('/call/end', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})}); } catch(_) {}
     rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; window.currentAgoraChannel = null;
     window.isCaller = false; window.callTargetId = null;
     
@@ -1151,7 +1265,46 @@ function connectGlobalWS(){
 
     globalWS.onclose = () => { 
         // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
-        setTimeout(() => { if(user) connectGlobalWS(); }, 4000); 
+        setTimeout(() => { if(user) connectGlobalWS();
+// ── Reconexão ao voltar do segundo plano ──────────────────────────────
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'hidden' && rtc.client && window.currentAgoraChannel) {
+        try {
+            // Verifica se o audio track ainda está publicado
+            if (rtc.localAudioTrack && rtc.localAudioTrack.enabled === false) {
+                await rtc.localAudioTrack.setEnabled(true);
+            }
+            // Se o cliente desconectou, tenta reconectar
+            const state = rtc.client.connectionState;
+            if (state === 'DISCONNECTED' || state === 'DISCONNECTING') {
+                showToast('🔄 Reconectando call...');
+                await connectToAgora(window.currentAgoraChannel, window.pendingCallType);
+            }
+        } catch(e) { console.warn('visibilitychange reconnect:', e); }
+    }
+});
+
+// Mantém AudioContext ativo no mobile (evita suspensão pelo browser)
+let _keepAliveInterval = null;
+function _startCallKeepAlive() {
+    if (_keepAliveInterval) return;
+    _keepAliveInterval = setInterval(() => {
+        try {
+            if (rtc.client && AgoraRTC) {
+                // Agora SDK mantém conexão — apenas verificamos estado
+                const s = rtc.client.connectionState;
+                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
+                    console.warn('Keep-alive: state =', s);
+                }
+            }
+        } catch(_) {}
+    }, 8000);
+}
+function _stopCallKeepAlive() {
+    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
+}
+
+ }, 4000); 
     };
 }
 connectGlobalWS();
@@ -1388,9 +1541,31 @@ async function openChat(id, name, type, avatar) {
         }
     }
 
-    // Show/hide call button (groups may not support calls)
+    // Show/hide call button
     const callBtn = document.getElementById('dm-call-btn');
     if (callBtn) callBtn.style.display = 'flex';
+
+    // Verifica se há call ativa no canal e mostra badge "ENTRAR"
+    try {
+        const expectedCh = (type === 'group')
+            ? sanitizeChannelName(`call_group_${id}`)
+            : sanitizeChannelName(`call_dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`);
+        const r = await authFetch(`/call/active?channel=${encodeURIComponent(expectedCh)}`);
+        if (r.ok) {
+            const info = await r.json();
+            const sub = document.getElementById('dm-header-sub');
+            if (sub) {
+                if (info.active && !rtc.client) {
+                    sub.innerHTML = `<span class="join-call-badge" onclick="joinActiveCall('${expectedCh}','${type}')">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        CALL ATIVA · ${info.participants} ${info.participants===1?'pessoa':'pessoas'} · ENTRAR
+                    </span>`;
+                } else {
+                    sub.innerText = type === 'group' ? 'Grupo' : 'Mensagem Direta';
+                }
+            }
+        }
+    } catch(_) {}
 
     goView('dm');
     if (type === '1v1') {
@@ -1892,7 +2067,7 @@ function renderGroupMembers(members, creatorId){
 
         const av = document.createElement('img');
         av.className = 'group-member-avatar';
-        av.src = m.avatar ? safeAvatarUrl(m.avatar) : '/static/default-avatar.svg';
+        av.src = safeAvatarUrl(m.avatar_url || m.avatar) || '/static/default-avatar.svg';
         av.onerror = ()=>{ av.src = '/static/default-avatar.svg'; };
 
         const nm = document.createElement('div');
