@@ -390,45 +390,44 @@ function initDraggableFloatingCallButton() {
     } catch(e) {}
 
     btn.style.touchAction = 'none';
-    btn.style.userSelect = 'none';
+    btn.style.userSelect  = 'none';
 
     let dragging = false;
-    let startX = 0, startY = 0;
-    let origX = 0, origY = 0;
-    let btnW = 0, btnH = 0;
-    let moved = 0;
+    let startX = 0, startY = 0;   // pointer coords at drag start
+    let origLeft = 0, origTop = 0; // element left/top at drag start
+    let btnW = 0, btnH = 0;        // element size (captured once)
+    let curDX = 0, curDY = 0;      // last committed delta
+    let moved  = 0;
+    let rafId  = 0;
 
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-
-    // rAF-driven drag state (declared before handlers to avoid TDZ issues)
-    let rafId = 0, lastNX = 0, lastNY = 0;
-    let lastTX = 0, lastTY = 0;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
     const onDown = (ev) => {
+        if (ev.button !== undefined && ev.button !== 0) return; // só botão esquerdo
         const e = ev.touches ? ev.touches[0] : ev;
-        dragging = true;
-        moved = 0;
 
+        // Snapshot posição e tamanho uma única vez (o único getBCR permitido)
         const rect = btn.getBoundingClientRect();
-        // ensure fixed positioning with top/left
         btn.style.position = 'fixed';
-        btn.style.left = rect.left + 'px';
-        btn.style.top = rect.top + 'px';
-        btn.style.right = 'auto';
+        btn.style.right  = 'auto';
         btn.style.bottom = 'auto';
+        btn.style.left   = rect.left + 'px';
+        btn.style.top    = rect.top  + 'px';
+        btn.style.transform = 'translate3d(0,0,0)';
 
-        startX = e.clientX;
-        startY = e.clientY;
-        origX = rect.left;
-        origY = rect.top;
-        // Captura tamanho uma única vez aqui — evita getBoundingClientRect no onMove
-        btnW = rect.width;
-        btnH = rect.height;
-        lastNX = origX;
-        lastNY = origY;
-        btn.style.willChange = 'left, top';
+        origLeft = rect.left;
+        origTop  = rect.top;
+        btnW     = rect.width;
+        btnH     = rect.height;
+        startX   = e.clientX;
+        startY   = e.clientY;
+        curDX = curDY = 0;
+        moved     = 0;
+        dragging  = true;
 
-        try { btn.setPointerCapture && btn.setPointerCapture(ev.pointerId); } catch(_) {}
+        btn.style.willChange = 'transform';
+
+        try { ev.pointerId != null && btn.setPointerCapture(ev.pointerId); } catch(_){}
         ev.preventDefault && ev.preventDefault();
     };
 
@@ -436,67 +435,68 @@ function initDraggableFloatingCallButton() {
         if (!dragging) return;
         const e = ev.touches ? ev.touches[0] : ev;
 
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        moved = Math.max(moved, Math.abs(dx), Math.abs(dy));
+        // Delta clamped so button stays on screen
+        const maxDX = window.innerWidth  - btnW - 6 - origLeft;
+        const minDX = 6 - origLeft;
+        const maxDY = window.innerHeight - btnH - 6 - origTop;
+        const minDY = 6 - origTop;
 
-        // Clamp usando tamanho capturado no onDown (sem getBoundingClientRect aqui)
-        const nx = clamp(origX + dx, 6, window.innerWidth  - btnW - 6);
-        const ny = clamp(origY + dy, 6, window.innerHeight - btnH - 6);
-        lastNX = nx; lastNY = ny;
+        curDX = clamp(e.clientX - startX, minDX, maxDX);
+        curDY = clamp(e.clientY - startY, minDY, maxDY);
+        moved = Math.max(moved, Math.abs(curDX), Math.abs(curDY));
 
+        // GPU-only: translate3d nunca causa layout reflow
         if (!rafId) {
             rafId = requestAnimationFrame(() => {
                 rafId = 0;
-                btn.style.left = lastNX + 'px';
-                btn.style.top  = lastNY + 'px';
+                btn.style.transform = `translate3d(${curDX}px,${curDY}px,0)`;
             });
         }
 
         ev.preventDefault && ev.preventDefault();
     };
 
-    const onUp = (ev) => {
+    const onUp = () => {
         if (!dragging) return;
         dragging = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
 
-        // Posição já commitada via left/top no rAF, só limpa willChange
+        // Commitar posição final em left/top, limpar transform
+        const finalLeft = origLeft + curDX;
+        const finalTop  = origTop  + curDY;
+        btn.style.left      = finalLeft + 'px';
+        btn.style.top       = finalTop  + 'px';
+        btn.style.transform = 'translate3d(0,0,0)';
         btn.style.willChange = 'auto';
 
-        // Save position
         try {
-            const rect = btn.getBoundingClientRect();
-            localStorage.setItem('floatingCallBtnPos', JSON.stringify({ x: rect.left, y: rect.top }));
-        } catch(e) {}
+            localStorage.setItem('floatingCallBtnPos',
+                JSON.stringify({ x: finalLeft, y: finalTop }));
+        } catch(_) {}
 
-        // If it was a drag, cancel click to avoid opening/closing by accident
-        if (moved > 6) {
+        if (moved > 5) {
             btn.__justDragged = true;
-            setTimeout(() => { btn.__justDragged = false; }, 250);
+            setTimeout(() => { btn.__justDragged = false; }, 300);
         }
     };
 
-    // Use pointer events when available
     if (window.PointerEvent) {
-        btn.addEventListener('pointerdown', onDown, { passive: false });
+        btn.addEventListener('pointerdown',   onDown, { passive: false });
         window.addEventListener('pointermove', onMove, { passive: false });
-        window.addEventListener('pointerup', onUp, { passive: true });
-        window.addEventListener('pointercancel', onUp, { passive: true });
+        window.addEventListener('pointerup',   onUp,  { passive: true  });
+        window.addEventListener('pointercancel', onUp, { passive: true  });
     } else {
         btn.addEventListener('touchstart', onDown, { passive: false });
-        window.addEventListener('touchmove', onMove, { passive: false });
-        window.addEventListener('touchend', onUp, { passive: true });
+        window.addEventListener('touchmove',  onMove, { passive: false });
+        window.addEventListener('touchend',   onUp,  { passive: true  });
         btn.addEventListener('mousedown', onDown);
         window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
+        window.addEventListener('mouseup',  onUp);
     }
 
-    // Guard the existing click handler (if any)
+    // Cancela click se foi drag
     btn.addEventListener('click', (e) => {
-        if (btn.__justDragged) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+        if (btn.__justDragged) { e.preventDefault(); e.stopPropagation(); }
     }, true);
 }
 async function initCall(typeParam, targetId) {
@@ -1861,23 +1861,26 @@ function gsError(msg){
 async function loadGroupSettings(){
     try{
         const gid = currentChatId;
-        const data = await authFetch(`/group/${gid}`);
+        const res  = await authFetch(`/group/${gid}`);          // retorna Response
+        const data = await res.json();                           // parseia para objeto
         if (!data) return;
         const nameEl = document.getElementById('group-settings-name');
         const metaEl = document.getElementById('group-settings-meta');
-        const avEl = document.getElementById('group-settings-avatar');
+        const avEl   = document.getElementById('group-settings-avatar');
         if (nameEl) nameEl.innerText = data.name || 'Grupo';
         const members = Array.isArray(data.members) ? data.members : [];
-        if (metaEl) metaEl.innerText = `${members.length} membros`;
-        if (avEl) avEl.src = (data.avatar || data.avatar_url) ? safeAvatarUrl(data.avatar || data.avatar_url) : '/static/default-avatar.svg';
-        renderGroupMembers(members);
+        if (metaEl) metaEl.innerText = `${members.length} membro${members.length !== 1 ? 's' : ''}`;
+        if (avEl) avEl.src = (data.avatar || data.avatar_url)
+            ? safeAvatarUrl(data.avatar || data.avatar_url)
+            : '/static/default-avatar.svg';
+        renderGroupMembers(members, data.creator_id);
     }catch(e){
         console.error(e);
         gsError('Não foi possível carregar dados do grupo.');
     }
 }
 
-function renderGroupMembers(members){
+function renderGroupMembers(members, creatorId){
     const list = document.getElementById('group-members-list');
     if (!list) return;
     list.innerHTML = '';
@@ -1902,12 +1905,23 @@ function renderGroupMembers(members){
         const actions = document.createElement('div');
         actions.className = 'group-member-actions';
 
-        const btnRemove = document.createElement('button');
-        btnRemove.className = 'danger';
-        btnRemove.innerText = 'REMOVER';
-        btnRemove.onclick = ()=> removeGroupMember(m.id);
-
-        actions.appendChild(btnRemove);
+        // Não mostra REMOVER para si mesmo nem se não for criador
+        const isMe = (m.id === user.id);
+        const isCreator = (user.id === creatorId);
+        if (!isMe) {
+            const btnRemove = document.createElement('button');
+            btnRemove.className = 'gm-remove-btn';
+            btnRemove.title = 'Remover membro';
+            btnRemove.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+            if (!isCreator) btnRemove.style.display = 'none'; // só criador remove
+            btnRemove.onclick = ()=> removeGroupMember(m.id);
+            actions.appendChild(btnRemove);
+        } else {
+            const youBadge = document.createElement('span');
+            youBadge.className = 'gm-you-badge';
+            youBadge.innerText = 'Você';
+            actions.appendChild(youBadge);
+        }
 
         row.appendChild(left);
         row.appendChild(actions);

@@ -1202,38 +1202,14 @@ body {
 .group-settings-btn:active{ transform: scale(.96); }
 .group-settings-btn:hover{ background: rgba(255,255,255,.06); }
 
-.group-members-list{
-  max-height: 260px;
-  overflow:auto;
-  padding-right: 4px;
-}
-.group-member-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  padding:10px 10px;
-  border-radius:14px;
-  background: rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.06);
-  margin-bottom:10px;
-}
-.group-member-left{ display:flex; align-items:center; gap:10px; min-width:0; }
-.group-member-avatar{ width:34px; height:34px; border-radius:999px; object-fit:cover; }
-.group-member-name{ color: rgba(255,255,255,.88); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.group-member-actions{ display:flex; gap:8px; }
-.group-member-actions button{
-  border:1px solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.25);
-  color: rgba(255,255,255,.8);
-  padding:8px 10px;
-  border-radius:12px;
-  cursor:pointer;
-}
-.group-member-actions button.danger{
-  border-color: rgba(255,90,120,.35);
-  color: #ff9bb0;
-}
+
+
+
+
+
+
+
+
 
 /* ═══════════════════════════════════════════════
    SQUAD CARD — grupo no inbox redesenhado
@@ -1373,3 +1349,302 @@ body {
     color: rgba(102,252,241,0.5);
     transform: translateX(2px);
 }
+
+/* ═══════════════════════════════════════════════════
+   GROUP SETTINGS MODAL — gs-*
+   ═══════════════════════════════════════════════════ */
+
+.gs-modal {
+    background: var(--card-bg) !important;
+}
+
+/* Header */
+.gs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+}
+.gs-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    color: var(--primary);
+}
+.gs-close-btn {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #6b7280;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: var(--transition);
+}
+.gs-close-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+
+/* Scrollable body */
+.gs-body {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-height: 60vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+/* Identidade do grupo */
+.gs-identity-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+}
+
+/* Avatar clicável com overlay de câmera */
+.gs-av-wrap {
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    border-radius: 14px;
+    overflow: hidden;
+    width: 60px; height: 60px;
+}
+.gs-avatar {
+    width: 60px; height: 60px;
+    border-radius: 14px;
+    object-fit: cover;
+    display: block;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    transition: filter 0.2s;
+}
+.gs-av-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 0.18s;
+    color: white;
+    border-radius: 14px;
+}
+.gs-av-wrap:hover .gs-av-overlay { opacity: 1; }
+.gs-av-wrap:hover .gs-avatar { filter: brightness(0.7); }
+
+.gs-identity-info {
+    flex: 1;
+    min-width: 0;
+}
+.gs-group-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+}
+.gs-group-meta {
+    font-size: 12px;
+    color: rgba(102,252,241,0.6);
+    font-family: 'DM Sans', sans-serif;
+}
+
+/* Seção genérica */
+.gs-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.gs-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.3);
+    font-family: 'DM Sans', sans-serif;
+    text-transform: uppercase;
+}
+
+/* Linha de adicionar membro */
+.gs-add-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.gs-input {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 9px 14px;
+    color: white;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.gs-input::placeholder { color: rgba(255,255,255,0.25); }
+.gs-input:focus { border-color: rgba(102,252,241,0.35); }
+
+.gs-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 9px 14px;
+    background: rgba(102,252,241,0.1);
+    border: 1px solid rgba(102,252,241,0.3);
+    border-radius: 10px;
+    color: var(--primary);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+.gs-add-btn:hover {
+    background: rgba(102,252,241,0.18);
+    box-shadow: 0 0 12px rgba(102,252,241,0.15);
+}
+
+.gs-error {
+    color: #ff7b7b;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    padding: 0 2px;
+}
+
+/* Lista de membros */
+.group-members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.group-member-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    transition: background 0.15s;
+}
+.group-member-row:hover { background: rgba(255,255,255,0.06); }
+.group-member-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+.group-member-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+}
+.group-member-name {
+    color: rgba(255,255,255,0.88);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.group-member-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* Badge "Você" */
+.gm-you-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--primary);
+    background: rgba(102,252,241,0.1);
+    border: 1px solid rgba(102,252,241,0.2);
+    border-radius: 50px;
+    padding: 2px 8px;
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: 0.3px;
+}
+
+/* Botão remover — ícone X compacto */
+.gm-remove-btn {
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    background: rgba(255,77,109,0.08);
+    border: 1px solid rgba(255,77,109,0.25);
+    color: var(--danger);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: var(--transition);
+}
+.gm-remove-btn:hover {
+    background: rgba(255,77,109,0.18);
+    box-shadow: 0 0 8px rgba(255,77,109,0.2);
+}
+
+/* Footer */
+.gs-footer {
+    display: flex;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: rgba(0,0,0,0.15);
+}
+.gs-leave-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+    padding: 10px;
+    background: rgba(255,77,109,0.07);
+    border: 1px solid rgba(255,77,109,0.3);
+    border-radius: 10px;
+    color: #ff90a6;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.gs-leave-btn:hover {
+    background: rgba(255,77,109,0.14);
+    box-shadow: 0 0 12px rgba(255,77,109,0.12);
+}
+.gs-close-footer-btn {
+    padding: 10px 18px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    color: #6b7280;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+.gs-close-footer-btn:hover { background: rgba(255,255,255,0.09); color: white; }
