@@ -851,10 +851,10 @@ async function loadInbox(){
         let d = await r.json();
         let b = document.getElementById('inbox-list'); b.innerHTML = '';
         if((d.groups || []).length === 0 && (d.friends || []).length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
-        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
+        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group', '${g.avatar}')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
         (d.friends || []).forEach(f => {
             let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
+            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1', '${f.avatar}')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
         });
         updateStatusDots();
     } catch(e) { console.error(e); }
@@ -1175,11 +1175,41 @@ async function fetchChatMessages(id, type) {
     } catch (e) { console.error(e); }
 }
 
-async function openChat(id, name, type) {
+async function openChat(id, name, type, avatar) {
     let changingChat = (currentChatId !== id || currentChatType !== type);
     currentChatId = id;
     currentChatType = type;
+
+    // Populate header
     document.getElementById('dm-header-name').innerText = name;
+
+    // Sub-label by type
+    const sub = document.getElementById('dm-header-sub');
+    if (sub) sub.innerText = type === 'group' ? 'Grupo' : 'Mensagem Direta';
+
+    // Avatar
+    const av = document.getElementById('dm-header-avatar');
+    if (av) {
+        av.src = avatar ? safeAvatarUrl(avatar) : '/static/default-avatar.svg';
+        av.onerror = () => { av.src = '/static/default-avatar.svg'; };
+    }
+
+    // Status dot — só para 1v1
+    const dot = document.getElementById('dm-header-status-dot');
+    if (dot) {
+        if (type === '1v1') {
+            dot.setAttribute('data-uid', id);
+            dot.style.display = 'block';
+            updateStatusDots();
+        } else {
+            dot.style.display = 'none';
+        }
+    }
+
+    // Show/hide call button (groups may not support calls)
+    const callBtn = document.getElementById('dm-call-btn');
+    if (callBtn) callBtn.style.display = type === 'group' ? 'none' : 'flex';
+
     goView('dm');
     if (type === '1v1') {
         await fetch(`/inbox/read/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ uid: user.id }) });

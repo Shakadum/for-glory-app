@@ -224,14 +224,7 @@ body {
 .danger-btn { color: var(--danger) !important; border-color: rgba(255,77,109,0.25) !important; background: rgba(255,77,109,0.06) !important; margin-top: 16px; width: 100%; }
 .danger-btn:hover { background: rgba(255,77,109,0.12) !important; }
 
-.btn-call-header {
-    background: rgba(46,204,113,0.1) !important;
-    border-color: rgba(46,204,113,0.4) !important;
-    color: var(--success) !important;
-    padding: 8px 14px !important;
-    font-size: 13px !important;
-}
-.btn-call-header:hover { background: rgba(46,204,113,0.2) !important; box-shadow: 0 0 15px rgba(46,204,113,0.2); }
+
 
 /* ── Feed ──────────────────────────────────────────────────── */
 #feed-container {
@@ -968,4 +961,164 @@ body {
 }
 .cu-mute-btn.is-muted:hover {
     background: rgba(255,77,109,0.22);
+}
+
+/* ═══════════════════════════════════════════════════
+   DM CHAT TOPBAR — header premium redesenhado
+   ═══════════════════════════════════════════════════ */
+
+.dm-topbar {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 16px;
+    background: rgba(8,10,16,0.6);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px);
+    flex-shrink: 0;
+    position: relative;
+    /* linha teal sutil na base */
+}
+.dm-topbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 16px; right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(102,252,241,0.15) 30%,
+        rgba(102,252,241,0.15) 70%,
+        transparent
+    );
+}
+
+/* Botão voltar */
+.dm-back-btn {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #6b7280;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+.dm-back-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-color: rgba(255,255,255,0.15);
+}
+
+/* Wrap do avatar no header */
+.dm-topbar-av-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+.dm-topbar-avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    display: block;
+    background: var(--card-2);
+}
+.dm-topbar-status {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 10px; height: 10px;
+    border-width: 1.5px;
+    border-color: var(--card-bg);
+}
+
+/* Info: nome + subtítulo */
+.dm-topbar-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+.dm-topbar-name {
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dm-topbar-sub {
+    font-size: 11px;
+    color: #4b5563;
+    font-family: 'DM Sans', sans-serif;
+    white-space: nowrap;
+}
+
+/* ── Botão CALL premium ──────────────────────────── */
+.dm-call-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    background: rgba(46,204,113,0.08);
+    border: 1px solid rgba(46,204,113,0.3);
+    border-radius: 50px;
+    color: var(--success);
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: var(--transition);
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+/* Shimmer de fundo ao hover */
+.dm-call-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(46,204,113,0.12) 50%,
+        transparent 100%
+    );
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+}
+.dm-call-btn:hover::before {
+    transform: translateX(100%);
+}
+.dm-call-btn:hover {
+    background: rgba(46,204,113,0.14);
+    border-color: rgba(46,204,113,0.55);
+    box-shadow:
+        0 0 16px rgba(46,204,113,0.18),
+        0 0 0 1px rgba(46,204,113,0.1) inset;
+    transform: translateY(-1px);
+}
+.dm-call-btn:active {
+    transform: translateY(0) scale(0.97);
+}
+
+/* Ponto pulsante verde no botão */
+.dm-call-btn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+    flex-shrink: 0;
+    animation: call-dot-pulse 2.5s ease-in-out infinite;
+}
+@keyframes call-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 4px var(--success); }
+    50% { opacity: 0.6; transform: scale(0.85); box-shadow: 0 0 8px var(--success); }
+}
+
+.dm-call-btn-label {
+    /* só o texto */
 }
