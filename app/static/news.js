@@ -189,11 +189,14 @@ function applyNewsTravel() {
     loadNews('city');
 }
 
-// ── Inicializa quando a view de notícias é aberta ────────────
-const _origGoView = window.goView;
-if (typeof _origGoView === 'function') {
-    window.goView = function(view, btn) {
-        _origGoView(view, btn);
-        if (view === 'news') initNews();
-    };
-}
+// ── goView hook: patch app.js's goView to also init news ───
+// (called once after app.js loads)
+document.addEventListener('DOMContentLoaded', () => {
+    const _orig = window.goView;
+    if (typeof _orig === 'function') {
+        window.goView = function(v, btn) {
+            _orig(v, btn);
+            if (v === 'news') initNews();
+        };
+    }
+});
