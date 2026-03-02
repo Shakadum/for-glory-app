@@ -771,8 +771,9 @@ async function leaveCall() {
   try { clearInterval(callInterval); } catch(_) {}
   try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
   try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
+  try { document.getElementById('call-hud-status').innerText = ""; } catch(_) {}
 
-  // Captura referências antes de zerar estado
+  // Captura referências antes de "matar" o estado para permitir iniciar nova call
   const _client = (typeof rtc !== 'undefined' && rtc && rtc.client) ? rtc.client : null;
   const _localTrack = (typeof rtc !== 'undefined' && rtc && rtc.localAudioTrack) ? rtc.localAudioTrack : null;
 
@@ -794,12 +795,16 @@ async function leaveCall() {
     });
   } catch(_) {}
 
+  // Para sons/keepalive/estado
   try { stopSounds(); } catch(_) {}
   try { _stopCallKeepAlive(); } catch(_) {}
 
-  // Reseta estado global da call (UI/flags) — evita ficar "em call"
+  // Reseta flags globais usadas pela UI/fluxo de call
   try { window.callHasConnected = false; } catch(_) {}
   try { window.currentAgoraChannel = null; } catch(_) {}
+  try { window.pendingCallChannel = null; } catch(_) {}
+  try { window.pendingCallType = null; } catch(_) {}
+  try { window.pendingCallerId = null; } catch(_) {}
   try { window.isCaller = false; } catch(_) {}
   try { window.callTargetId = null; } catch(_) {}
   try { window.__callStartLogged = false; } catch(_) {}
@@ -807,13 +812,22 @@ async function leaveCall() {
   try { window.__callEndLogged = false; } catch(_) {}
   try { isMicMuted = false; } catch(_) {}
 
-  // Zera referências principais para impedir uso do client antigo
-  try { if (typeof rtc !== 'undefined' && rtc) rtc.localAudioTrack = null; } catch(_) {}
-  try { if (typeof rtc !== 'undefined' && rtc) rtc.client = null; } catch(_) {}
+  // IMPORTANTÍSSIMO: "mata" o estado do rtc imediatamente para permitir novas calls
+  try {
+    rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
+  } catch(_) {
+    // fallback
+    try { if (typeof rtc !== 'undefined' && rtc) { rtc.localAudioTrack = null; rtc.client = null; rtc.remoteUsers = {}; } } catch(__) {}
+  }
 
   // Limpeza pesada em background (não bloqueia UI)
   (async () => {
     try {
+      // Tenta remover listeners para evitar eventos atrasados reativarem estado
+      if (_client) {
+        try { _client.removeAllListeners && _client.removeAllListeners(); } catch(_) {}
+      }
+
       // Unpublish antes de fechar track
       if (_client && _localTrack) {
         try { await _client.unpublish([_localTrack]); } catch(_) {}
@@ -830,7 +844,7 @@ async function leaveCall() {
         try {
           await Promise.race([
             _client.leave(),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('leave timeout')), 2500))
+            new Promise((resolve) => setTimeout(resolve, 2500))
           ]);
         } catch(_) {}
       }
@@ -839,7 +853,6 @@ async function leaveCall() {
     }
   })();
 }
-
 
 window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
