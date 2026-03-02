@@ -2,12 +2,52 @@
 
 window.dmSendQueue = window.dmSendQueue || [];
 window.dmWSChatKey = window.dmWSChatKey || null;
-function sendSystemDmMessage(text) {
+function sendSystemDmMessage(text, chatKey) {
   try {
-    if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
-      dmWS.send(String(text));
+    const payload = String(text);
+    const key = chatKey || window.dmWSChatKey || null;
+    if (!key) return;
+
+    if (window.dmWS && window.dmWS.readyState === WebSocket.OPEN && window.dmWSChatKey === key) {
+      window.dmWS.send(payload);
+    } else {
+      // queue for later (avoid losing "call started/ended" etc when WS reconnects)
+      window.dmSendQueue = window.dmSendQueue || [];
+      window.dmSendQueue.push({ k: key, t: payload, ts: Date.now() });
+      if (window.dmSendQueue.length > 80) window.dmSendQueue = window.dmSendQueue.slice(-80);
     }
   } catch (e) { console.warn('system dm message failed', e); }
+}
+
+function flushDmSendQueue() {
+  try {
+    if (!window.dmWS || window.dmWS.readyState !== WebSocket.OPEN) return;
+    const key = window.dmWSChatKey;
+    if (!key) return;
+
+function buildChatKeyFor(id, type) {
+  try {
+    if (!user || !user.id) return null;
+    if (type === 'group') return `group_${id}`;
+    // 1v1 / dm
+    const a = Math.min(user.id, id);
+    const b = Math.max(user.id, id);
+    return `dm_${a}_${b}`;
+  } catch (e) { return null; }
+}
+
+
+    window.dmSendQueue = window.dmSendQueue || [];
+    const remaining = [];
+    for (const item of window.dmSendQueue) {
+      if (item && item.k === key) {
+        try { window.dmWS.send(String(item.t)); } catch (e) { remaining.push(item); }
+      } else {
+        remaining.push(item);
+      }
+    }
+    window.dmSendQueue = remaining;
+  } catch (e) { console.warn('flush dm queue failed', e); }
 }
 // ===== Emoji data (fallback) =====
 const EMOJIS = window.EMOJIS || [
@@ -661,237 +701,223 @@ async function acceptCall() {
 }
 
 async function connectToAgora(channelName, typeParam) {
-    window.currentAgoraChannel = sanitizeChannelName(channelName);
-    if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
-    document.getElementById('call-active-profile').style.display = 'none';
-    document.getElementById('call-hud-status').innerText = "CONECTANDO...";
-    
-    let bgAction = document.getElementById('call-bg-action');
-    if (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') { bgAction.style.display = 'block'; } 
-    else { bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; }
-    
+    // wait pending cleanup to avoid \"can't start another call\"
+    if (window.__leaveCallPromise) { try { await window.__leaveCallPromise; } catch(e) {} }
+    if (window.__connectingCall) { showToast('Aguarde...'); return; }
+    window.__connectingCall = true;
+    window.pendingCallType = typeParam;
+
     try {
+        window.currentAgoraChannel = sanitizeChannelName(channelName);
+        if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
+
+        document.getElementById('call-active-profile').style.display = 'none';
+        document.getElementById('call-hud-status').innerText = "CONECTANDO...";
+
+        let bgAction = document.getElementById('call-bg-action');
+        if (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') { bgAction.style.display = 'block'; } 
+        else { bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; }
+
         const safeCh = window.currentAgoraChannel;
         let res = await authFetch(`/agora/token?channel=${encodeURIComponent(safeCh)}&uid=${user.id}`);
-        if (!res.ok) {
-            console.error('Agora token error:', res.status);
-            showToast('⚠️ Sessão expirada ou sem permissão para a call. Faça login novamente.');
-            leaveCall();
+        let conf = await res.json();
+
+        if (!conf.app_id || conf.app_id.trim() === "") {
+            showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)");
+            await leaveCall();
             return;
         }
-        let conf = await res.json();
-        if (!conf.app_id || conf.app_id.trim() === "") { showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)"); leaveCall(); return; }
-if (rtc.client) { await rtc.client.leave(); }
-        
+        if (!conf.token || (typeof conf.token === "string" && conf.token.trim() === "")) {
+            showToast("⚠️ ERRO: Token Agora inválido (AGORA_APP_CERTIFICATE / endpoint /agora/token)");
+            await leaveCall();
+            return;
+        }
+
+        // If there's an old client still alive, kill it hard.
         try {
-            let rBg = await fetch(`/call/bg/call/${encodeURIComponent(window.currentAgoraChannel)}`); let resBg = await rBg.json();
-            if(resBg && resBg.bg_url) { document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`; } 
-            else { document.getElementById('expanded-call-panel').style.backgroundImage = 'none'; }
-        } catch(e) { console.error(e); }
+            if (rtc.client) {
+                try { rtc.client.removeAllListeners(); } catch(_) {}
+                try { await rtc.client.leave(); } catch(_) {}
+                rtc.client = null;
+            }
+        } catch(_) {}
+
+        // background (optional) -> apply to expanded + floating
+        try {
+            let rBg = await fetch(`/call/bg/call/${encodeURIComponent(safeCh)}`);
+            let resBg = await rBg.json();
+            const bgUrl = (resBg && resBg.bg_url) ? `url('${resBg.bg_url}')` : 'none';
+            const panel = document.getElementById('expanded-call-panel');
+            if (panel) panel.style.backgroundImage = bgUrl;
+            const floatBtn = document.getElementById('floating-call-btn');
+            if (floatBtn) floatBtn.style.backgroundImage = bgUrl;
+        } catch (e) { console.error(e); }
 
         rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         rtc.remoteUsers = {};
-        // Marca como "ainda não conectou com ninguém" (para auto-encerrar quando ficar sozinho)
-        window.callHasConnected = false;
-        
-        rtc.client.on("user-published", async (remoteUser, mediaType) => {
-            window.callHasConnected = true; 
-            stopSounds();
-            await rtc.client.subscribe(remoteUser, mediaType);
-            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; __getRemoteState(remoteUser.uid).remoteUnpub = false; remoteUser.audioTrack.play(); renderCallPanel(rtc, user.id); }
-        });
-        
-        rtc.client.on("user-unpublished", (remoteUser, mediaType) => {
-            // Remote stopped publishing audio/video — keep user visible and mark status.
-            rtc.remoteUsers[remoteUser.uid] = remoteUser;
-            if (mediaType === "audio" || !mediaType) __getRemoteState(remoteUser.uid).remoteUnpub = true;
-            renderCallPanel(rtc, user.id);
-        });
-        rtc.client.on("user-left", (remoteUser) => {
-            delete rtc.remoteUsers[remoteUser.uid];
-            if (window.__remoteAudioState) delete window.__remoteAudioState[remoteUser.uid];
-            renderCallPanel(rtc, user.id);
-            const remaining = Object.keys(rtc.remoteUsers).length;
-            if (window.callHasConnected) {
-                showToast("Um aliado saiu da chamada.");
-                // Encerra automaticamente quando ficar sozinho (grupo ou 1v1)
-                if (remaining === 0) {
-                    setTimeout(() => leaveCall(), 1500); // pequeno delay para o toast aparecer
-                }
+
+        rtc.client.on("connection-state-change", (cur) => {
+            if (cur === "DISCONNECTED") {
+                leaveCall();
             }
         });
-        // Connection dropped: ensure call ends for real
-        rtc.client.on("connection-state-change", (curState, prevState, reason) => {
+
+        rtc.client.on("user-published", async (remoteUser, mediaType) => {
             try {
-                if (curState === "DISCONNECTED" || curState === "DISCONNECTING") {
-                    if (!window.__leavingCall) leaveCall();
-                }
-            } catch(e) {}
+                window.callHasConnected = true;
+                stopSounds();
+                await rtc.client.subscribe(remoteUser, mediaType);
+
+                rtc.remoteUsers[remoteUser.uid] = remoteUser;
+
+                if (mediaType === "audio" && remoteUser.audioTrack) remoteUser.audioTrack.play();
+                renderCallPanel();
+            } catch (e) {
+                console.error("user-published handler error:", e);
+            }
         });
 
-        
-        await rtc.client.join(conf.app_id, window.currentAgoraChannel, conf.token, user.id);
-        
-        try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
-        catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
-        
+        const onRemoteGone = (remoteUser) => {
+            try { delete rtc.remoteUsers[remoteUser.uid]; } catch(_) {}
+            renderCallPanel();
+            if (Object.keys(rtc.remoteUsers || {}).length === 0) {
+                showToast("A call ficou vazia.");
+                leaveCall();
+            }
+        };
+        rtc.client.on("user-unpublished", onRemoteGone);
+        rtc.client.on("user-left", onRemoteGone);
+
+        // 1) JOIN
+        await rtc.client.join(conf.app_id, safeCh, conf.token, user.id);
+
+        // 2) MICROFONE
+        try {
+            rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        } catch (micErr) {
+            console.error("Mic error:", micErr);
+            alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio.");
+            await leaveCall();
+            return;
+        }
+
+        // 3) PUBLISH
         await rtc.client.publish([rtc.localAudioTrack]);
 
-        window.callStartedAt = Date.now();
-        window.__callStartedAt = window.callStartedAt;
-
-        // Auto-end for private calls when alone / nobody joins
-        if (typeParam === "dm" || typeParam === "1v1" || typeParam === "group") {
-            try { if (window.__callHealthInterval) clearInterval(window.__callHealthInterval); } catch(e){}
-            window.__callHealthInterval = setInterval(() => {
-                try {
-                    if (window.__leavingCall) return;
-                    const remoteCount = (rtc && rtc.remoteUsers) ? Object.keys(rtc.remoteUsers).length : 0;
-                    if (remoteCount === 0) {
-                        if (window.callHasConnected) {
-                            if (!window.__callAloneTimer) {
-                                window.__callAloneTimer = setTimeout(() => {
-                                    window.__callAloneTimer = null;
-                                    if (!window.__leavingCall) { showToast("Sem aliados na call."); leaveCall(); }
-                                }, 5000);
-                            }
-                        } else {
-                            if (!window.__callNoOneTimer) {
-                                window.__callNoOneTimer = setTimeout(() => {
-                                    window.__callNoOneTimer = null;
-                                    if (!window.__leavingCall && !window.callHasConnected) { showToast("Ninguem entrou na call."); leaveCall(); }
-                                }, 30000);
-                            }
-                        }
-                    } else {
-                        if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; }
-                        if (window.__callNoOneTimer) { clearTimeout(window.__callNoOneTimer); window.__callNoOneTimer = null; }
-                    }
-                } catch(e) {}
-            }, 3000);
-        }
-
-
-        // Registra call ativa no backend (permite others to join)
+        // Auto-hangup if nobody joins
         try {
-            await authFetch('/call/start', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})});
+            if (window.__callAloneTimer) clearTimeout(window.__callAloneTimer);
+            window.__callAloneTimer = setTimeout(() => {
+                try {
+                    if (rtc && rtc.client && Object.keys(rtc.remoteUsers || {}).length === 0) {
+                        showToast("Ninguém entrou na call.");
+                        leaveCall();
+                    }
+                } catch(_) {}
+            }, 20000);
         } catch(_) {}
-        window.__callEndLogged = false;
-        if ((typeParam === "dm" || typeParam === "1v1" || typeParam === "group") && !window.__callStartLogged) {
-            window.__callStartLogged = true;
-          const dt = new Date();
-          sendSystemDmMessage(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
-        }
 
-        document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
-        
-    } catch(e) { console.error("Call Connect Error:", e); showToast("Falha ao conectar na Call."); leaveCall(); }
+        // 4) UI
+        document.getElementById('floating-call-btn').style.display = 'flex';
+        showCallPanel();
+
+        // Log started only once per join
+        try {
+            if (!window.__callStartLogged && (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group')) {
+                window.__callStartLogged = true;
+                const msg = `📞 Chamada iniciada`;
+                const key = (typeParam === 'group') ? buildChatKeyFor(currentChatId, 'group') : buildChatKeyFor(currentChatId, '1v1');
+                sendSystemDmMessage(msg, key);
+            }
+        } catch(_) {}
+    } catch (e) {
+        console.error("Call Connect Error:", e);
+        showToast("Falha ao conectar na Call.");
+        await leaveCall();
+        return;
+    } finally {
+        window.__connectingCall = false;
+    }
 }
+
 
 async function uploadCallBg(inputElem){
-    if(!inputElem.files || !inputElem.files[0]) return;
-    if(!window.currentAgoraChannel) { showToast("Aguarde conectar na call."); return; }
-    showToast("Aplicando fundo tático...");
+    if(!inputElem || !inputElem.files || !inputElem.files[0]) return;
+    if(!window.currentAgoraChannel){ showToast('Sem call ativa.'); return; }
     try{
+        let f = inputElem.files[0];
         let formData = new FormData();
-        formData.append('file', inputElem.files[0]);
-        let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); // sem Content-Type
-        let data = await res.json();
-        await authFetch('/call/bg/set', {
-            method:'POST',
-            body:JSON.stringify({ target_type: 'call', target_id: window.currentAgoraChannel, bg_url: (pickUploadedUrl(data) || '') })
-        });
-        const bgUrl = pickUploadedUrl(data);
-        if(!bgUrl){ showToast('Erro na imagem.'); return; }
-        document.getElementById('expanded-call-panel').style.backgroundImage=`url('${bgUrl}')`;
-        showToast("Fundo alterado!");
-        if(globalWS && globalWS.readyState === WebSocket.OPEN) {
-            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + bgUrl);
-        }
-    } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
+        formData.append('file', f);
+
+        let up = await authFetch(`/call/bg/upload/${encodeURIComponent(window.currentAgoraChannel)}`, { method:'POST', body: formData });
+        if(!up.ok){ showToast('Falha ao enviar fundo.'); return; }
+        let data = await up.json();
+
+        const bgUrl = (data && data.bg_url) ? `url('${data.bg_url}')` : 'none';
+        const panel = document.getElementById('expanded-call-panel');
+        if(panel) panel.style.backgroundImage = bgUrl;
+
+        const floatBtn = document.getElementById('floating-call-btn');
+        if(floatBtn) floatBtn.style.backgroundImage = bgUrl;
+
+        showToast('Fundo atualizado!');
+    }catch(e){ console.error(e); showToast('Erro ao atualizar fundo.'); }
 }
 
-function leaveCall(){
-    if (window.__leavingCall) return;
-    window.__leavingCall = true;
 
-    // Captura antes de limpar (para conseguir encerrar no backend e parar o microfone)
-    const channel = window.currentAgoraChannel;
-    const typeParam = window.currentAgoraType || window.pendingCallType || null;
-    const startedAt = window.callStartedAt || window.__callStartedAt || null;
+async function leaveCall() {
+  // Single-flight: prevent multiple overlapping leave() calls
+  if (window.__leaveCallPromise) return window.__leaveCallPromise;
 
-    // Para timers/intervalos de call
-    try { if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; } } catch(e){}
-    try { if (window.__callNoOneTimer) { clearTimeout(window.__callNoOneTimer); window.__callNoOneTimer = null; } } catch(e){}
-    try { if (window.__callHealthInterval) { clearInterval(window.__callHealthInterval); window.__callHealthInterval = null; } } catch(e){}
+  window.__leavingCall = true;
+  window.__leaveCallPromise = (async () => {
+    // stop timers
+    try { if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; } } catch(_) {}
 
-    // Limpa UI imediatamente
-    try { hideCallPanel(); } catch(e){}
-    try { document.getElementById('call-active-profile').style.display = 'none'; } catch(e){}
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(e){}
-    try { const panel = document.getElementById('expanded-call-panel'); if(panel) panel.innerHTML = ''; } catch(e){}
+    // reset UI fast
+    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
+    try { hideCallPanel(); } catch(_) {}
+    try { stopSounds(); } catch(_) {}
 
-    // Limpa estado global (depois de capturar channel)
-    window.pendingCallChannel = null;
-    window.pendingCallFrom = null;
-    window.pendingCallType = null;
-    window.currentAgoraChannel = null;
-    window.currentAgoraType = null;
-    window.callHasConnected = false;
-    window.__callStartedAt = null;
+    // best-effort log end
+    try {
+      if (window.__callStartLogged && window.currentAgoraChannel && (window.pendingCallType === 'dm' || window.pendingCallType === '1v1' || window.pendingCallType === 'group')) {
+        const msg = `📴 Chamada finalizada`;
+        const key = (window.pendingCallType === 'group') ? buildChatKeyFor(currentChatId, 'group') : buildChatKeyFor(currentChatId, '1v1');
+        sendSystemDmMessage(msg, key);
+      }
+    } catch (e) { }
 
-    // Fecha/para áudio local e sai do Agora SEMPRE (privacidade)
-    (async () => {
-        try {
-            if (rtc && rtc.localAudioTrack) {
-                try { rtc.localAudioTrack.stop && rtc.localAudioTrack.stop(); } catch(e){}
-                try { rtc.localAudioTrack.close && rtc.localAudioTrack.close(); } catch(e){}
-                rtc.localAudioTrack = null;
-            }
-        } catch(e) {}
+    // hard cleanup tracks / agora client
+    try {
+      if (rtc && rtc.localAudioTrack) {
+        try { rtc.localAudioTrack.stop(); } catch(_) {}
+        try { rtc.localAudioTrack.close(); } catch(_) {}
+        rtc.localAudioTrack = null;
+      }
+    } catch(_) {}
 
-        try {
-            if (rtc && rtc.client) {
-                try { rtc.client.removeAllListeners && rtc.client.removeAllListeners(); } catch(e){}
-                try { await rtc.client.leave(); } catch(e){}
-                rtc.client = null;
-            }
-        } catch(e) {}
+    try {
+      if (rtc && rtc.client) {
+        try { rtc.client.removeAllListeners(); } catch(_) {}
+        try { await rtc.client.leave(); } catch(_) {}
+        rtc.client = null;
+      }
+    } catch(_) {}
 
-        try { rtc.remoteUsers = {}; } catch(e){}
+    try { rtc.remoteUsers = {}; } catch(_) {}
 
-        // Atualiza painel remoto (some com quem estava)
-        try { renderCallPanel(rtc, user.id); } catch(e){}
+    // reset state
+    try { window.currentAgoraChannel = null; } catch(_) {}
+    try { window.callHasConnected = false; } catch(_) {}
+    try { window.__callStartLogged = false; } catch(_) {}
+    try { window.pendingCallType = null; } catch(_) {}
+  })().finally(() => {
+    window.__leavingCall = false;
+    window.__leaveCallPromise = null;
+  });
 
-        // Encerrar no backend (remove da call ativa). Mesmo se falhar, o microfone já foi parado.
-        if (channel) {
-            try { await authFetch('/call/end', { method:'POST', body: JSON.stringify({ channel }) }); } catch(e){}
-        }
-
-        // Se era call privada (dm/1v1/group), manda mensagem de encerramento UMA vez
-        try {
-            if ((typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') && !window.__callEndLogged && startedAt) {
-                window.__callEndLogged = true;
-                const dur = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-                const mm = String(Math.floor(dur/60)).padStart(2,'0');
-                const ss = String(dur%60).padStart(2,'0');
-                sendSystemDmMessage(`☎️ Chamada finalizada (duração ${mm}:${ss})`);
-            }
-        } catch(e){}
-
-        window.__callStartLogged = false;
-        window.__callEndLogged = false;
-        window.callStartedAt = null;
-
-        // Informa outro lado para limpar UI dele também (evita "call ativa" fantasma)
-        try {
-            if (globalWS && globalWS.readyState === WebSocket.OPEN && channel) {
-                globalWS.send(`CALL_SIGNAL:${channel}:LEAVE:${user.id}`);
-            }
-        } catch(e){}
-
-        window.__leavingCall = false;
-    })();
+  return window.__leaveCallPromise;
 }
 
 
@@ -1188,6 +1214,12 @@ async function fetchUnread(){
     if(!user) return;
     try {
         let r = await fetch(`/notifications?nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+        if(!r.ok){
+            try{ document.getElementById('inbox-badge').style.display='none'; }catch(_){ }
+            try{ document.getElementById('bases-badge').style.display='none'; }catch(_){ }
+            try{ document.getElementById('profile-badge').style.display='none'; }catch(_){ }
+            return;
+        }
         let d = await r.json(); 
         window.unreadData = d.dms.by_sender || {};
         let badgeInbox = document.getElementById('inbox-badge');
@@ -1744,13 +1776,13 @@ function connectDmWS(id, name, type, loadToken) {
     let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
     dmWS.onopen = () => {
-        try {
-            while (window.dmSendQueue && window.dmSendQueue.length && dmWS.readyState === WebSocket.OPEN) {
-                dmWS.send(window.dmSendQueue.shift());
-            }
-        } catch (e) { console.error('flush dmSendQueue failed', e); }
+        window.dmWS = dmWS;
+        window.dmWSChatKey = ch;
+        flushDmSendQueue();
     };
     dmWS.onclose = () => {
+        try { if (window.dmWS === dmWS) { window.dmWS = null; } } catch(_) {}
+
         setTimeout(() => {
             // If user switched chats, don't reconnect/fetch the old chat.
             if (loadToken !== currentChatLoadToken) return;
@@ -1843,24 +1875,18 @@ function connectDmWS(id, name, type, loadToken) {
 }
 
 function sendDM(){
-  let i = document.getElementById('dm-msg');
-  let msg = i.value.trim();
+  let i=document.getElementById('dm-msg');
+  let msg=(i&&i.value?i.value.trim():'');
   if(!msg) return;
-
-  // clear input immediately for better UX
-  i.value = '';
-  toggleEmoji(true);
-
-  if(dmWS && dmWS.readyState === WebSocket.OPEN){
+  const key = buildChatKeyFor(currentChatId, currentChatType==='group'?'group':'1v1');
+  if(dmWS && dmWS.readyState===WebSocket.OPEN){
     dmWS.send(msg);
   } else {
     window.dmSendQueue = window.dmSendQueue || [];
-    window.dmSendQueue.push(msg);
-    try { dmWS && dmWS.close(); } catch(e) {}
-    if (window.currentChatId && window.currentChatType) {
-      connectDmWS(currentChatId, window.currentChatName || '', currentChatType, window.currentChatLoadToken);
-    }
+    if(key) window.dmSendQueue.push({k:key, t:msg, ts:Date.now()});
   }
+  if(i) i.value='';
+  toggleEmoji(true);
 }
 async function uploadDMImage(){
   let f = document.getElementById('dm-file').files[0];
