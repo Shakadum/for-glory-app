@@ -699,20 +699,15 @@ if (rtc.client) { await rtc.client.leave(); }
         });
         rtc.client.on("user-left", (remoteUser) => {
             delete rtc.remoteUsers[remoteUser.uid];
-            delete window.__remoteAudioState[remoteUser.uid];
+            if (window.__remoteAudioState) delete window.__remoteAudioState[remoteUser.uid];
             renderCallPanel(rtc, user.id);
             const remaining = Object.keys(rtc.remoteUsers).length;
-            if (window.callHasConnected && remaining === 0) {
-                // Só encerra sozinho se for 1v1 — em grupo espera
-                const isGroup = (window.pendingCallType === 'group' || window.pendingCallType === 'channel');
-                if (!isGroup) {
-                    showToast("O aliado saiu da chamada.");
-                    leaveCall();
-                } else {
-                    showToast("Um aliado saiu da chamada.");
-                }
-            } else if (window.callHasConnected) {
+            if (window.callHasConnected) {
                 showToast("Um aliado saiu da chamada.");
+                // Encerra automaticamente quando ficar sozinho (grupo ou 1v1)
+                if (remaining === 0) {
+                    setTimeout(() => leaveCall(), 1500); // pequeno delay para o toast aparecer
+                }
             }
         });
         
@@ -771,39 +766,60 @@ async function leaveCall() {
     if (window.__leavingCall) return;
     window.__leavingCall = true;
     try {
-      const startedAt = window.__callStartedAt;
-      if (startedAt && !window.__callEndLogged) {
-        window.__callEndLogged = true;
-        const ms = Date.now() - startedAt;
-        const sec = Math.max(0, Math.floor(ms/1000));
-        const mm = String(Math.floor(sec/60)).padStart(2,"0");
-        const ss = String(sec%60).padStart(2,"0");
-        sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
-      }
-    } catch(e) {}
-    window.__callStartLogged = false;
-    window.__callStartedAt = null;
- 
-    stopSounds();
-    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
-    if (rtc.client) { await rtc.client.leave(); } 
-    
-    if (window.isCaller && window.callTargetId && !window.callHasConnected && globalWS) {
-        globalWS.send(`CALL_SIGNAL:${window.callTargetId}:cancelled:${window.currentAgoraChannel}`);
-    }
-    
-    _stopCallKeepAlive();
-    // Desregistra call ativa
-    try { if (window.currentAgoraChannel) authFetch('/call/end', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})}); } catch(_) {}
-    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; window.currentAgoraChannel = null;
-    window.isCaller = false; window.callTargetId = null;
-    
-    clearInterval(callInterval); 
-    document.getElementById('expanded-call-panel').style.display = 'none'; 
-    document.getElementById('floating-call-btn').style.display = 'none'; 
-    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`; isMicMuted = false;
+        // Registra duração no chat
+        try {
+            const startedAt = window.__callStartedAt;
+            if (startedAt && !window.__callEndLogged) {
+                window.__callEndLogged = true;
+                const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+                const ss = String(sec % 60).padStart(2, '0');
+                sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+            }
+        } catch(_) {}
 
-    window.__leavingCall = false;
+        window.__callStartLogged = false;
+        window.__callStartedAt  = null;
+
+        stopSounds();
+        _stopCallKeepAlive();
+
+        if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); }
+        if (rtc.client) {
+            try { await rtc.client.leave(); } catch(_) {}
+        }
+
+        if (window.isCaller && window.callTargetId && !window.callHasConnected && globalWS) {
+            globalWS.send(`CALL_SIGNAL:${window.callTargetId}:cancelled:${window.currentAgoraChannel}`);
+        }
+
+        // Desregistra call ativa no backend
+        try {
+            if (window.currentAgoraChannel)
+                authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel: window.currentAgoraChannel }) });
+        } catch(_) {}
+
+        rtc.localAudioTrack = null;
+        rtc.client = null;
+        window.callHasConnected = false;
+        window.currentAgoraChannel = null;
+        window.isCaller = false;
+        window.callTargetId = null;
+
+        clearInterval(callInterval);
+        document.getElementById('expanded-call-panel').style.display = 'none';
+        document.getElementById('floating-call-btn').style.display = 'none';
+
+        const muteBtn = document.getElementById('btn-mute-call');
+        if (muteBtn) {
+            muteBtn.classList.remove('muted');
+            muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+        }
+        isMicMuted = false;
+    } finally {
+        // SEMPRE reseta a trava — sem isso desligar ficava bloqueado pra sempre
+        window.__leavingCall = false;
+    }
 }
 
 window.callUsersCache = {};
@@ -987,7 +1003,15 @@ async function toggleMuteCall() {
 }
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
-function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
+
+// Mostra/esconde botão de convidar conforme tipo da call
+function updateCallInviteBtn() {
+    const btn = document.querySelector('.cp-ctrl-invite');
+    if (!btn) return;
+    const isGroup = (window.pendingCallType === 'group' || window.pendingCallType === 'channel');
+    btn.style.display = isGroup ? 'flex' : 'none';
+}
+function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; updateCallInviteBtn(); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
