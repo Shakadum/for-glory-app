@@ -1,5 +1,7 @@
 
 
+window.dmSendQueue = window.dmSendQueue || [];
+window.dmWSChatKey = window.dmWSChatKey || null;
 function sendSystemDmMessage(text) {
   try {
     if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
@@ -762,22 +764,9 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-async function leaveCall() {
-    if (window.__leavingCall) return;
-    window.__leavingCall = true;
-
-    // ── 1) Snapshot before clearing ─────────────────────────────────────
-    const wasCaller    = window.isCaller;
-    const targetId     = window.callTargetId;
-    const channel      = window.currentAgoraChannel;
-    const wasConnected = window.callHasConnected;
-    const startedAt    = window.__callStartedAt;
-
-    const _client     = rtc && rtc.client ? rtc.client : null;
-    const _audioTrack = rtc && rtc.localAudioTrack ? rtc.localAudioTrack : null;
-
-    // ── 2) UI off immediately (never block) ─────────────────────────────
-    try { clearInterval(callInterval); } catch(_) {}
+function leaveCall() {
+    // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
+    clearInterval(callInterval);
     try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
     try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
     try {
@@ -789,40 +778,31 @@ async function leaveCall() {
     } catch(_) {}
     isMicMuted = false;
 
-    // ── 3) Stop all remote audio immediately (fix "still hearing") ─────
-    try {
-        if (rtc && rtc.remoteUsers) {
-            Object.values(rtc.remoteUsers).forEach(u => {
-                try { if (u && u.audioTrack) { u.audioTrack.setVolume && u.audioTrack.setVolume(0); u.audioTrack.stop(); } } catch(_) {}
-            });
-        }
-    } catch(_) {}
+    // ── 2. Captura estado antes de limpar ──────────────────────────────
+    const wasCaller    = window.isCaller;
+    const targetId     = window.callTargetId;
+    const channel      = window.currentAgoraChannel;
+    const wasConnected = window.callHasConnected;
+    const startedAt    = window.__callStartedAt;
 
+    // ── 3. Captura referências Agora antes de limpar ──────────────────────
+    const _audioTrack = rtc.localAudioTrack;
+    const _client     = rtc.client;
     stopSounds();
-    try { _stopCallKeepAlive(); } catch(_) {}
+    _stopCallKeepAlive();
+    rtc.localAudioTrack = null;
+    rtc.client          = null;
+    window.callHasConnected    = false;
+    window.currentAgoraChannel = null;
+    window.isCaller            = false;
+    window.callTargetId        = null;
+    window.__callStartLogged   = false;
+    window.__callStartedAt     = null;
+    window.__leavingCall       = false;
 
-    // ── 4) Clear all local call state NOW (fix "still in call" banner) ─
-    window.callHasConnected     = false;
-    window.currentAgoraChannel  = null;
-    window.isCaller             = false;
-    window.callTargetId         = null;
-    window.pendingCallChannel   = null;
-    window.pendingCallType      = null;
-    window.pendingCallerId      = null;
-    window.__callStartLogged    = false;
-    window.__callEndLogged      = false;
-    window.__callStartedAt      = null;
-
-    // Keep object but detach references
-    if (rtc) {
-        rtc.remoteUsers = {};
-        rtc.localAudioTrack = null;
-        rtc.client = null;
-    }
-
-    // ── 5) Heavy cleanup (mic release + leave + backend) ───────────────
+    // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
     (async () => {
-        // log duration once
+        // Duração no chat
         try {
             if (startedAt && !window.__callEndLogged) {
                 window.__callEndLogged = true;
@@ -833,45 +813,28 @@ async function leaveCall() {
             }
         } catch(_) {}
 
-        // cancel ring if never connected
+        // Sinal de cancelamento
         try {
-            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN) {
+            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
                 globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
-            }
         } catch(_) {}
 
-        // release mic: unpublish + stop + close
+        // Sai do canal Agora — com timeout de 4s para não travar
         try {
-            if (_client && _audioTrack) {
-                try { await _client.unpublish([_audioTrack]); } catch(_) {}
-            }
+            if (_audioTrack) _audioTrack.close();
         } catch(_) {}
-        try { if (_audioTrack) { try { _audioTrack.stop(); } catch(_) {} try { _audioTrack.close(); } catch(_) {} } } catch(_) {}
-
-        // leave agora with timeout
         try {
-            if (_client) {
-                // Best-effort detach handlers to avoid late events
-                try { _client.removeAllListeners && _client.removeAllListeners(); } catch(_) {}
-                await Promise.race([
-                    _client.leave(),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
-                ]);
-            }
+            if (_client) await Promise.race([
+                _client.leave(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+            ]);
         } catch(_) {}
 
-        // backend call/end: do it even if Agora leave times out
+        // Backend
         try {
-            if (channel) {
+            if (channel)
                 await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
-                // retry once after a short delay (covers intermittent fetch/cors issues)
-                setTimeout(() => {
-                    try { authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) }); } catch(_) {}
-                }, 600);
-            }
         } catch(_) {}
-
-        window.__leavingCall = false;
     })();
 }
 
@@ -1171,7 +1134,16 @@ async function fetchUnread(){
         if(document.getElementById('view-mycomms').classList.contains('active')) {
             document.querySelectorAll('.comm-card').forEach(card => { let cid = card.getAttribute('data-id'); let dot = card.querySelector('.req-dot'); if(d.comms.by_comm[cid]) { if(dot) dot.style.display='block'; } else { if(dot) dot.style.display='none'; } });
         }
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error(e);
+        const badgeInbox = document.getElementById('inbox-badge');
+        const badgeBases = document.getElementById('bases-badge');
+        const badgeProfile = document.getElementById('profile-badge');
+        if (badgeInbox) badgeInbox.style.display = 'none';
+        if (badgeBases) badgeBases.style.display = 'none';
+        if (badgeProfile) badgeProfile.style.display = 'none';
+        window.unreadData = {};
+        window.lastTotalUnread = 0;
+    }
 }
 
 async function loadInbox(){
@@ -1217,7 +1189,31 @@ async function loadInbox(){
 }
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
-async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await authFetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
+async async function submitCreateGroup(){
+  let name = document.getElementById('new-group-name').value.trim();
+  if(!name) return;
+
+  let cbs = document.querySelectorAll('.grp-friend-cb:checked');
+  let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
+  if(member_ids.length === 0) return;
+
+  try{
+    let r = await authFetch('/group/create', {
+      method:'POST',
+      body: JSON.stringify({ name:name, creator_id:user.id, member_ids:member_ids })
+    });
+    if(r.ok){
+      document.getElementById('modal-create-group').classList.add('hidden');
+      loadInbox();
+    } else {
+      console.error('POST /group/create failed', r.status);
+      showToast('Erro ao criar grupo.');
+    }
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao criar grupo.');
+  }
+}
 async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
@@ -1662,15 +1658,22 @@ function connectDmWS(id, name, type, loadToken) {
     let token = localStorage.getItem('token');
     let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
+    dmWS.onopen = () => {
+        try {
+            while (window.dmSendQueue && window.dmSendQueue.length && dmWS.readyState === WebSocket.OPEN) {
+                dmWS.send(window.dmSendQueue.shift());
+            }
+        } catch (e) { console.error('flush dmSendQueue failed', e); }
+    };
     dmWS.onclose = () => {
         setTimeout(() => {
             // If user switched chats, don't reconnect/fetch the old chat.
             if (loadToken !== currentChatLoadToken) return;
             if (currentChatId === id && currentChatType === type && document.getElementById('view-dm').classList.contains('active')) {
-                fetchChatMessages(id, type, loadToken);
+                // no fetchChatMessages on close; avoid races/badges
                 connectDmWS(id, name, type, loadToken);
             }
-        }, 2000);
+        }, 1200);
     };
     dmWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
@@ -1754,18 +1757,51 @@ function connectDmWS(id, name, type, loadToken) {
     };
 }
 
-function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
+function sendDM(){
+  let i = document.getElementById('dm-msg');
+  let msg = i.value.trim();
+  if(!msg) return;
+
+  // clear input immediately for better UX
+  i.value = '';
+  toggleEmoji(true);
+
+  if(dmWS && dmWS.readyState === WebSocket.OPEN){
+    dmWS.send(msg);
+  } else {
+    window.dmSendQueue = window.dmSendQueue || [];
+    window.dmSendQueue.push(msg);
+    try { dmWS && dmWS.close(); } catch(e) {}
+    if (window.currentChatId && window.currentChatType) {
+      connectDmWS(currentChatId, window.currentChatName || '', currentChatType, window.currentChatLoadToken);
+    }
+  }
+}
 async function uploadDMImage(){
-  let f=document.getElementById('dm-file').files[0];
+  let f = document.getElementById('dm-file').files[0];
   if(!f) return;
   try{
-    let formData=new FormData(); formData.append('file', f);
+    let formData = new FormData();
+    formData.append('file', f);
     let res = await authFetch('/upload', { method:'POST', body: formData, headers:{} });
     let data = await res.json();
-    const url = pickUploadedUrl(data);
+    const url = (typeof pickUploadedUrl === 'function' ? pickUploadedUrl(data) : null) || data.secure_url || data.url;
     if(!url){ showToast("Erro no upload da imagem."); return; }
-    if(dmWS) dmWS.send(url);
-  }catch(e){ console.error(e); showToast("Erro no upload da imagem."); }
+
+    if(dmWS && dmWS.readyState === WebSocket.OPEN){
+      dmWS.send(url);
+    } else {
+      window.dmSendQueue = window.dmSendQueue || [];
+      window.dmSendQueue.push(url);
+      try { dmWS && dmWS.close(); } catch(e) {}
+      if (window.currentChatId && window.currentChatType) {
+        connectDmWS(currentChatId, window.currentChatName || '', currentChatType, window.currentChatLoadToken);
+      }
+    }
+  }catch(e){
+    console.error(e);
+    showToast("Erro no upload da imagem.");
+  }
 }
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
