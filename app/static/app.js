@@ -762,13 +762,46 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-async function leaveCall() {
-    if (window.__leavingCall) return;
-    window.__leavingCall = true;
+function leaveCall() {
+    // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
+    clearInterval(callInterval);
+    try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
+    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
     try {
-        // Registra duração no chat
+        const muteBtn = document.getElementById('btn-mute-call');
+        if (muteBtn) {
+            muteBtn.classList.remove('muted');
+            muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+        }
+    } catch(_) {}
+    isMicMuted = false;
+
+    // ── 2. Captura estado antes de limpar ──────────────────────────────
+    const wasCaller    = window.isCaller;
+    const targetId     = window.callTargetId;
+    const channel      = window.currentAgoraChannel;
+    const wasConnected = window.callHasConnected;
+    const startedAt    = window.__callStartedAt;
+
+    // ── 3. Captura referências Agora antes de limpar ──────────────────────
+    const _audioTrack = rtc.localAudioTrack;
+    const _client     = rtc.client;
+    stopSounds();
+    _stopCallKeepAlive();
+    rtc.localAudioTrack = null;
+    rtc.client          = null;
+    window.callHasConnected    = false;
+    window.currentAgoraChannel = null;
+    window.isCaller            = false;
+    window.callTargetId        = null;
+    window.__callStartLogged   = false;
+    window.__callStartedAt     = null;
+    window.__leavingCall       = false;
+
+    // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
+    (async () => {
+        // Duração no chat
         try {
-            const startedAt = window.__callStartedAt;
             if (startedAt && !window.__callEndLogged) {
                 window.__callEndLogged = true;
                 const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -778,48 +811,29 @@ async function leaveCall() {
             }
         } catch(_) {}
 
-        window.__callStartLogged = false;
-        window.__callStartedAt  = null;
-
-        stopSounds();
-        _stopCallKeepAlive();
-
-        if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); }
-        if (rtc.client) {
-            try { await rtc.client.leave(); } catch(_) {}
-        }
-
-        if (window.isCaller && window.callTargetId && !window.callHasConnected && globalWS) {
-            globalWS.send(`CALL_SIGNAL:${window.callTargetId}:cancelled:${window.currentAgoraChannel}`);
-        }
-
-        // Desregistra call ativa no backend
+        // Sinal de cancelamento
         try {
-            if (window.currentAgoraChannel)
-                authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel: window.currentAgoraChannel }) });
+            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
+                globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
         } catch(_) {}
 
-        rtc.localAudioTrack = null;
-        rtc.client = null;
-        window.callHasConnected = false;
-        window.currentAgoraChannel = null;
-        window.isCaller = false;
-        window.callTargetId = null;
+        // Sai do canal Agora — com timeout de 4s para não travar
+        try {
+            if (_audioTrack) _audioTrack.close();
+        } catch(_) {}
+        try {
+            if (_client) await Promise.race([
+                _client.leave(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+            ]);
+        } catch(_) {}
 
-        clearInterval(callInterval);
-        document.getElementById('expanded-call-panel').style.display = 'none';
-        document.getElementById('floating-call-btn').style.display = 'none';
-
-        const muteBtn = document.getElementById('btn-mute-call');
-        if (muteBtn) {
-            muteBtn.classList.remove('muted');
-            muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
-        }
-        isMicMuted = false;
-    } finally {
-        // SEMPRE reseta a trava — sem isso desligar ficava bloqueado pra sempre
-        window.__leavingCall = false;
-    }
+        // Backend
+        try {
+            if (channel)
+                await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
+        } catch(_) {}
+    })();
 }
 
 window.callUsersCache = {};
