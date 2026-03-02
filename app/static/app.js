@@ -762,11 +762,36 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
+
+function _forceHideCallUI(){
+    try {
+        const panel = document.getElementById('expanded-call-panel');
+        if (panel) {
+            panel.style.display = 'none';
+            panel.classList.remove('open','show','active');
+        }
+    } catch(_) {}
+    try {
+        const btn = document.getElementById('floating-call-btn');
+        if (btn) {
+            btn.style.display = 'none';
+            btn.style.visibility = 'hidden';
+            btn.style.pointerEvents = 'none';
+            btn.classList.remove('open','show','active');
+        }
+    } catch(_) {}
+}
+
 function leaveCall() {
-    // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
-    clearInterval(callInterval);
-    try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
+    // Evita re-entrância (click duplo / eventos Agora)
+    if (window.__leavingCall) return;
+    window.__leavingCall = true;
+
+    // 1) Fecha UI imediatamente (sem await)
+    try { clearInterval(callInterval); } catch(_) {}
+    _forceHideCallUI();
+
+    // Reset do botão mute (se existir)
     try {
         const muteBtn = document.getElementById('btn-mute-call');
         if (muteBtn) {
@@ -776,18 +801,21 @@ function leaveCall() {
     } catch(_) {}
     isMicMuted = false;
 
-    // ── 2. Captura estado antes de limpar ──────────────────────────────
+    // 2) Captura estado antes de limpar
     const wasCaller    = window.isCaller;
     const targetId     = window.callTargetId;
     const channel      = window.currentAgoraChannel;
     const wasConnected = window.callHasConnected;
     const startedAt    = window.__callStartedAt;
 
-    // ── 3. Captura referências Agora antes de limpar ──────────────────────
+    // 3) Captura refs Agora antes de limpar
     const _audioTrack = rtc.localAudioTrack;
     const _client     = rtc.client;
+
     stopSounds();
     _stopCallKeepAlive();
+
+    // 4) Limpa estado local (para UI não "voltar")
     rtc.localAudioTrack = null;
     rtc.client          = null;
     window.callHasConnected    = false;
@@ -795,46 +823,63 @@ function leaveCall() {
     window.isCaller            = false;
     window.callTargetId        = null;
     window.__callStartLogged   = false;
-    window.__callStartedAt     = null;
-    window.__leavingCall       = false;
 
-    // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
+    // 5) Limpeza pesada em background
     (async () => {
-        // Duração no chat
         try {
-            if (startedAt && !window.__callEndLogged) {
-                window.__callEndLogged = true;
-                const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-                const mm = String(Math.floor(sec / 60)).padStart(2, '0');
-                const ss = String(sec % 60).padStart(2, '0');
-                sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+            // Evento "finalizada" (uma vez por call)
+            try {
+                if (startedAt && !window.__callEndLogged) {
+                    window.__callEndLogged = true;
+                    const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+                    const ss = String(sec % 60).padStart(2, '0');
+                    sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+                }
+            } catch(_) {}
+
+            // Se foi caller e cancelou antes de conectar
+            try {
+                if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
+                    globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
+            } catch(_) {}
+
+            // Fecha track e sai do Agora com timeout curto
+            try { if (_audioTrack) _audioTrack.close(); } catch(_) {}
+            try {
+                if (_client) await Promise.race([
+                    _client.leave(),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500))
+                ]);
+            } catch(e) {
+                console.warn('leave Agora failed:', e);
             }
-        } catch(_) {}
 
-        // Sinal de cancelamento
-        try {
-            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
-                globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
-        } catch(_) {}
-
-        // Sai do canal Agora — com timeout de 4s para não travar
-        try {
-            if (_audioTrack) _audioTrack.close();
-        } catch(_) {}
-        try {
-            if (_client) await Promise.race([
-                _client.leave(),
-                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-            ]);
-        } catch(_) {}
-
-        // Backend
-        try {
-            if (channel)
-                await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
-        } catch(_) {}
+            // Backend: encerra sessão
+            try {
+                if (channel) await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
+            } catch(_) {}
+        } finally {
+            // garante que flags ficam limpas mesmo se algo falhar
+            window.__callStartedAt = null;
+            window.__callEndLogged = false;
+            window.__leavingCall   = false;
+            // re-garante UI escondida
+            _forceHideCallUI();
+        }
     })();
 }
+
+// Garantia extra: se você mexer no HTML e perder onclick,
+// esse bind mantém o botão "Encerrar" funcionando.
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        document.querySelectorAll('.cp-ctrl-end,[data-call-end="1"]').forEach(el => {
+            el.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); leaveCall(); }, { passive:false });
+        });
+    } catch(_) {}
+});
+
 
 window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
