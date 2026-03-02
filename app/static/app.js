@@ -930,8 +930,8 @@ async function renderCallPanel(rtc, localUid) {
         const usersList = document.getElementById('call-users-list');
         const activeProfile = document.getElementById('call-active-profile');
 
-        const statusText = document.getElementById('call-status');
-        const timeText = document.getElementById('call-time');
+        const statusText = document.getElementById('call-hud-status');
+        const timeText = document.getElementById('call-hud-time');
         const nameText = document.getElementById('call-active-name');
         const avatarImg = document.getElementById('call-active-avatar');
 
@@ -1021,6 +1021,7 @@ async function renderCallPanel(rtc, localUid) {
 
         if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic?.avatar);
         if (nameText) nameText.textContent = (activeBasic?.name || 'Usuário');
+        if (activeProfile) activeProfile.style.display = 'flex';
 
         // Status + timer
         if (statusText) statusText.textContent = 'EM CHAMADA';
@@ -1111,6 +1112,7 @@ function updateCallInviteBtn() {
     btn.style.display = isGroup ? 'flex' : 'none';
 }
 function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; updateCallInviteBtn(); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
+function hideCallPanel() { const p = document.getElementById('expanded-call-panel'); if (p) p.style.display = 'none'; clearInterval(callInterval); callInterval = null; }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
