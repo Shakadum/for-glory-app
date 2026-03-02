@@ -8,6 +8,153 @@
     <script async defer src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
     <title>For Glory</title>
     <link rel="stylesheet" href="/static/app.css">
+
+    <!-- ===== NEWS BROWSER STYLES ===== -->
+    <style>
+    /* Header */
+    .news-header {
+        background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(11,12,16,0.95) 100%);
+        border-bottom: 1px solid rgba(102,252,241,0.12);
+        padding: 14px 16px 0;
+        flex-shrink: 0;
+        position: sticky; top: 0; z-index: 10;
+    }
+    .news-header-top {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .news-location-badge {
+        font-size: 11px; color: #66fcf1; opacity: 0.7;
+        font-family: 'DM Sans'; margin-bottom: 10px;
+        letter-spacing: 0.5px;
+    }
+
+    /* Zoom bar */
+    .news-zoom-bar {
+        display: flex; gap: 4px;
+        overflow-x: auto; padding-bottom: 0;
+        scrollbar-width: none;
+    }
+    .news-zoom-bar::-webkit-scrollbar { display: none; }
+    .news-zoom-btn {
+        display: flex; align-items: center; gap: 5px;
+        padding: 8px 14px; border: none; cursor: pointer;
+        font-family: 'DM Sans'; font-size: 12px; font-weight: 600;
+        background: transparent; color: #6b7280;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap; transition: all 0.2s;
+        border-radius: 0;
+    }
+    .news-zoom-btn:hover { color: #c5c6c7; }
+    .news-zoom-btn.active {
+        color: #66fcf1;
+        border-bottom-color: #66fcf1;
+    }
+
+    /* Cards container */
+    .news-cards-container {
+        flex: 1; overflow-y: auto; padding: 16px;
+        display: flex; flex-direction: column; gap: 14px;
+    }
+
+    /* Featured card */
+    .news-card-featured {
+        display: block; text-decoration: none;
+        position: relative; border-radius: 14px; overflow: hidden;
+        background: #111; min-height: 180px;
+        border: 1px solid rgba(102,252,241,0.12);
+        transition: transform 0.2s, border-color 0.2s;
+    }
+    .news-card-featured:hover {
+        transform: translateY(-2px);
+        border-color: rgba(102,252,241,0.35);
+    }
+    .news-card-featured-img {
+        width: 100%; height: 200px; object-fit: cover;
+        display: block;
+    }
+    .news-card-featured-overlay {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        padding: 14px 16px;
+        background: linear-gradient(0deg, rgba(0,0,0,0.92) 0%, transparent 100%);
+    }
+    .news-card-featured-title {
+        font-family: 'Syne'; font-weight: 700; font-size: 16px;
+        color: white; line-height: 1.4; margin: 6px 0 6px;
+    }
+    .news-card-featured-meta {
+        font-size: 11px; color: #888; display: flex; gap: 6px;
+        font-family: 'DM Sans';
+    }
+
+    /* Grid for remaining */
+    .news-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+        gap: 12px;
+    }
+
+    /* Regular card */
+    .news-card {
+        display: flex; flex-direction: column; text-decoration: none;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; overflow: hidden;
+        transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    }
+    .news-card:hover {
+        background: rgba(102,252,241,0.05);
+        border-color: rgba(102,252,241,0.2);
+        transform: translateY(-1px);
+    }
+    .news-card-img {
+        width: 100%; height: 130px; object-fit: cover; display: block;
+    }
+    .news-card-body { padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .news-card-title {
+        font-family: 'DM Sans'; font-weight: 600; font-size: 13px;
+        color: #e5e7eb; line-height: 1.45;
+    }
+    .news-card-desc { font-size: 12px; color: #6b7280; line-height: 1.4; }
+    .news-card-meta {
+        font-size: 11px; color: #4b5563; display: flex; gap: 5px;
+        margin-top: auto; padding-top: 4px; font-family: 'DM Sans';
+    }
+
+    /* Category badge */
+    .news-cat-badge {
+        display: inline-block; font-size: 10px; font-weight: 700;
+        font-family: 'Rajdhani'; letter-spacing: 1px;
+        padding: 2px 7px; border-radius: 20px;
+        border: 1px solid; text-transform: uppercase;
+    }
+
+    /* Loading */
+    .news-loading {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 14px; color: #4b5563;
+        font-family: 'DM Sans'; font-size: 13px; padding: 60px 0;
+    }
+    .news-spinner {
+        width: 28px; height: 28px; border-radius: 50%;
+        border: 2px solid rgba(102,252,241,0.15);
+        border-top-color: #66fcf1;
+        animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .news-empty {
+        text-align: center; padding: 60px 20px;
+        color: #6b7280; font-family: 'DM Sans'; font-size: 13px;
+        line-height: 1.6;
+    }
+
+    /* View layout */
+    #view-news {
+        display: flex; flex-direction: column; height: 100%; overflow: hidden;
+    }
+    </style>
 </head>
 <body>
 <div id="toast">Notificação</div>
@@ -359,7 +506,8 @@
         <!-- Feed (timeline) removido a pedido do usuário -->
         <button class="nav-btn" onclick="goView('mycomms', this)" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div id="bases-badge" class="nav-badge"></div></button>
         <button class="nav-btn" onclick="goView('explore', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-        <button class="nav-btn" onclick="goView('history', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
+        <button class="nav-btn" onclick="goView('history', this)">
+        <button class="nav-btn" onclick="goView('news', this)" title="Notícias Localizadas"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg></button><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
     </div>
     
     <div id="content-area">
@@ -566,5 +714,52 @@
 </div>
 
 <script src="/static/app.js" defer></script>
+
+        <div id="view-news" class="view">
+            <!-- HEADER -->
+            <div class="news-header">
+                <div class="news-header-top">
+                    <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:800; font-size:22px; letter-spacing:2px;">📡 NOTÍCIAS</span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button onclick="openNewsTravel()" class="glass-btn" style="padding:6px 12px; margin:0; font-size:12px;">✈ Viajar</button>
+                        <button onclick="loadNews(window.__newsLevel)" class="glass-btn" style="padding:6px 10px; margin:0;">↺</button>
+                    </div>
+                </div>
+                <div id="news-location-badge" class="news-location-badge">📍 Detectando...</div>
+                <!-- ZOOM SELECTOR -->
+                <div class="news-zoom-bar">
+                    <button class="news-zoom-btn active" data-level="city" onclick="switchNewsLevel('city')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        Minha Cidade
+                    </button>
+                    <button class="news-zoom-btn" data-level="state" onclick="switchNewsLevel('state')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Estado & País
+                    </button>
+                    <button class="news-zoom-btn" data-level="world" onclick="switchNewsLevel('world')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        Geopolítica
+                    </button>
+                </div>
+            </div>
+            <!-- CARDS -->
+            <div id="news-cards-container" class="news-cards-container"></div>
+        </div>
+
+        <!-- Modal: viajar para outra cidade -->
+        <div id="modal-news-travel" class="modal hidden">
+            <div class="modal-box" style="max-width:360px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <div style="font-family:'Syne';font-weight:800;font-size:14px;color:var(--primary);letter-spacing:1px;">✈ VER OUTRA CIDADE</div>
+                    <button onclick="document.getElementById('modal-news-travel').classList.add('hidden')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;width:28px;height:28px;color:#6b7280;cursor:pointer;">✕</button>
+                </div>
+                <input id="news-travel-input" class="gs-input" placeholder="Ex: São Paulo, Curitiba, Lisboa..." style="width:100%;box-sizing:border-box;margin-bottom:12px;">
+                <div style="display:flex;gap:8px;">
+                    <button class="btn-main" onclick="applyNewsTravel()" style="flex:1;margin:0;">🔍 Buscar</button>
+                    <button class="btn-main" onclick="window.__newsCustomCity=null; document.getElementById('modal-news-travel').classList.add('hidden'); loadNews('city');" style="flex:1;margin:0;background:transparent;border:1px solid #444;color:#888;">Resetar</button>
+                </div>
+            </div>
+        </div>
+<script src="/static/news.js"></script>
 </body>
 </html>
