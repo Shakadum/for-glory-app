@@ -762,79 +762,84 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-function leaveCall() {
-    // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
-    clearInterval(callInterval);
-    try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
+async function leaveCall() {
+  // Evita duplo clique / reentrância
+  if (window.__leavingCall) return;
+  window.__leavingCall = true;
+
+  // Fecha a UI imediatamente (não bloqueia)
+  try { clearInterval(callInterval); } catch(_) {}
+  try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
+  try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
+
+  // Captura referências antes de zerar estado
+  const _client = (typeof rtc !== 'undefined' && rtc && rtc.client) ? rtc.client : null;
+  const _localTrack = (typeof rtc !== 'undefined' && rtc && rtc.localAudioTrack) ? rtc.localAudioTrack : null;
+
+  // Snapshot dos usuários remotos para parar áudio imediatamente
+  const _remoteUsers = [];
+  try {
+    if (_client && _client.remoteUsers && _client.remoteUsers.length) {
+      _client.remoteUsers.forEach(u => _remoteUsers.push(u));
+    }
+  } catch(_) {}
+
+  // Para playback remoto imediatamente (evita continuar ouvindo após encerrar)
+  try {
+    _remoteUsers.forEach(u => {
+      if (u && u.audioTrack) {
+        try { u.audioTrack.stop(); } catch(_) {}
+        try { u.audioTrack.setVolume(0); } catch(_) {}
+      }
+    });
+  } catch(_) {}
+
+  try { stopSounds(); } catch(_) {}
+  try { _stopCallKeepAlive(); } catch(_) {}
+
+  // Reseta estado global da call (UI/flags) — evita ficar "em call"
+  try { window.callHasConnected = false; } catch(_) {}
+  try { window.currentAgoraChannel = null; } catch(_) {}
+  try { window.isCaller = false; } catch(_) {}
+  try { window.callTargetId = null; } catch(_) {}
+  try { window.__callStartLogged = false; } catch(_) {}
+  try { window.__callStartedAt = null; } catch(_) {}
+  try { window.__callEndLogged = false; } catch(_) {}
+  try { isMicMuted = false; } catch(_) {}
+
+  // Zera referências principais para impedir uso do client antigo
+  try { if (typeof rtc !== 'undefined' && rtc) rtc.localAudioTrack = null; } catch(_) {}
+  try { if (typeof rtc !== 'undefined' && rtc) rtc.client = null; } catch(_) {}
+
+  // Limpeza pesada em background (não bloqueia UI)
+  (async () => {
     try {
-        const muteBtn = document.getElementById('btn-mute-call');
-        if (muteBtn) {
-            muteBtn.classList.remove('muted');
-            muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
-        }
-    } catch(_) {}
-    isMicMuted = false;
+      // Unpublish antes de fechar track
+      if (_client && _localTrack) {
+        try { await _client.unpublish([_localTrack]); } catch(_) {}
+      }
 
-    // ── 2. Captura estado antes de limpar ──────────────────────────────
-    const wasCaller    = window.isCaller;
-    const targetId     = window.callTargetId;
-    const channel      = window.currentAgoraChannel;
-    const wasConnected = window.callHasConnected;
-    const startedAt    = window.__callStartedAt;
+      // Fecha seu microfone
+      if (_localTrack) {
+        try { _localTrack.stop(); } catch(_) {}
+        try { _localTrack.close(); } catch(_) {}
+      }
 
-    // ── 3. Captura referências Agora antes de limpar ──────────────────────
-    const _audioTrack = rtc.localAudioTrack;
-    const _client     = rtc.client;
-    stopSounds();
-    _stopCallKeepAlive();
-    rtc.localAudioTrack = null;
-    rtc.client          = null;
-    window.callHasConnected    = false;
-    window.currentAgoraChannel = null;
-    window.isCaller            = false;
-    window.callTargetId        = null;
-    window.__callStartLogged   = false;
-    window.__callStartedAt     = null;
-    window.__leavingCall       = false;
-
-    // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
-    (async () => {
-        // Duração no chat
+      // Sai do canal Agora com timeout (não trava o app)
+      if (_client) {
         try {
-            if (startedAt && !window.__callEndLogged) {
-                window.__callEndLogged = true;
-                const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-                const mm = String(Math.floor(sec / 60)).padStart(2, '0');
-                const ss = String(sec % 60).padStart(2, '0');
-                sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
-            }
+          await Promise.race([
+            _client.leave(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('leave timeout')), 2500))
+          ]);
         } catch(_) {}
-
-        // Sinal de cancelamento
-        try {
-            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
-                globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
-        } catch(_) {}
-
-        // Sai do canal Agora — com timeout de 4s para não travar
-        try {
-            if (_audioTrack) _audioTrack.close();
-        } catch(_) {}
-        try {
-            if (_client) await Promise.race([
-                _client.leave(),
-                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-            ]);
-        } catch(_) {}
-
-        // Backend
-        try {
-            if (channel)
-                await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
-        } catch(_) {}
-    })();
+      }
+    } finally {
+      window.__leavingCall = false;
+    }
+  })();
 }
+
 
 window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
