@@ -356,7 +356,7 @@
             <div id="profile-badge" class="nav-badge"></div>
         </button>
         <button class="nav-btn" onclick="goView('inbox', this)" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><div id="inbox-badge" class="nav-badge"></div></button>
-        <button class="nav-btn" onclick="goView('feed', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+        <!-- Feed (timeline) removido a pedido do usuário -->
         <button class="nav-btn" onclick="goView('mycomms', this)" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div id="bases-badge" class="nav-badge"></div></button>
         <button class="nav-btn" onclick="goView('explore', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
         <button class="nav-btn" onclick="goView('history', this)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
@@ -403,7 +403,7 @@
             </div>
         </div>
         
-        <div id="view-inbox" class="view">
+        <div id="view-inbox" class="view active">
             <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;font-size:20px;" data-i18n="private_msgs">MENSAGENS PRIVADAS</div>
                 <button onclick="openCreateGroupModal()" class="glass-btn" style="padding:8px 12px; margin:0; flex:none;" data-i18n="group_x1">+ GRUPO X1</button>
@@ -411,7 +411,8 @@
             <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
         </div>
         
-        <div id="view-feed" class="view active">
+        <!-- Feed removido: placeholder invisível para manter compatibilidade -->
+        <div id="view-feed" class="view" style="display:none;">
             <div id="feed-container"></div>
             <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
@@ -544,7 +545,7 @@
         </div>
         
         <div id="view-public-profile" class="view">
-            <button onclick="goView('feed', document.querySelectorAll('.nav-btn')[2])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);color:white;border:1px solid rgba(255,255,255,0.12);padding:9px 16px;border-radius:50px;backdrop-filter:blur(12px);cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;" data-i18n="back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar</button>
+            <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[0])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);color:white;border:1px solid rgba(255,255,255,0.12);padding:9px 16px;border-radius:50px;backdrop-filter:blur(12px);cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;" data-i18n="back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar</button>
             <div class="profile-header-container">
                 <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
                 <div class="profile-pic-lg-wrap">
