@@ -88,34 +88,10 @@
         <button id="btn-mute-call" class="cp-ctrl-btn cp-ctrl-mic" onclick="toggleMuteCall()" title="Mutar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
-        <button class="cp-ctrl-btn cp-ctrl-invite" onclick="openCallInvite()" title="Convidar para a call">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-        </button>
         <button class="cp-ctrl-btn cp-ctrl-end" onclick="leaveCall()" title="Encerrar">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
         </button>
     </div>
-</div>
-
-<!-- Modal: convidar para call em andamento -->
-<div id="modal-call-invite" class="modal hidden">
-  <div class="modal-box" style="max-width:380px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-family:'Syne';font-weight:800;font-size:14px;color:var(--primary);letter-spacing:1px;">CONVIDAR PARA A CALL</div>
-      <button onclick="document.getElementById('modal-call-invite').classList.add('hidden')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;width:28px;height:28px;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="gs-add-row" style="margin-bottom:12px;">
-      <input id="call-invite-username" class="gs-input" placeholder="Usuário (ex: Shakadum)" autocomplete="off">
-      <button class="gs-add-btn" onclick="sendCallInvite()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 13.19 19 19.5 19.5 0 0 1 5 10.81 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        CHAMAR
-      </button>
-    </div>
-    <div id="call-invite-error" style="display:none;color:#ff7b7b;font-size:12px;font-family:'DM Sans';"></div>
-    <p style="font-size:11px;color:#4b5563;font-family:'DM Sans';margin:0;">O usuário receberá uma notificação para entrar na call.</p>
-  </div>
 </div>
 
 <div id="modal-login" class="modal">
@@ -254,70 +230,6 @@
     </div>
 </div>
 
-<div id="modal-group-settings" class="modal hidden">
-  <div class="modal-box gs-modal" style="max-width:480px; padding:0; overflow:hidden;">
-
-    <!-- Header -->
-    <div class="gs-header">
-      <div class="gs-title">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        CONFIGURAÇÕES DO GRUPO
-      </div>
-      <button class="gs-close-btn" onclick="closeGroupSettings()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <!-- Corpo scrollável -->
-    <div class="gs-body">
-
-      <!-- Card identidade do grupo -->
-      <div class="gs-identity-card">
-        <div class="gs-av-wrap" onclick="changeGroupAvatar()" title="Trocar foto">
-          <img id="group-settings-avatar" class="gs-avatar" src="/static/default-avatar.svg" alt="">
-          <div class="gs-av-overlay">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          </div>
-        </div>
-        <div class="gs-identity-info">
-          <div id="group-settings-name" class="gs-group-name">Grupo</div>
-          <div id="group-settings-meta" class="gs-group-meta">0 membros</div>
-        </div>
-      </div>
-
-      <!-- Adicionar membro -->
-      <div class="gs-section">
-        <div class="gs-section-label">ADICIONAR MEMBRO</div>
-        <div class="gs-add-row">
-          <input id="group-add-username" class="gs-input" placeholder="Usuário (ex: Shakadum)" autocomplete="off" autocorrect="off">
-          <button class="gs-add-btn" onclick="addGroupMember()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            ADD
-          </button>
-        </div>
-        <div id="group-settings-error" class="gs-error" style="display:none;"></div>
-      </div>
-
-      <!-- Lista de membros -->
-      <div class="gs-section">
-        <div class="gs-section-label">MEMBROS</div>
-        <div id="group-members-list" class="group-members-list"></div>
-      </div>
-
-    </div><!-- /gs-body -->
-
-    <!-- Footer com ações -->
-    <div class="gs-footer">
-      <button class="gs-leave-btn" onclick="leaveGroup()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        SAIR DO GRUPO
-      </button>
-      <button class="gs-close-footer-btn" onclick="closeGroupSettings()">FECHAR</button>
-    </div>
-
-  </div>
-</div>
-
 <div id="modal-upload" class="modal hidden">
     <div class="modal-box">
         <h2 style="color:white" data-i18n="new_post">NOVO POST</h2>
@@ -449,38 +361,12 @@
             </div>
         </div>
         
-        <div id="view-dm" class="view dm-view-shell">
+        <div id="view-dm" class="view" style="justify-content:center; padding:15px; background:rgba(0,0,0,0.5);">
             <div class="chat-box-centered">
-                <div class="dm-topbar">
-                    <!-- Botão voltar -->
-                    <button class="dm-back-btn" onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    </button>
-
-                    <!-- Avatar + status -->
-                    <div class="dm-topbar-av-wrap" id="dm-header-avatar-wrap">
-                        <img id="dm-header-avatar" class="dm-topbar-avatar" src="/static/default-avatar.svg" onerror="this.src='/static/default-avatar.svg'">
-                        <span class="status-dot dm-topbar-status" id="dm-header-status-dot"></span>
-                    </div>
-
-                    <!-- Nome + subtítulo -->
-                    <div class="dm-topbar-info">
-                        <div class="dm-topbar-name-row">
-                            <div class="dm-topbar-name" id="dm-header-name">Chat</div>
-                            <button class="group-settings-btn" id="group-settings-btn" onclick="openGroupSettings()" title="Configurações do grupo" style="display:none" aria-label="Configurações do grupo">⚙️</button>
-                        </div>
-                        <div class="dm-topbar-sub" id="dm-header-sub">Mensagem Direta</div>
-                    </div>
-
-                    <!-- Espaço flexível -->
-                    <div style="flex:1"></div>
-
-                    <!-- Botão CALL premium -->
-                    <button class="dm-call-btn" id="dm-call-btn" onclick="initCall(currentChatType, currentChatId)">
-                        <span class="dm-call-btn-dot"></span>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        <span class="dm-call-btn-label">CALL</span>
-                    </button>
+                <div style="padding:15px;display:flex;align-items:center;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
+                    <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[1])" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:#9ca3af;font-size:18px;cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                    <div id="dm-header-name" style="color:white;font-family:'Rajdhani';font-weight:bold;letter-spacing:1px;font-size:18px;flex:1;">Chat</div>
+                    <button onclick="initCall(currentChatType, currentChatId)" class="glass-btn btn-call-header" style="flex:none; padding:8px 15px; border-color:#2ecc71; color:#2ecc71;">📞 CALL</button>
                 </div>
                 <div id="dm-list"></div>
                 <form id="dm-input-area" class="chat-input-area" onsubmit="sendDM(); return false;">

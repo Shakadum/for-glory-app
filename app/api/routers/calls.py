@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query
 from app.api.core import *
 
 router = APIRouter()
@@ -107,34 +107,3 @@ def get_channel_bg(channel_id: int, db: Session = Depends(get_db)):
 # WEBSOCKET (COM TOKEN)
 # ----------------------------------------------------------------------
 
-
-# ─────────────────────────────────────────────────────────────
-#  ACTIVE CALL TRACKER  (in-memory — resets on server restart)
-# ─────────────────────────────────────────────────────────────
-_active_calls: dict = {}   # channel_name -> {"started_at": timestamp, "users": set()}
-
-@router.post("/call/start")
-async def call_start(d: dict = Body(...), user=Depends(get_current_user)):
-    ch = str(d.get("channel", "")).strip()
-    if not ch:
-        raise HTTPException(400, "channel required")
-    if ch not in _active_calls:
-        _active_calls[ch] = {"started_at": __import__("time").time(), "users": set()}
-    _active_calls[ch]["users"].add(user.id)
-    return {"status": "ok"}
-
-@router.post("/call/end")
-async def call_end(d: dict = Body(...), user=Depends(get_current_user)):
-    ch = str(d.get("channel", "")).strip()
-    if ch in _active_calls:
-        _active_calls[ch]["users"].discard(user.id)
-        if not _active_calls[ch]["users"]:
-            del _active_calls[ch]
-    return {"status": "ok"}
-
-@router.get("/call/active")
-async def call_active(channel: str, user=Depends(get_current_user)):
-    info = _active_calls.get(channel)
-    if not info or not info["users"]:
-        return {"active": False}
-    return {"active": True, "participants": len(info["users"])}

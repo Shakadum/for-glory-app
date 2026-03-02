@@ -55,19 +55,7 @@ def get_inbox(
     for gm in my_groups:
         group = db.query(ChatGroup).filter_by(id=gm.group_id).first()
         if group:
-            # Fetch all members with their avatars for preview
-            members = db.query(User).join(GroupMember, GroupMember.user_id == User.id).filter(GroupMember.group_id == group.id).all()
-            member_previews = [
-                {"id": m.id, "name": m.username, "avatar": (m.avatar_url or "")}
-                for m in members[:5]  # max 5 avatars para preview
-            ]
-            groups_data.append({
-                "id": group.id,
-                "name": group.name,
-                "avatar": (group.avatar_url or ""),
-                "member_count": len(members),
-                "member_previews": member_previews,
-            })
+            groups_data.append({"id": group.id, "name": group.name, "avatar": "https://ui-avatars.com/api/?name=G&background=111&color=66fcf1"})
     return {"friends": friends_data, "groups": groups_data}
 
 
