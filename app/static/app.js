@@ -720,6 +720,15 @@ if (rtc.client) { await rtc.client.leave(); }
                 }
             }
         });
+        // Connection dropped: ensure call ends for real
+        rtc.client.on("connection-state-change", (curState, prevState, reason) => {
+            try {
+                if (curState === "DISCONNECTED" || curState === "DISCONNECTING") {
+                    if (!window.__leavingCall) leaveCall();
+                }
+            } catch(e) {}
+        });
+
         
         await rtc.client.join(conf.app_id, window.currentAgoraChannel, conf.token, user.id);
         
@@ -728,30 +737,51 @@ if (rtc.client) { await rtc.client.leave(); }
         
         await rtc.client.publish([rtc.localAudioTrack]);
 
-        // Se ninguém entrar em 30s, encerra por privacidade/UX.
-        setTimeout(() => {
-            try{
-                if(rtc && rtc.client && Object.keys(rtc.remoteUsers || {}).length === 0){
-                    showToast("Ninguém entrou na call.");
-                    leaveCall();
-                }
-            }catch(e){}
-        }, 30000);
+        window.callStartedAt = Date.now();
+        window.__callStartedAt = window.callStartedAt;
+
+        // Auto-end for private calls when alone / nobody joins
+        if (typeParam === "dm" || typeParam === "1v1" || typeParam === "group") {
+            try { if (window.__callHealthInterval) clearInterval(window.__callHealthInterval); } catch(e){}
+            window.__callHealthInterval = setInterval(() => {
+                try {
+                    if (window.__leavingCall) return;
+                    const remoteCount = (rtc && rtc.remoteUsers) ? Object.keys(rtc.remoteUsers).length : 0;
+                    if (remoteCount === 0) {
+                        if (window.callHasConnected) {
+                            if (!window.__callAloneTimer) {
+                                window.__callAloneTimer = setTimeout(() => {
+                                    window.__callAloneTimer = null;
+                                    if (!window.__leavingCall) { showToast("Sem aliados na call."); leaveCall(); }
+                                }, 5000);
+                            }
+                        } else {
+                            if (!window.__callNoOneTimer) {
+                                window.__callNoOneTimer = setTimeout(() => {
+                                    window.__callNoOneTimer = null;
+                                    if (!window.__leavingCall && !window.callHasConnected) { showToast("Ninguem entrou na call."); leaveCall(); }
+                                }, 30000);
+                            }
+                        }
+                    } else {
+                        if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; }
+                        if (window.__callNoOneTimer) { clearTimeout(window.__callNoOneTimer); window.__callNoOneTimer = null; }
+                    }
+                } catch(e) {}
+            }, 3000);
+        }
+
+
         // Registra call ativa no backend (permite others to join)
         try {
             await authFetch('/call/start', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})});
         } catch(_) {}
         window.__callEndLogged = false;
-        if (!window.__callStartedAt) window.__callStartedAt = Date.now();
-        if (!window.__callStartLogged) {
-          window.__callStartLogged = true;
+        if ((typeParam === "dm" || typeParam === "1v1" || typeParam === "group") && !window.__callStartLogged) {
+            window.__callStartLogged = true;
           const dt = new Date();
           sendSystemDmMessage(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
         }
-        try {
-            window.callStartedAt = Date.now();
-            // (evita duplicar) o sendSystemDmMessage acima já envia o evento de call no chat
-        } catch(e) { console.warn('call chat start event failed', e); }
 
         document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
         
@@ -781,85 +811,89 @@ async function uploadCallBg(inputElem){
     } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
 
-function leaveCall() {
-    // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
-    clearInterval(callInterval);
+function leaveCall(){
+    if (window.__leavingCall) return;
+    window.__leavingCall = true;
 
-    // Evita qualquer reconexão automática (ex: visibilitychange) enquanto está saindo.
-    window.currentAgoraChannel = null;
+    // Captura antes de limpar (para conseguir encerrar no backend e parar o microfone)
+    const channel = window.currentAgoraChannel;
+    const typeParam = window.currentAgoraType || window.pendingCallType || null;
+    const startedAt = window.callStartedAt || window.__callStartedAt || null;
+
+    // Para timers/intervalos de call
+    try { if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; } } catch(e){}
+    try { if (window.__callNoOneTimer) { clearTimeout(window.__callNoOneTimer); window.__callNoOneTimer = null; } } catch(e){}
+    try { if (window.__callHealthInterval) { clearInterval(window.__callHealthInterval); window.__callHealthInterval = null; } } catch(e){}
+
+    // Limpa UI imediatamente
+    try { hideCallPanel(); } catch(e){}
+    try { document.getElementById('call-active-profile').style.display = 'none'; } catch(e){}
+    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(e){}
+    try { const panel = document.getElementById('expanded-call-panel'); if(panel) panel.innerHTML = ''; } catch(e){}
+
+    // Limpa estado global (depois de capturar channel)
+    window.pendingCallChannel = null;
     window.pendingCallFrom = null;
     window.pendingCallType = null;
-
-    try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
-    try {
-        const muteBtn = document.getElementById('btn-mute-call');
-        if (muteBtn) {
-            muteBtn.classList.remove('muted');
-            muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
-        }
-    } catch(_) {}
-    isMicMuted = false;
-
-    // ── 2. Captura estado antes de limpar ──────────────────────────────
-    const wasCaller    = window.isCaller;
-    const targetId     = window.callTargetId;
-    const channel      = window.currentAgoraChannel;
-    const wasConnected = window.callHasConnected;
-    const startedAt    = window.__callStartedAt;
-
-    // ── 3. Captura referências Agora antes de limpar ──────────────────────
-    const _audioTrack = rtc.localAudioTrack;
-    const _client     = rtc.client;
-    stopSounds();
-    _stopCallKeepAlive();
-    rtc.localAudioTrack = null;
-    rtc.client          = null;
-    window.callHasConnected    = false;
     window.currentAgoraChannel = null;
-    window.isCaller            = false;
-    window.callTargetId        = null;
-    window.__callStartLogged   = false;
-    window.__callStartedAt     = null;
-    window.__leavingCall       = false;
+    window.currentAgoraType = null;
+    window.callHasConnected = false;
+    window.__callStartedAt = null;
 
-    // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
+    // Fecha/para áudio local e sai do Agora SEMPRE (privacidade)
     (async () => {
-        // Duração no chat
         try {
-            if (startedAt && !window.__callEndLogged) {
-                window.__callEndLogged = true;
-                const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-                const mm = String(Math.floor(sec / 60)).padStart(2, '0');
-                const ss = String(sec % 60).padStart(2, '0');
-                sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+            if (rtc && rtc.localAudioTrack) {
+                try { rtc.localAudioTrack.stop && rtc.localAudioTrack.stop(); } catch(e){}
+                try { rtc.localAudioTrack.close && rtc.localAudioTrack.close(); } catch(e){}
+                rtc.localAudioTrack = null;
             }
-        } catch(_) {}
+        } catch(e) {}
 
-        // Sinal de cancelamento
         try {
-            if (wasCaller && targetId && !wasConnected && globalWS && globalWS.readyState === WebSocket.OPEN)
-                globalWS.send(`CALL_SIGNAL:${targetId}:cancelled:${channel}`);
-        } catch(_) {}
+            if (rtc && rtc.client) {
+                try { rtc.client.removeAllListeners && rtc.client.removeAllListeners(); } catch(e){}
+                try { await rtc.client.leave(); } catch(e){}
+                rtc.client = null;
+            }
+        } catch(e) {}
 
-        // Sai do canal Agora — com timeout de 4s para não travar
-        try {
-            if (_audioTrack) _audioTrack.close();
-        } catch(_) {}
-        try {
-            if (_client) await Promise.race([
-                _client.leave(),
-                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-            ]);
-        } catch(_) {}
+        try { rtc.remoteUsers = {}; } catch(e){}
 
-        // Backend
+        // Atualiza painel remoto (some com quem estava)
+        try { renderCallPanel(rtc, user.id); } catch(e){}
+
+        // Encerrar no backend (remove da call ativa). Mesmo se falhar, o microfone já foi parado.
+        if (channel) {
+            try { await authFetch('/call/end', { method:'POST', body: JSON.stringify({ channel }) }); } catch(e){}
+        }
+
+        // Se era call privada (dm/1v1/group), manda mensagem de encerramento UMA vez
         try {
-            if (channel)
-                await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
-        } catch(_) {}
+            if ((typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') && !window.__callEndLogged && startedAt) {
+                window.__callEndLogged = true;
+                const dur = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                const mm = String(Math.floor(dur/60)).padStart(2,'0');
+                const ss = String(dur%60).padStart(2,'0');
+                sendSystemDmMessage(`☎️ Chamada finalizada (duração ${mm}:${ss})`);
+            }
+        } catch(e){}
+
+        window.__callStartLogged = false;
+        window.__callEndLogged = false;
+        window.callStartedAt = null;
+
+        // Informa outro lado para limpar UI dele também (evita "call ativa" fantasma)
+        try {
+            if (globalWS && globalWS.readyState === WebSocket.OPEN && channel) {
+                globalWS.send(`CALL_SIGNAL:${channel}:LEAVE:${user.id}`);
+            }
+        } catch(e){}
+
+        window.__leavingCall = false;
     })();
 }
+
 
 window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
