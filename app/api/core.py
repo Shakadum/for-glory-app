@@ -222,6 +222,7 @@ class CreateGroupData(BaseModel):
     name: str
     creator_id: int
     member_ids: List[int]
+    avatar_url: Optional[str] = None
 
 class CreateCommData(BaseModel):
     name: str
@@ -288,8 +289,28 @@ redis_storage = os.getenv('REDIS_URL') or 'memory://'
 limiter = Limiter(key_func=get_remote_address, storage_uri=redis_storage)
 app = FastAPI(title="For Glory Cloud")
 
+
+from sqlalchemy import text as sql_text
+from app.db.session import engine
+
+def ensure_chat_group_schema():
+    try:
+        with engine.begin() as conn:
+            # Postgres supports IF NOT EXISTS; sqlite will raise and we'll ignore
+            try:
+                conn.execute(sql_text("ALTER TABLE chat_groups ADD COLUMN IF NOT EXISTS creator_id INTEGER"))
+            except Exception:
+                pass
+            try:
+                conn.execute(sql_text("ALTER TABLE chat_groups ADD COLUMN IF NOT EXISTS avatar_url VARCHAR DEFAULT ''"))
+            except Exception:
+                pass
+    except Exception as e:
+        logging.getLogger("ForGlory").warning(f"Schema ensure failed: {e}")
+
 @app.on_event("startup")
 async def _startup():
+    ensure_chat_group_schema()
     await init_redis()
 
 @app.on_event("shutdown")
