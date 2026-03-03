@@ -1,31 +1,18 @@
 """
 For Glory — Portal da Transparência
 -------------------------------------
-Fontes de dados (todas públicas e gratuitas):
-
 BRASIL:
   - API Câmara dos Deputados: https://dadosabertos.camara.leg.br/api/v2
   - API Senado Federal:       https://legis.senado.leg.br/dadosabertos
-  - Portal da Transparência:  https://api.portaldatransparencia.gov.br (requer chave gratuita)
-  
 INTERNACIONAL:
-  - Wikidata SPARQL:          https://query.wikidata.org
-  - Wikipedia REST API:       https://en.wikipedia.org/api/rest_v1
-  
-AVALIAÇÕES:
-  - Salvas no banco local (tabela politician_ratings)
-  
-Variáveis de ambiente opcionais:
-  TRANSPARENCIA_API_KEY  → chave da API Portal da Transparência (gratuita em portaldatransparencia.gov.br)
+  - Wikidata Entity API + MediaWiki Action API + Wikipedia REST API
 """
 
-import os
+import os, asyncio, hashlib
 import httpx
-import asyncio
 from fastapi import APIRouter, Query, Depends, Body
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime, Text
 from datetime import datetime, timezone
 from typing import Optional
 from app.db.session import get_db
@@ -33,423 +20,322 @@ from app.db.base import Base
 
 router = APIRouter()
 
-CAMARA_BASE  = "https://dadosabertos.camara.leg.br/api/v2"
-SENADO_BASE  = "https://legis.senado.leg.br/dadosabertos"
-TRANSP_KEY   = os.environ.get("TRANSPARENCIA_API_KEY", "")
-TRANSP_BASE  = "https://api.portaldatransparencia.gov.br/api-de-dados"
-WIKIDATA_URL = "https://query.wikidata.org/sparql"
-WIKI_REST    = "https://en.wikipedia.org/api/rest_v1"
+CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
+SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
+WIKI_SEARCH = "https://pt.wikipedia.org/w/api.php"
+WIKI_PT     = "https://pt.wikipedia.org/api/rest_v1/page/summary/{}"
+WIKI_EN     = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
+_HDR        = {"User-Agent": "ForGloryApp/1.0"}
 
-# ─────────────────────────────────────────────────────────────
-#  MODELOS DE BANCO (ratings de usuários)
-# ─────────────────────────────────────────────────────────────
-
+# ── DB ──────────────────────────────────────────────────────
 class PoliticianRating(Base):
     __tablename__ = "politician_ratings"
-    id           = Column(Integer, primary_key=True, index=True)
-    politician_id= Column(String(100), index=True)   # ex: "dep-12345" ou "sen-678"
-    user_id      = Column(Integer, index=True)
-    score        = Column(Integer)                   # 1-5
-    comment      = Column(Text, nullable=True)
-    created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id            = Column(Integer, primary_key=True, index=True)
+    politician_id = Column(String(100), index=True)
+    user_id       = Column(Integer, index=True)
+    score         = Column(Integer)
+    comment       = Column(Text, nullable=True)
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-
-# ─────────────────────────────────────────────────────────────
-#  HELPERS HTTP
-# ─────────────────────────────────────────────────────────────
-
-async def _get(url: str, params: dict = None, headers: dict = None, timeout: int = 8) -> dict | list | None:
+# ── HELPERS ─────────────────────────────────────────────────
+async def _get(url, params=None, timeout=10):
     try:
-        async with httpx.AsyncClient(timeout=timeout) as c:
-            r = await c.get(url, params=params, headers=headers or {})
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
+            r = await c.get(url, params=params, headers=_HDR)
             if r.status_code == 200:
                 return r.json()
     except Exception:
         pass
     return None
 
-
-# ─────────────────────────────────────────────────────────────
-#  BUSCA DE POLÍTICOS BRASILEIROS
-# ─────────────────────────────────────────────────────────────
-
-async def search_deputados(query: str, uf: str = None) -> list:
-    params = {"nome": query, "itens": 10, "ordem": "ASC", "ordenarPor": "nome"}
-    if uf:
-        params["siglaUf"] = uf.upper()
-    data = await _get(f"{CAMARA_BASE}/deputados", params=params)
-    if not data or "dados" not in data:
-        return []
-    results = []
-    for d in data["dados"]:
-        results.append({
-            "id":       f"dep-{d.get('id','')}",
-            "api_id":   d.get("id"),
-            "name":     d.get("nome", ""),
-            "party":    d.get("siglaPartido", ""),
-            "state":    d.get("siglaUf", ""),
-            "role":     "Deputado Federal",
-            "country":  "Brasil",
-            "photo":    d.get("urlFoto", ""),
-            "email":    d.get("email", ""),
-            "source":   "camara",
-        })
-    return results
-
-
-async def search_senadores(query: str) -> list:
-    # Senado não tem busca por nome diretamente — busca lista atual e filtra
-    data = await _get(f"{SENADO_BASE}/senador/lista/atual.json")
-    if not data:
-        return []
+def _wd_value(claims, prop):
     try:
-        senadores = data["ListaParlamentarEmExercicio"]["Parlamentares"]["Parlamentar"]
-    except (KeyError, TypeError):
-        return []
-    
-    q = query.lower()
+        snak = claims.get(prop, [{}])[0].get("mainsnak", {})
+        dv = snak.get("datavalue", {})
+        t = dv.get("type", ""); v = dv.get("value", {})
+        if t == "string": return str(v)
+        if t == "time": return str(v.get("time",""))[1:11]
+        if t == "wikibase-entityid": return str(v.get("id",""))
+        if t == "monolingualtext": return str(v.get("text",""))
+        return str(v) if v else ""
+    except: return ""
+
+def _wd_image(filename):
+    if not filename: return ""
+    if filename.startswith("http"): return filename
+    name = filename.replace(" ","_")
+    h = hashlib.md5(name.encode()).hexdigest()
+    return f"https://upload.wikimedia.org/wikipedia/commons/{h[0]}/{h[0:2]}/{name}"
+
+async def _resolve_labels(qids):
+    if not qids: return {}
+    data = await _get("https://www.wikidata.org/w/api.php", {
+        "action":"wbgetentities","ids":"|".join(qids[:30]),
+        "props":"labels","languages":"pt|en","format":"json"})
+    if not data: return {}
+    out = {}
+    for qid, ent in data.get("entities",{}).items():
+        lab = ent.get("labels",{})
+        out[qid] = (lab.get("pt") or lab.get("en") or {}).get("value","")
+    return out
+
+async def _wiki_bio(title_pt=None, title_en=None):
+    """Busca bio + thumbnail no Wikipedia, tenta PT depois EN."""
+    for url_tpl, title in [(WIKI_PT, title_pt),(WIKI_EN, title_en)]:
+        if not title: continue
+        d = await _get(url_tpl.format(title.replace(" ","_")))
+        if d and d.get("type") == "standard":
+            return {
+                "bio":   d.get("extract","")[:800],
+                "photo": (d.get("thumbnail") or {}).get("source",""),
+                "link":  d.get("content_urls",{}).get("desktop",{}).get("page",""),
+            }
+    return {}
+
+# ── WIKIDATA ENTITY (núcleo de tudo) ────────────────────────
+async def get_wikidata_entity(qid):
+    data = await _get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
+    if not data: return {}
+    ent   = data.get("entities",{}).get(qid,{})
+    if not ent: return {}
+
+    claims    = ent.get("claims",{})
+    labels    = ent.get("labels",{})
+    descs     = ent.get("descriptions",{})
+    sitelinks = ent.get("sitelinks",{})
+
+    name = (labels.get("pt") or labels.get("en") or {}).get("value","")
+    desc = (descs.get("pt") or descs.get("en") or {}).get("value","")
+
+    party_q    = _wd_value(claims,"P102")
+    country_q  = _wd_value(claims,"P27")
+    edu_q      = _wd_value(claims,"P69")
+    pos_q      = _wd_value(claims,"P39")
+    occ_q      = _wd_value(claims,"P106")
+    bplace_q   = _wd_value(claims,"P19")
+    birth_date = _wd_value(claims,"P569")
+    image_file = _wd_value(claims,"P18")
+    website    = _wd_value(claims,"P856")
+
+    lmap = await _resolve_labels([q for q in [party_q,country_q,edu_q,pos_q,occ_q,bplace_q] if q])
+
+    title_pt = sitelinks.get("ptwiki",{}).get("title","")
+    title_en = sitelinks.get("enwiki",{}).get("title","")
+    wiki     = await _wiki_bio(title_pt, title_en)
+
+    photo = _wd_image(image_file) if image_file else wiki.get("photo","")
+
+    return {
+        "full_name":   name,
+        "description": desc,
+        "bio":         wiki.get("bio",""),
+        "wiki_link":   wiki.get("link",""),
+        "birth_date":  birth_date,
+        "birth_place": lmap.get(bplace_q,""),
+        "party":       lmap.get(party_q,""),
+        "country":     lmap.get(country_q,""),
+        "education":   lmap.get(edu_q,""),
+        "role":        lmap.get(pos_q,""),
+        "occupation":  lmap.get(occ_q,""),
+        "photo":       photo,
+        "website":     website,
+        "votes":       [],
+        "expenses":    [],
+    }
+
+# ── BUSCA WIKIDATA (via Wikipedia Search + QID lookup) ──────
+async def search_wikidata_politicians(query):
+    data = await _get(WIKI_SEARCH, {
+        "action":"query","list":"search","srsearch": query,
+        "srnamespace":"0","srlimit":"8","format":"json","srsort":"relevance"})
+    if not data: return []
+
     results = []
-    for s in senadores:
-        try:
-            id_sen = s["IdentificacaoParlamentar"]
-            nome = id_sen.get("NomeParlamentar", "") or id_sen.get("NomeCompletoParlamentar", "")
-            if q not in nome.lower():
-                continue
-            results.append({
-                "id":       f"sen-{id_sen.get('CodigoParlamentar','')}",
-                "api_id":   id_sen.get("CodigoParlamentar"),
-                "name":     nome,
-                "party":    id_sen.get("SiglaPartidoParlamentar", ""),
-                "state":    id_sen.get("UfParlamentar", ""),
-                "role":     "Senador",
-                "country":  "Brasil",
-                "photo":    id_sen.get("UrlFotoParlamentar", ""),
-                "email":    id_sen.get("EmailParlamentar", ""),
-                "source":   "senado",
+    for item in data.get("query",{}).get("search",[]):
+        title = item.get("title","")
+        # Pega QID via pageprops
+        qdata = await _get(WIKI_SEARCH, {
+            "action":"query","titles":title,"prop":"pageprops",
+            "ppprop":"wikibase_item","format":"json"})
+        qid = ""
+        if qdata:
+            for _, pg in qdata.get("query",{}).get("pages",{}).items():
+                qid = pg.get("pageprops",{}).get("wikibase_item",""); break
+        if not qid: continue
+        results.append({
+            "id":"wd-"+qid,"api_id":qid,"name":title,
+            "party":"","state":"","role":"","country":"","photo":"","email":"","source":"wikidata"})
+
+    # Enriquece primeiros 4 com dados básicos
+    for i,r in enumerate(results[:4]):
+        ent = await get_wikidata_entity(r["api_id"])
+        if ent:
+            results[i].update({
+                "photo":   ent.get("photo",""),
+                "party":   ent.get("party",""),
+                "country": ent.get("country",""),
+                "role":    ent.get("role","") or ent.get("description","")[:80],
             })
-            if len(results) >= 5:
-                break
-        except Exception:
-            continue
-    return results
+    return results[:8]
 
+# ── CÂMARA ───────────────────────────────────────────────────
+async def search_deputados(query, uf=None):
+    params = {"nome":query,"itens":8,"ordem":"ASC","ordenarPor":"nome"}
+    if uf: params["siglaUf"] = uf.upper()
+    data = await _get(f"{CAMARA_BASE}/deputados", params)
+    if not data or "dados" not in data: return []
+    return [{"id":f"dep-{d.get('id','')}","api_id":d.get("id"),"name":d.get("nome",""),
+             "party":d.get("siglaPartido",""),"state":d.get("siglaUf",""),
+             "role":"Deputado Federal","country":"Brasil",
+             "photo":d.get("urlFoto",""),"email":d.get("email",""),"source":"camara"}
+            for d in data["dados"]]
 
-# ─────────────────────────────────────────────────────────────
-#  BUSCA INTERNACIONAL (Wikidata)
-# ─────────────────────────────────────────────────────────────
-
-async def search_wikidata_politicians(query: str, country_code: str = None) -> list:
-    """Busca políticos no Wikidata por nome."""
-    # SPARQL query: find people that are politicians / heads of state / presidents
-    sparql = f"""
-SELECT DISTINCT ?person ?personLabel ?partyLabel ?countryLabel ?roleLabel ?image WHERE {{
-  ?person wdt:P31 wd:Q5 .
-  ?person wdt:P106 ?occupation .
-  VALUES ?occupation {{ wd:Q82955 wd:Q372436 wd:Q1028181 wd:Q4964182 wd:Q30461 wd:Q16707842 }}
-  ?person rdfs:label ?label .
-  FILTER(CONTAINS(LCASE(?label), LCASE("{query}")))
-  FILTER(LANG(?label) = "pt" || LANG(?label) = "en" || LANG(?label) = "es")
-  OPTIONAL {{ ?person wdt:P18 ?image }}
-  OPTIONAL {{ ?person wdt:P102 ?party }}
-  OPTIONAL {{ ?person wdt:P27 ?country }}
-  OPTIONAL {{ ?person wdt:P39 ?role }}
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en,es". }}
-}}
-LIMIT 8
-"""
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(WIKIDATA_URL, params={"query": sparql, "format": "json"},
-                           headers={"Accept": "application/json", "User-Agent": "ForGloryApp/1.0"})
-            if r.status_code != 200:
-                return []
-            bindings = r.json().get("results", {}).get("bindings", [])
-    except Exception:
-        return []
-    
-    seen = set()
-    results = []
-    for b in bindings:
-        qid = b.get("person", {}).get("value", "").split("/")[-1]
-        if qid in seen:
-            continue
-        seen.add(qid)
-        name = b.get("personLabel", {}).get("value", "")
-        if not name or name.startswith("Q"):
-            continue
-        results.append({
-            "id":      f"wd-{qid}",
-            "api_id":  qid,
-            "name":    name,
-            "party":   b.get("partyLabel", {}).get("value", ""),
-            "state":   "",
-            "role":    b.get("roleLabel", {}).get("value", "Político"),
-            "country": b.get("countryLabel", {}).get("value", ""),
-            "photo":   b.get("image", {}).get("value", ""),
-            "email":   "",
-            "source":  "wikidata",
-        })
-    return results
-
-
-# ─────────────────────────────────────────────────────────────
-#  DETALHES DO POLÍTICO
-# ─────────────────────────────────────────────────────────────
-
-async def get_deputado_details(api_id: str) -> dict:
-    """Busca detalhes de um deputado: despesas, presença, projetos."""
-    base_url = f"{CAMARA_BASE}/deputados/{api_id}"
-    
-    data, despesas_data, votacoes_data = await asyncio.gather(
-        _get(base_url),
-        _get(f"{base_url}/despesas", params={"itens": 5, "ordenarPor": "ano", "ordem": "DESC"}),
-        _get(f"{base_url}/votacoes", params={"itens": 10, "ordenarPor": "dataHoraVoto", "ordem": "DESC"}),
-    )
-    
+async def get_deputado_details(api_id):
+    base = f"{CAMARA_BASE}/deputados/{api_id}"
+    data, desp, vot = await asyncio.gather(
+        _get(base),
+        _get(f"{base}/despesas",{"itens":5,"ordenarPor":"ano","ordem":"DESC"}),
+        _get(f"{base}/votacoes",{"itens":8,"ordenarPor":"dataHoraVoto","ordem":"DESC"}))
     details = {}
     if data and "dados" in data:
-        d = data["dados"]
-        ult = d.get("ultimoStatus", {})
+        d = data["dados"]; ult = d.get("ultimoStatus",{})
         details.update({
-            "full_name":   d.get("nomeCivil", ""),
-            "birth_date":  d.get("dataNascimento", ""),
-            "education":   d.get("escolaridade", ""),
-            "occupation":  d.get("profissoes", [{}])[0].get("titulo", "") if d.get("profissoes") else "",
-            "website":     ult.get("urlRedeSocial", ""),
-            "bio":         d.get("urlWebsite", ""),
-            "party":       ult.get("siglaPartido", ""),
-            "state":       ult.get("siglaUf", ""),
-            "cabinet":     ult.get("gabinete", {}).get("sala", ""),
+            "full_name": d.get("nomeCivil",""),
+            "birth_date":d.get("dataNascimento",""),
+            "education": d.get("escolaridade",""),
+            "occupation":(d.get("profissoes") or [{}])[0].get("titulo",""),
+            "party":ult.get("siglaPartido",""),"state":ult.get("siglaUf",""),
         })
+        # Bio via Wikipedia
+        nome = d.get("nomeCivil","") or ult.get("nome","")
+        if nome:
+            sr = await _get(WIKI_SEARCH,{"action":"query","list":"search",
+                "srsearch":nome+" político","srlimit":"1","format":"json"})
+            if sr:
+                hits = sr.get("query",{}).get("search",[])
+                if hits:
+                    w = await _wiki_bio(hits[0].get("title",""))
+                    if w.get("bio"):
+                        details["bio"]   = w["bio"]
+                        if not details.get("photo"): details["photo"] = w.get("photo","")
 
-    # Últimas despesas
-    expenses = []
-    if despesas_data and "dados" in despesas_data:
-        for e in despesas_data["dados"][:5]:
-            expenses.append({
-                "description": e.get("tipoDespesa", ""),
-                "value":       e.get("valorLiquido", 0),
-                "date":        f"{e.get('mes','')}/{e.get('ano','')}",
-                "provider":    e.get("nomeFornecedor", ""),
-            })
-    details["expenses"] = expenses
+    details["expenses"] = []
+    if desp and "dados" in desp:
+        details["expenses"] = [{"description":e.get("tipoDespesa",""),
+            "value":e.get("valorLiquido",0),
+            "date":f"{e.get('mes','')}/{e.get('ano','')}",
+            "provider":e.get("nomeFornecedor","")} for e in desp["dados"][:5]]
 
-    # Votações recentes
-    votes = []
-    if votacoes_data and "dados" in votacoes_data:
-        for v in votacoes_data["dados"][:5]:
-            votes.append({
-                "description": v.get("descricao", ""),
-                "date":        v.get("dataHoraVoto", "")[:10] if v.get("dataHoraVoto") else "",
-            })
-    details["votes"] = votes
-
+    details["votes"] = []
+    if vot and "dados" in vot:
+        details["votes"] = [{"description":v.get("descricao",""),
+            "date":(v.get("dataHoraVoto") or "")[:10]} for v in vot["dados"][:5]]
     return details
 
+# ── SENADO ───────────────────────────────────────────────────
+async def search_senadores(query):
+    data = await _get(f"{SENADO_BASE}/senador/lista/atual.json")
+    if not data: return []
+    try: senadores = data["ListaParlamentarEmExercicio"]["Parlamentares"]["Parlamentar"]
+    except: return []
+    q = query.lower(); results = []
+    for s in senadores:
+        try:
+            id_s = s["IdentificacaoParlamentar"]
+            nome = id_s.get("NomeParlamentar","") or id_s.get("NomeCompletoParlamentar","")
+            if q not in nome.lower(): continue
+            results.append({"id":f"sen-{id_s.get('CodigoParlamentar','')}",
+                "api_id":id_s.get("CodigoParlamentar"),"name":nome,
+                "party":id_s.get("SiglaPartidoParlamentar",""),"state":id_s.get("UfParlamentar",""),
+                "role":"Senador","country":"Brasil","photo":id_s.get("UrlFotoParlamentar",""),
+                "email":id_s.get("EmailParlamentar",""),"source":"senado"})
+            if len(results) >= 5: break
+        except: continue
+    return results
 
-async def get_senador_details(api_id: str) -> dict:
-    """Busca detalhes de um senador."""
+async def get_senador_details(api_id):
     data = await _get(f"{SENADO_BASE}/senador/{api_id}.json")
-    details = {}
+    details = {"votes":[],"expenses":[]}
     if data:
         try:
             p = data["DetalheParlamentar"]["Parlamentar"]
-            ident = p.get("IdentificacaoParlamentar", {})
-            dados = p.get("DadosBasicosParlamentar", {})
-            details.update({
-                "full_name":  ident.get("NomeCompletoParlamentar", ""),
-                "birth_date": dados.get("DataNascimento", ""),
-                "education":  dados.get("FormacaoAcademica", ""),
-                "occupation": dados.get("Profissao", ""),
-                "website":    ident.get("UrlPaginaParlamentar", ""),
-            })
-        except Exception:
-            pass
-    
-    # Votações
-    votes_data = await _get(f"{SENADO_BASE}/senador/{api_id}/votacoes.json", params={"v": 6})
-    votes = []
-    if votes_data:
+            ident = p.get("IdentificacaoParlamentar",{}); dados = p.get("DadosBasicosParlamentar",{})
+            details.update({"full_name":ident.get("NomeCompletoParlamentar",""),
+                "birth_date":dados.get("DataNascimento",""),"education":dados.get("FormacaoAcademica",""),
+                "occupation":dados.get("Profissao",""),"website":ident.get("UrlPaginaParlamentar","")})
+        except: pass
+    vd = await _get(f"{SENADO_BASE}/senador/{api_id}/votacoes.json",{"v":6})
+    if vd:
         try:
-            vlist = votes_data["VotacoesParlamentar"]["Parlamentar"]["Votacoes"]["Votacao"]
-            if isinstance(vlist, dict):
-                vlist = [vlist]
-            for v in vlist[:5]:
-                votes.append({
-                    "description": v.get("DescricaoVotacao", ""),
-                    "date":        v.get("DataSessao", ""),
-                    "vote":        v.get("Voto", ""),
-                })
-        except Exception:
-            pass
-    details["votes"] = votes
-    details["expenses"] = []
+            vlist = vd["VotacoesParlamentar"]["Parlamentar"]["Votacoes"]["Votacao"]
+            if isinstance(vlist,dict): vlist=[vlist]
+            details["votes"] = [{"description":v.get("DescricaoVotacao",""),
+                "date":v.get("DataSessao",""),"vote":v.get("Voto","")} for v in (vlist or [])[:5]]
+        except: pass
     return details
 
-
-async def get_wikidata_details(qid: str) -> dict:
-    """Busca detalhes de um político via Wikidata + Wikipedia."""
-    sparql = f"""
-SELECT ?birthDate ?birthPlaceLabel ?partyLabel ?countryLabel ?educationLabel ?positionLabel ?image ?article WHERE {{
-  wd:{qid} wdt:P31 wd:Q5 .
-  OPTIONAL {{ wd:{qid} wdt:P569 ?birthDate }}
-  OPTIONAL {{ wd:{qid} wdt:P19 ?birthPlace }}
-  OPTIONAL {{ wd:{qid} wdt:P102 ?party }}
-  OPTIONAL {{ wd:{qid} wdt:P27 ?country }}
-  OPTIONAL {{ wd:{qid} wdt:P69 ?education }}
-  OPTIONAL {{ wd:{qid} wdt:P39 ?position }}
-  OPTIONAL {{ wd:{qid} wdt:P18 ?image }}
-  OPTIONAL {{
-    ?article schema:about wd:{qid} ;
-             schema:inLanguage "pt" ;
-             schema:isPartOf <https://pt.wikipedia.org/> .
-  }}
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}}
-LIMIT 1
-"""
-    details = {"votes": [], "expenses": [], "education": "", "occupation": "", "full_name": ""}
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(WIKIDATA_URL, params={"query": sparql, "format": "json"},
-                           headers={"Accept": "application/json", "User-Agent": "ForGloryApp/1.0"})
-            if r.status_code == 200:
-                b = r.json().get("results", {}).get("bindings", [])
-                if b:
-                    row = b[0]
-                    details["birth_date"]  = row.get("birthDate", {}).get("value", "")[:10]
-                    details["birth_place"] = row.get("birthPlaceLabel", {}).get("value", "")
-                    details["education"]   = row.get("educationLabel", {}).get("value", "")
-                    details["party"]       = row.get("partyLabel", {}).get("value", "")
-                    details["country"]     = row.get("countryLabel", {}).get("value", "")
-                    details["role"]        = row.get("positionLabel", {}).get("value", "")
-                    details["photo"]       = row.get("image", {}).get("value", "")
-                    wiki_article           = row.get("article", {}).get("value", "")
-                    if wiki_article:
-                        title = wiki_article.split("/wiki/")[-1]
-                        wiki_data = await _get(f"https://pt.wikipedia.org/api/rest_v1/page/summary/{title}")
-                        if wiki_data:
-                            details["bio"] = wiki_data.get("extract", "")[:600]
-    except Exception:
-        pass
-    return details
-
-
-# ─────────────────────────────────────────────────────────────
-#  ENDPOINTS
-# ─────────────────────────────────────────────────────────────
-
+# ── ENDPOINTS ────────────────────────────────────────────────
 @router.get("/transparency/search")
-async def search_politicians(
-    q: str = Query(..., min_length=2),
-    country: Optional[str] = Query("BR"),
-):
-    """Busca políticos por nome. Retorna lista de candidatos."""
+async def search_politicians(q:str=Query(...,min_length=2), country:Optional[str]=Query("BR")):
     country = (country or "BR").upper()
-    
     if country == "BR":
-        dep_task = search_deputados(q)
-        sen_task = search_senadores(q)
-        dep_results, sen_results = await asyncio.gather(dep_task, sen_task)
-        all_results = dep_results + sen_results
+        dep_r, sen_r, wd_r = await asyncio.gather(
+            search_deputados(q), search_senadores(q), search_wikidata_politicians(q))
+        br_names = {r["name"].lower() for r in dep_r+sen_r}
+        return {"results": dep_r + sen_r + [r for r in wd_r if r["name"].lower() not in br_names], "query":q, "country":country}
     else:
-        all_results = await search_wikidata_politicians(q)
-    
-    return {"results": all_results[:12], "query": q, "country": country}
-
+        return {"results": await search_wikidata_politicians(q), "query":q, "country":country}
 
 @router.get("/transparency/politician/{politician_id}")
-async def get_politician(politician_id: str, db: Session = Depends(get_db)):
-    """Retorna ficha completa de um político."""
-    parts = politician_id.split("-", 1)
-    source = parts[0]
-    api_id = parts[1] if len(parts) > 1 else ""
-    
-    if source == "dep":
-        details = await get_deputado_details(api_id)
-    elif source == "sen":
-        details = await get_senador_details(api_id)
-    elif source == "wd":
-        details = await get_wikidata_details(api_id)
-    else:
-        return {"error": "Fonte desconhecida"}
-    
-    # Adiciona ratings da comunidade
+async def get_politician(politician_id:str, db:Session=Depends(get_db)):
+    parts  = politician_id.split("-",1)
+    source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
+    if source=="dep":   details = await get_deputado_details(api_id)
+    elif source=="sen": details = await get_senador_details(api_id)
+    elif source=="wd":  details = await get_wikidata_entity(api_id)
+    else: return {"error":"Fonte desconhecida"}
+
     ratings = db.query(PoliticianRating).filter_by(politician_id=politician_id).all()
-    avg_score = (sum(r.score for r in ratings) / len(ratings)) if ratings else None
+    avg = (sum(r.score for r in ratings)/len(ratings)) if ratings else None
     details["community_rating"] = {
-        "average": round(avg_score, 1) if avg_score else None,
-        "count": len(ratings),
-        "comments": [
-            {"score": r.score, "comment": r.comment, "date": r.created_at.strftime("%d/%m/%Y") if r.created_at else ""}
-            for r in ratings[-5:]
-        ]
-    }
-    
+        "average": round(avg,1) if avg else None, "count": len(ratings),
+        "comments":[{"score":r.score,"comment":r.comment,
+            "date":r.created_at.strftime("%d/%m/%Y") if r.created_at else ""} for r in ratings[-5:]]}
     return details
 
-
 @router.post("/transparency/rate")
-async def rate_politician(
-    data: dict = Body(...),
-    db: Session = Depends(get_db),
-):
-    """Salva avaliação de um usuário sobre um político."""
-    politician_id = str(data.get("politician_id", "")).strip()
-    user_id       = int(data.get("user_id", 0))
-    score         = int(data.get("score", 3))
-    comment       = str(data.get("comment", ""))[:300]
-    
-    if not politician_id or not user_id or not (1 <= score <= 5):
-        return {"error": "Dados inválidos"}
-    
-    # Upsert: um voto por usuário por político
-    existing = db.query(PoliticianRating).filter_by(politician_id=politician_id, user_id=user_id).first()
-    if existing:
-        existing.score   = score
-        existing.comment = comment
-    else:
-        db.add(PoliticianRating(politician_id=politician_id, user_id=user_id, score=score, comment=comment))
-    db.commit()
-    return {"status": "ok"}
-
+async def rate_politician(data:dict=Body(...), db:Session=Depends(get_db)):
+    pid=str(data.get("politician_id","")).strip(); uid=int(data.get("user_id",0))
+    score=int(data.get("score",3)); comment=str(data.get("comment",""))[:300]
+    if not pid or not uid or not(1<=score<=5): return {"error":"Dados inválidos"}
+    ex = db.query(PoliticianRating).filter_by(politician_id=pid,user_id=uid).first()
+    if ex: ex.score=score; ex.comment=comment
+    else: db.add(PoliticianRating(politician_id=pid,user_id=uid,score=score,comment=comment))
+    db.commit(); return {"status":"ok"}
 
 @router.get("/transparency/compare")
-async def compare_politicians(ids: str = Query(...)):
-    """Compara dois ou mais políticos. ids = 'dep-123,sen-456'"""
+async def compare_politicians(ids:str=Query(...)):
     id_list = [i.strip() for i in ids.split(",") if i.strip()][:4]
-    
-    tasks = []
-    for pid in id_list:
-        parts = pid.split("-", 1)
-        source = parts[0]
-        api_id = parts[1] if len(parts) > 1 else ""
-        if source == "dep":
-            tasks.append(get_deputado_details(api_id))
-        elif source == "sen":
-            tasks.append(get_senador_details(api_id))
-        elif source == "wd":
-            tasks.append(get_wikidata_details(api_id))
-        else:
-            tasks.append(asyncio.coroutine(lambda: {})())
-    
-    results = await asyncio.gather(*tasks)
-    return {"politicians": [{"id": pid, **detail} for pid, detail in zip(id_list, results)]}
-
+    async def _fetch(pid):
+        parts=pid.split("-",1); src=parts[0]; aid=parts[1] if len(parts)>1 else ""
+        if src=="dep": return await get_deputado_details(aid)
+        if src=="sen": return await get_senador_details(aid)
+        if src=="wd":  return await get_wikidata_entity(aid)
+        return {}
+    results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
+    return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
 
 @router.get("/transparency/featured")
 async def featured_politicians():
-    """Lista políticos em destaque (cargos mais altos do Brasil)."""
-    # Presidência + líderes do Congresso como ponto de entrada
     featured = [
-        {"id": "wd-Q28227", "name": "Lula", "role": "Presidente do Brasil", "country": "Brasil",
-         "party": "PT", "state": "Nacional", "source": "wikidata",
-         "photo": "https://upload.wikimedia.org/wikipedia/commons/1/1d/Lula_-_foto_oficial_2023.jpg"},
-        {"id": "wd-Q76", "name": "Barack Obama", "role": "Ex-Presidente EUA", "country": "EUA",
-         "party": "Democrata", "state": "Nacional", "source": "wikidata",
-         "photo": "https://upload.wikimedia.org/wikipedia/commons/e/e9/Official_portrait_of_Barack_Obama.jpg"},
-        {"id": "wd-Q47468", "name": "Emmanuel Macron", "role": "Presidente França", "country": "França",
-         "party": "Renaissance", "state": "Nacional", "source": "wikidata",
-         "photo": "https://upload.wikimedia.org/wikipedia/commons/f/f4/Emmanuel_Macron_in_2019.jpg"},
+        {"id":"wd-Q28227","name":"Lula","role":"Presidente do Brasil","country":"Brasil","party":"PT","source":"wikidata",
+         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg"},
+        {"id":"wd-Q41551","name":"Geraldo Alckmin","role":"Vice-Presidente do Brasil","country":"Brasil","party":"PSB","source":"wikidata","photo":""},
+        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata",
+         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/800px-Donald_Trump_official_portrait.jpg"},
+        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata",
+         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Emmanuel_Macron_in_2019.jpg/800px-Emmanuel_Macron_in_2019.jpg"},
+        {"id":"wd-Q183522","name":"Xi Jinping","role":"Presidente da China","country":"China","party":"PCCh","source":"wikidata","photo":""},
+        {"id":"wd-Q167756","name":"Vladimir Putin","role":"Presidente da Rússia","country":"Rússia","party":"Rússia Unida","source":"wikidata","photo":""},
     ]
-    return {"featured": featured}
+    return {"featured":featured}
