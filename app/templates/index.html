@@ -347,48 +347,143 @@
     .trans-results-list { display: flex; flex-direction: column; }
     </style>
 
-    <!-- ===== TRANSPARENCY v3 EXTRA STYLES ===== -->
+    <!-- ===== TRANSPARENCY LOCAL PANEL STYLES ===== -->
     <style>
+    /* Location banner */
+    .trans-location-banner {
+        display: flex; align-items: center; gap: 12px;
+        background: linear-gradient(135deg, rgba(102,252,241,0.06) 0%, rgba(11,12,16,0) 100%);
+        border: 1px solid rgba(102,252,241,0.12); border-radius: 14px;
+        padding: 14px 16px; margin-bottom: 20px;
+    }
+    .trans-location-icon { font-size: 24px; flex-shrink: 0; }
+    .trans-location-title { font-family: 'Rajdhani'; font-weight: 800; font-size: 16px; color: #66fcf1; letter-spacing: 1px; }
+    .trans-location-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+    /* Section wrapper */
+    .trans-local-section { margin-bottom: 28px; }
+    .trans-local-section-header {
+        display: flex; align-items: center; justify-content: space-between;
+        border-left: 3px solid; padding-left: 12px; margin-bottom: 14px;
+    }
+    .trans-local-section-title { font-family: 'Rajdhani'; font-weight: 800; font-size: 16px; letter-spacing: 1px; }
+    .trans-local-section-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .trans-local-count {
+        font-family: 'Rajdhani'; font-weight: 800; font-size: 13px;
+        padding: 3px 10px; border-radius: 20px; flex-shrink: 0;
+    }
+
+    /* ═══ EXECUTIVE BIG CARDS ═══ */
+    .trans-exec-row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .trans-exec-card {
+        flex: 1; min-width: 180px; max-width: 260px;
+        border-radius: 16px; overflow: hidden; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.07);
+        background: rgba(255,255,255,0.02);
+        transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        position: relative;
+    }
+    .trans-exec-card:hover {
+        transform: translateY(-3px);
+        border-color: var(--accent, #66fcf1);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 20px color-mix(in srgb, var(--accent, #66fcf1) 15%, transparent);
+    }
+    .trans-exec-photo-wrap { position: relative; width: 100%; aspect-ratio: 3/4; max-height: 200px; overflow: hidden; }
+    .trans-exec-photo { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+    .trans-exec-overlay {
+        position: absolute; inset: 0;
+        background: linear-gradient(to bottom, transparent 40%, rgba(11,12,16,0.95) 100%);
+    }
+    .trans-exec-badge {
+        position: absolute; top: 10px; left: 10px;
+        background: rgba(255,211,61,0.9); color: #0b0c10;
+        font-family: 'Rajdhani'; font-weight: 700; font-size: 11px;
+        padding: 3px 8px; border-radius: 20px; letter-spacing: 0.5px;
+    }
+    .trans-exec-info { padding: 12px 14px 14px; }
+    .trans-exec-name { font-family: 'Syne'; font-weight: 800; font-size: 15px; color: white; line-height: 1.2; margin-bottom: 3px; }
+    .trans-exec-role { font-size: 11px; color: #9ca3af; margin-bottom: 8px; }
+    .trans-exec-party {
+        display: inline-block; font-size: 10px; font-weight: 700; font-family: 'Rajdhani';
+        padding: 2px 8px; border-radius: 20px; border: 1px solid; letter-spacing: 0.5px;
+        margin-bottom: 10px;
+    }
+    .trans-exec-actions { display: flex; gap: 6px; align-items: center; }
+    .trans-exec-btn {
+        flex: 1; padding: 7px 12px; border-radius: 8px; border: 1px solid rgba(102,252,241,0.25);
+        background: rgba(102,252,241,0.08); color: #66fcf1; font-size: 12px; font-weight: 600;
+        font-family: 'DM Sans'; cursor: pointer; transition: all 0.18s; text-align: center;
+    }
+    .trans-exec-btn:hover { background: rgba(102,252,241,0.15); }
+    .trans-cmp-sm {
+        padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+        background: transparent; color: #6b7280; font-size: 11px; font-weight: 600;
+        font-family: 'DM Sans'; cursor: pointer; transition: all 0.18s; white-space: nowrap;
+    }
+    .trans-cmp-sm.active { border-color: #66fcf1; color: #66fcf1; background: rgba(102,252,241,0.08); }
+    .trans-cmp-sm:hover { color: #c5c6c7; }
+
+    /* ═══ MINI CARDS (deputies, senators, STF) ═══ */
+    .trans-grid-scroll {
+        display: flex; gap: 8px; overflow-x: auto;
+        padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: rgba(102,252,241,0.2) transparent;
+    }
+    .trans-grid-scroll::-webkit-scrollbar { height: 4px; }
+    .trans-grid-scroll::-webkit-scrollbar-thumb { background: rgba(102,252,241,0.2); border-radius: 2px; }
+    .trans-grid-wrap { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .trans-mini-card {
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; padding: 10px 12px; cursor: pointer; flex-shrink: 0;
+        min-width: 0; width: calc(50% - 4px);
+        transition: background 0.18s, border-color 0.18s;
+        position: relative;
+    }
+    @media(max-width:600px){ .trans-mini-card { width: 100%; } }
+    .trans-mini-card:hover {
+        background: color-mix(in srgb, var(--accent, #66fcf1) 6%, rgba(255,255,255,0.03));
+        border-color: color-mix(in srgb, var(--accent, #66fcf1) 30%, transparent);
+    }
+    .trans-mini-photo {
+        width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+        border: 2px solid rgba(255,255,255,0.08);
+    }
+    .trans-mini-info { flex: 1; min-width: 0; }
+    .trans-mini-name {
+        font-family: 'DM Sans'; font-weight: 700; font-size: 12px; color: white;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .trans-mini-party { font-size: 10px; font-weight: 700; font-family: 'Rajdhani'; letter-spacing: 0.5px; }
+    .trans-mini-state { font-size: 10px; color: #4b5563; margin-left: 4px; }
+    .trans-mini-cmp {
+        width: 24px; height: 24px; border-radius: 50%; border: 1px solid;
+        background: transparent; cursor: pointer; font-size: 13px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        transition: all 0.15s;
+    }
+
+    /* Search results header */
+    .trans-results-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px 0 12px; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;
+    }
+
     /* Salary block */
     .trans-salary-hero {
         background: linear-gradient(135deg, rgba(102,252,241,0.08), rgba(255,211,61,0.06));
         border: 1px solid rgba(255,211,61,0.2); border-radius: 10px;
         padding: 14px 16px; margin-bottom: 12px;
     }
-    .trans-salary-value {
-        font-family: 'Rajdhani'; font-weight: 800; font-size: 28px; color: #ffd93d;
-        line-height: 1.2; margin-bottom: 4px;
-    }
+    .trans-salary-value { font-family: 'Rajdhani'; font-weight: 800; font-size: 28px; color: #ffd93d; line-height: 1.2; margin-bottom: 4px; }
     .trans-salary-desc { font-size: 12px; color: #9ca3af; }
+    .trans-benefit-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .trans-benefit-waiver { display: flex; align-items: flex-start; gap: 6px; background: rgba(255,170,0,0.05); border: 1px solid rgba(255,170,0,0.15); border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #9ca3af; line-height: 1.6; margin-top: 10px; }
 
-    /* Benefit rows */
-    .trans-benefit-row {
-        display: flex; align-items: flex-start; gap: 12px;
-        padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-    }
-    .trans-benefit-row:last-of-type { border-bottom: none; }
-    .trans-benefit-waiver {
-        display: flex; align-items: flex-start; gap: 6px;
-        background: rgba(255,170,0,0.05); border: 1px solid rgba(255,170,0,0.15);
-        border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #9ca3af;
-        line-height: 1.6; margin-top: 10px;
-    }
-
-    /* Rating summary */
-    .trans-rating-summary {
-        display: flex; align-items: center; gap: 16px;
-        background: rgba(255,211,61,0.06); border: 1px solid rgba(255,211,61,0.15);
-        border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
-    }
-    .trans-rating-big-score {
-        font-family: 'Rajdhani'; font-weight: 800; font-size: 36px; color: #ffd93d; line-height: 1;
-    }
-
-    /* Star hover animation */
-    .trans-star {
-        font-size: 26px; cursor: pointer; color: #4b5563;
-        transition: color 0.1s, transform 0.12s; display: inline-block;
-    }
+    /* Rating */
+    .trans-rating-summary { display: flex; align-items: center; gap: 16px; background: rgba(255,211,61,0.06); border: 1px solid rgba(255,211,61,0.15); border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+    .trans-rating-big-score { font-family: 'Rajdhani'; font-weight: 800; font-size: 36px; color: #ffd93d; line-height: 1; }
+    .trans-star { font-size: 26px; cursor: pointer; color: #4b5563; transition: color 0.1s, transform 0.12s; display: inline-block; }
     .trans-star:hover { transform: scale(1.25); }
     </style>
 </head>
