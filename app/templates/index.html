@@ -346,6 +346,51 @@
     /* Results list */
     .trans-results-list { display: flex; flex-direction: column; }
     </style>
+
+    <!-- ===== TRANSPARENCY v3 EXTRA STYLES ===== -->
+    <style>
+    /* Salary block */
+    .trans-salary-hero {
+        background: linear-gradient(135deg, rgba(102,252,241,0.08), rgba(255,211,61,0.06));
+        border: 1px solid rgba(255,211,61,0.2); border-radius: 10px;
+        padding: 14px 16px; margin-bottom: 12px;
+    }
+    .trans-salary-value {
+        font-family: 'Rajdhani'; font-weight: 800; font-size: 28px; color: #ffd93d;
+        line-height: 1.2; margin-bottom: 4px;
+    }
+    .trans-salary-desc { font-size: 12px; color: #9ca3af; }
+
+    /* Benefit rows */
+    .trans-benefit-row {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .trans-benefit-row:last-of-type { border-bottom: none; }
+    .trans-benefit-waiver {
+        display: flex; align-items: flex-start; gap: 6px;
+        background: rgba(255,170,0,0.05); border: 1px solid rgba(255,170,0,0.15);
+        border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #9ca3af;
+        line-height: 1.6; margin-top: 10px;
+    }
+
+    /* Rating summary */
+    .trans-rating-summary {
+        display: flex; align-items: center; gap: 16px;
+        background: rgba(255,211,61,0.06); border: 1px solid rgba(255,211,61,0.15);
+        border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
+    }
+    .trans-rating-big-score {
+        font-family: 'Rajdhani'; font-weight: 800; font-size: 36px; color: #ffd93d; line-height: 1;
+    }
+
+    /* Star hover animation */
+    .trans-star {
+        font-size: 26px; cursor: pointer; color: #4b5563;
+        transition: color 0.1s, transform 0.12s; display: inline-block;
+    }
+    .trans-star:hover { transform: scale(1.25); }
+    </style>
 </head>
 <body>
 <div id="toast">Notificação</div>

@@ -1,467 +1,504 @@
 // ============================================================
-//  FOR GLORY — PORTAL DA TRANSPARÊNCIA
-//  Adicione ao final de app/static/transparency.js
+//  FOR GLORY — PORTAL DA TRANSPARÊNCIA v3
 // ============================================================
 
 window.__transState = {
-    tab:         'search',       // 'search' | 'profile' | 'compare'
-    politician:  null,           // politician object atualmente aberto
-    compareList: [],             // lista de IDs para comparar (max 4)
-    searchResults: [],
-    country:     'BR',
+    tab: 'search', politician: null, compareList: [], comparePoliticians: [],
+    searchResults: [], country: 'BR', currentRating: 0,
 };
 
-// ────────────────────────────────────────────────────────────
-//  INICIALIZA
-// ────────────────────────────────────────────────────────────
+// ── INIT ─────────────────────────────────────────────────────
 async function initTransparency() {
     renderTransparencyView('search');
-    // Carrega destaques
     try {
         const r = await authFetch('/transparency/featured');
-        if (r.ok) {
-            const data = await r.json();
-            renderFeatured(data.featured || []);
-        }
-    } catch (e) {}
+        if (r.ok) { const d = await r.json(); renderFeatured(d.featured || []); }
+    } catch(e) {}
 }
 
-// ────────────────────────────────────────────────────────────
-//  RENDERIZA ESTADO DA VIEW
-// ────────────────────────────────────────────────────────────
+// ── TABS ──────────────────────────────────────────────────────
 function renderTransparencyView(tab) {
     window.__transState.tab = tab;
+    document.querySelectorAll('.trans-tab-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.tab === tab));
     const container = document.getElementById('trans-content');
     if (!container) return;
-
-    // Update tab buttons
-    document.querySelectorAll('.trans-tab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tab === tab);
-    });
-
-    if (tab === 'search') renderSearchView(container);
-    else if (tab === 'profile') renderProfileView(container);
+    if (tab === 'search')   renderSearchView(container);
+    else if (tab === 'profile') {
+        if (window.__transState.politician) openPolitician(window.__transState.politician);
+        else renderSearchView(container);
+    }
     else if (tab === 'compare') renderCompareView(container);
 }
 
-// ────────────────────────────────────────────────────────────
-//  ABA: BUSCA
-// ────────────────────────────────────────────────────────────
+// ── BUSCA ─────────────────────────────────────────────────────
 function renderSearchView(container) {
     container.innerHTML = `
         <div class="trans-search-bar">
-            <div class="trans-country-chips" id="trans-country-chips">
-                ${['BR','US','FR','DE','GB','AR','PT','MX','JP','CN'].map(cc => `
-                    <button class="trans-chip ${window.__transState.country === cc ? 'active' : ''}"
-                        onclick="setTransCountry('${cc}')">${cc}</button>
-                `).join('')}
+            <div class="trans-country-chips">
+                ${['BR','US','FR','DE','GB','AR','PT','MX','JP','CN','RU','IT','ES'].map(cc =>
+                    `<button class="trans-chip ${window.__transState.country===cc?'active':''}"
+                        onclick="setTransCountry('${cc}')">${cc}</button>`).join('')}
             </div>
             <div class="trans-input-row">
-                <input id="trans-search-input"
-                    class="gs-input" style="flex:1;"
+                <input id="trans-search-input" class="gs-input" style="flex:1;"
                     placeholder="🔍 Buscar político por nome..."
-                    onkeydown="if(event.key==='Enter') doTransSearch()">
-                <button class="btn-main" style="margin:0; padding:10px 18px;" onclick="doTransSearch()">Buscar</button>
+                    onkeydown="if(event.key==='Enter')doTransSearch()">
+                <button class="btn-main" style="margin:0;padding:10px 18px;" onclick="doTransSearch()">Buscar</button>
             </div>
         </div>
         <div id="trans-featured" class="trans-featured-grid"></div>
-        <div id="trans-results" class="trans-results-list"></div>
-    `;
+        <div id="trans-results" class="trans-results-list"></div>`;
 }
 
 function setTransCountry(cc) {
     window.__transState.country = cc;
-    document.querySelectorAll('.trans-chip').forEach(b => b.classList.toggle('active', b.dataset && b.textContent.trim() === cc));
-    // Re-render chips
-    const chips = document.getElementById('trans-country-chips');
-    if (chips) {
-        chips.querySelectorAll('.trans-chip').forEach(b => {
-            b.classList.toggle('active', b.textContent.trim() === cc);
-        });
-    }
+    document.querySelectorAll('.trans-chip').forEach(b =>
+        b.classList.toggle('active', b.textContent.trim() === cc));
 }
 
 async function doTransSearch() {
-    const q = (document.getElementById('trans-search-input')?.value || '').trim();
+    const q = (document.getElementById('trans-search-input')?.value||'').trim();
     if (!q) return;
-
     const results = document.getElementById('trans-results');
     if (!results) return;
-    results.innerHTML = '<div class="news-loading"><div class="news-spinner"></div><span>Buscando...</span></div>';
-
+    results.innerHTML = '<div class="news-loading"><div class="news-spinner"></div><span>Buscando políticos...</span></div>';
     try {
         const r = await authFetch(`/transparency/search?q=${encodeURIComponent(q)}&country=${window.__transState.country}`);
         if (!r.ok) throw new Error();
         const data = await r.json();
-        renderSearchResults(data.results || []);
-    } catch (e) {
+        const list = data.results || [];
+        if (!list.length) {
+            results.innerHTML = '<div class="news-empty"><div style="font-size:32px;margin-bottom:8px;">🔍</div>Nenhum político encontrado com este nome.</div>';
+            return;
+        }
+        results.innerHTML = list.map(p => politicianCard(p)).join('');
+    } catch(e) {
         results.innerHTML = '<div class="news-empty">Erro ao buscar. Tente novamente.</div>';
     }
-}
-
-function renderSearchResults(list) {
-    const el = document.getElementById('trans-results');
-    if (!el) return;
-    if (!list.length) {
-        el.innerHTML = '<div class="news-empty"><div style="font-size:32px;margin-bottom:8px;">🔍</div>Nenhum resultado encontrado.</div>';
-        return;
-    }
-    el.innerHTML = list.map(p => politicianCard(p, 'search')).join('');
 }
 
 function renderFeatured(list) {
     const el = document.getElementById('trans-featured');
     if (!el || !list.length) return;
     el.innerHTML = `
-        <div class="trans-section-label">⭐ Destaques Globais</div>
-        <div class="trans-featured-row">
-            ${list.map(p => politicianCard(p, 'featured')).join('')}
-        </div>`;
+        <div class="trans-section-label" style="margin-bottom:10px;">⭐ Destaques Globais</div>
+        <div class="trans-featured-row">${list.map(p => politicianCard(p, true)).join('')}</div>`;
 }
 
-// ────────────────────────────────────────────────────────────
-//  CARD DO POLÍTICO
-// ────────────────────────────────────────────────────────────
-function politicianCard(p, mode = 'search') {
+// ── CARD ──────────────────────────────────────────────────────
+function politicianCard(p, compact=false) {
     const inCompare = window.__transState.compareList.includes(p.id);
-    const sourceColors = { 'camara': '#66fcf1', 'senado': '#ffd93d', 'wikidata': '#c678dd' };
-    const srcColor = sourceColors[p.source] || '#888';
-
+    const srcColor  = {camara:'#66fcf1',senado:'#ffd93d',wikidata:'#c678dd'}[p.source]||'#888';
+    const pSafe     = escapeHtml(JSON.stringify(p));
     return `
-    <div class="trans-card" onclick="openPolitician(${JSON.stringify(p).replace(/"/g,'&quot;')})">
+    <div class="trans-card ${compact?'trans-card-compact':''}"
+        onclick='openPolitician(${JSON.stringify(p).replace(/</g,"\\u003c").replace(/>/g,"\\u003e").replace(/&/g,"\\u0026")})'>
         <div class="trans-card-left">
-            <img src="${escapeHtml(p.photo || '')}" class="trans-card-photo"
-                onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=1a2030&color=66fcf1&size=80'">
+            <img src="${escapeHtml(p.photo||'')}" class="trans-card-photo"
+                onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name||'?')}&background=1a2030&color=66fcf1&size=80'">
             <div class="trans-card-source" style="color:${srcColor}">${(p.source||'').toUpperCase()}</div>
         </div>
         <div class="trans-card-info">
-            <div class="trans-card-name">${escapeHtml(p.name)}</div>
-            <div class="trans-card-role">${escapeHtml(p.role || '')}</div>
+            <div class="trans-card-name">${escapeHtml(p.name||'')}</div>
+            <div class="trans-card-role">${escapeHtml(p.role||'')}</div>
             <div class="trans-card-meta">
-                ${p.party ? `<span class="trans-meta-chip">${escapeHtml(p.party)}</span>` : ''}
-                ${p.state ? `<span class="trans-meta-chip">${escapeHtml(p.state)}</span>` : ''}
-                ${p.country ? `<span class="trans-meta-chip">🌍 ${escapeHtml(p.country)}</span>` : ''}
+                ${p.party?`<span class="trans-meta-chip">${escapeHtml(p.party)}</span>`:''}
+                ${p.state?`<span class="trans-meta-chip">${escapeHtml(p.state)}</span>`:''}
+                ${p.country?`<span class="trans-meta-chip">🌍 ${escapeHtml(p.country)}</span>`:''}
             </div>
         </div>
         <div class="trans-card-actions">
-            <button class="trans-compare-btn ${inCompare ? 'active' : ''}"
-                onclick="event.stopPropagation(); toggleCompare(${JSON.stringify(p).replace(/"/g,'&quot;')})"
-                title="${inCompare ? 'Remover do comparativo' : 'Adicionar ao comparativo'}">
-                ${inCompare ? '✓' : '+'}
-            </button>
+            <button class="trans-compare-btn ${inCompare?'active':''}"
+                onclick="event.stopPropagation();toggleCompare(${JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')})"
+                title="${inCompare?'Remover':'Adicionar ao comparativo'}">${inCompare?'✓':'+'}</button>
         </div>
     </div>`;
 }
 
-// ────────────────────────────────────────────────────────────
-//  ABA: PERFIL DO POLÍTICO
-// ────────────────────────────────────────────────────────────
+// ── PERFIL ────────────────────────────────────────────────────
 async function openPolitician(p) {
     window.__transState.politician = p;
+    document.querySelectorAll('.trans-tab-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.tab === 'profile'));
+    window.__transState.tab = 'profile';
     const container = document.getElementById('trans-content');
     if (!container) return;
-
-    // Switch to profile tab
-    document.querySelectorAll('.trans-tab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tab === 'profile');
-    });
-    window.__transState.tab = 'profile';
-
-    container.innerHTML = '<div class="news-loading" style="margin-top:60px;"><div class="news-spinner"></div><span>Carregando ficha...</span></div>';
-
+    container.innerHTML = '<div class="news-loading" style="margin-top:60px;"><div class="news-spinner"></div><span>Carregando ficha completa...</span></div>';
     try {
         const r = await authFetch(`/transparency/politician/${p.id}`);
         if (!r.ok) throw new Error();
-        const details = await r.json();
-        renderProfile(p, details, container);
-    } catch (e) {
-        container.innerHTML = `<div class="news-empty">Erro ao carregar dados. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;
+        const d = await r.json();
+        renderProfile(p, d, container);
+    } catch(e) {
+        container.innerHTML = `<div class="news-empty">Erro ao carregar. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;
     }
 }
 
+function _stars(n, max=5) {
+    n = Math.round(n||0);
+    return '<span style="color:#ffd93d;letter-spacing:2px;">'+'★'.repeat(n)+'☆'.repeat(max-n)+'</span>';
+}
+function _fmt_brl(v) {
+    return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function _fmt_date(s) {
+    if (!s) return '';
+    try { return new Date(s+'T00:00:00').toLocaleDateString('pt-BR'); } catch{ return s; }
+}
+
 function renderProfile(p, d, container) {
-    const rating = d.community_rating || {};
-    const avgRating = rating.average;
-    const stars = (score) => '★'.repeat(score) + '☆'.repeat(5 - score);
+    const r     = d.community_rating || {};
+    const sal   = d.salary_info;
+    const inCmp = window.__transState.compareList.includes(p.id);
 
-    const expenseRows = (d.expenses || []).map(e =>
-        `<div class="trans-row">
-            <span style="flex:1;color:#c5c6c7;">${escapeHtml(e.description || '')}</span>
-            <span style="color:#ffd93d;font-weight:600;">R$ ${Number(e.value||0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
-            <span style="color:#6b7280;font-size:11px;margin-left:8px;">${escapeHtml(e.date||'')}</span>
-        </div>`
-    ).join('') || '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Dados não disponíveis</div>';
+    // ── Bio
+    const bioHtml = d.bio ? `
+        <div class="trans-section">
+            <div class="trans-section-label">📖 Biografia</div>
+            <p style="color:#9ca3af;font-size:13px;line-height:1.75;margin:0;">${escapeHtml(d.bio)}</p>
+            ${d.wiki_link?`<a href="${escapeHtml(d.wiki_link)}" target="_blank" class="trans-source-link">Leia mais na Wikipedia ↗</a>`:''}
+        </div>` : '';
 
-    const voteRows = (d.votes || []).map(v =>
-        `<div class="trans-row">
-            <span style="flex:1;color:#c5c6c7;font-size:12px;">${escapeHtml(v.description || '')}</span>
-            ${v.vote ? `<span class="trans-meta-chip" style="background:rgba(102,252,241,0.1);color:#66fcf1;">${escapeHtml(v.vote)}</span>` : ''}
-            <span style="color:#6b7280;font-size:11px;">${escapeHtml(v.date||'')}</span>
-        </div>`
-    ).join('') || '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem votações registradas</div>';
+    // ── Dados pessoais
+    const fields = [
+        ['Nome completo', d.full_name||p.name],
+        ['Nascimento', _fmt_date(d.birth_date)],
+        ['Local de nascimento', d.birth_place],
+        ['País', d.country||p.country],
+        ['Partido(s)', (d.all_parties||[d.party||p.party]).filter(Boolean).join(' • ')],
+        ['Formação', (d.all_education||[d.education]).filter(Boolean).join(' • ')],
+        ['Profissão anterior', d.occupation],
+        ['E-mail', d.email],
+        ['Site oficial', d.website ? `<a href="${escapeHtml(d.website)}" target="_blank" style="color:#66fcf1;">${escapeHtml(d.website)}</a>` : ''],
+    ].filter(([,v]) => v);
 
-    const comments = (rating.comments || []).map(c =>
-        `<div class="trans-comment">
-            <div class="trans-comment-stars">${stars(c.score)}</div>
-            <div style="color:#c5c6c7;font-size:12px;">${escapeHtml(c.comment || '')}</div>
-            <div style="color:#4b5563;font-size:11px;">${c.date}</div>
-        </div>`
-    ).join('');
+    const dadosHtml = fields.length ? `
+        <div class="trans-section">
+            <div class="trans-section-label">📋 Dados Pessoais</div>
+            <div class="trans-data-grid">${fields.map(([k,v]) =>
+                `<div class="trans-data-item">
+                    <span class="trans-data-label">${k}</span>
+                    <span class="trans-data-value">${v}</span>
+                </div>`).join('')}
+            </div>
+        </div>` : '';
+
+    // ── Cargos
+    const allRoles = d.all_roles || (d.role ? [d.role] : []);
+    const cargosHtml = allRoles.length ? `
+        <div class="trans-section">
+            <div class="trans-section-label">🏛️ Cargos Exercidos</div>
+            ${allRoles.map(r2 => `<div class="trans-row"><span style="color:#c5c6c7;font-size:13px;">• ${escapeHtml(r2)}</span></div>`).join('')}
+        </div>` : '';
+
+    // ── Salário e Benefícios
+    const salarioHtml = sal ? `
+        <div class="trans-section">
+            <div class="trans-section-label">💰 Salário e Benefícios (${escapeHtml(sal.cargo)})</div>
+            <div class="trans-salary-hero">
+                <div class="trans-salary-value">${_fmt_brl(sal.subsidio_mensal)}<span style="font-size:12px;color:#9ca3af;font-weight:400;">/mês</span></div>
+                <div class="trans-salary-desc">${escapeHtml(sal.subsidio_desc)}</div>
+            </div>
+            <div class="trans-section-label" style="margin:12px 0 8px;font-size:11px;">BENEFÍCIOS INCLUÍDOS</div>
+            ${(sal.beneficios||[]).map(b2 => `
+                <div class="trans-benefit-row">
+                    <div style="flex:1;">
+                        <div style="color:#c5c6c7;font-size:13px;font-weight:600;">${escapeHtml(b2.nome)}</div>
+                        <div style="color:#6b7280;font-size:11px;margin-top:2px;">${escapeHtml(b2.descricao)}</div>
+                    </div>
+                    <div style="color:#ffd93d;font-size:12px;font-weight:700;white-space:nowrap;margin-left:12px;">${escapeHtml(b2.valor)}</div>
+                </div>`).join('')}
+            <div class="trans-benefit-waiver">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                ${escapeHtml(sal.beneficios_abdicados_info||'')}
+            </div>
+            <a href="${escapeHtml(sal.fonte||'')}" target="_blank" class="trans-source-link">Fonte oficial: Portal da Transparência ↗</a>
+        </div>` : '';
+
+    // ── Despesas
+    const expenses = d.expenses || [];
+    const totalDesp = expenses.reduce((s,e)=>s+(e.value||0),0);
+    const despesasHtml = `
+        <div class="trans-section">
+            <div class="trans-section-label" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>🧾 Últimas Despesas Declaradas</span>
+                ${totalDesp?`<span style="color:#ffd93d;font-size:12px;">Total: ${_fmt_brl(totalDesp)}</span>`:''}
+            </div>
+            ${expenses.length ? expenses.map(e => `
+                <div class="trans-row">
+                    <div style="flex:1;min-width:0;">
+                        <div style="color:#c5c6c7;font-size:12px;font-weight:600;">${escapeHtml(e.description||'')}</div>
+                        <div style="color:#6b7280;font-size:11px;">${escapeHtml(e.provider||'')}</div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0;margin-left:8px;">
+                        <div style="color:#ffd93d;font-weight:700;font-size:12px;">${_fmt_brl(e.value)}</div>
+                        <div style="color:#4b5563;font-size:10px;">${escapeHtml(e.date||'')}</div>
+                    </div>
+                </div>`).join('')
+            : '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem despesas registradas ou fonte não disponível para este cargo.</div>'}
+        </div>`;
+
+    // ── Votações
+    const votes = d.votes || [];
+    const voteIcon = v => {
+        const vv = (v||'').toLowerCase();
+        if (vv === 'sim' || vv === 'yes') return '<span style="color:#2ecc71;">✅ Sim</span>';
+        if (vv === 'não' || vv === 'no' || vv === 'nao') return '<span style="color:#ff5555;">❌ Não</span>';
+        if (vv === 'abstenção' || vv === 'abstencao' || vv === 'abstain') return '<span style="color:#ffd93d;">⬜ Abstenção</span>';
+        if (v) return `<span style="color:#9ca3af;">${escapeHtml(v)}</span>`;
+        return '';
+    };
+    const votacoesHtml = `
+        <div class="trans-section">
+            <div class="trans-section-label">🗳️ Votações Recentes</div>
+            ${votes.length ? votes.map(v => `
+                <div class="trans-row" style="align-items:flex-start;gap:10px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="color:#c5c6c7;font-size:12px;line-height:1.5;">${escapeHtml(v.description||'Votação sem descrição')}</div>
+                        <div style="color:#4b5563;font-size:10px;margin-top:2px;">${escapeHtml(v.date||'')}</div>
+                    </div>
+                    <div style="flex-shrink:0;font-size:12px;">${voteIcon(v.vote)}</div>
+                </div>`).join('')
+            : '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem votações registradas ou não disponível para este cargo.</div>'}
+        </div>`;
+
+    // ── Casos na Justiça
+    const charges = d.charges || [];
+    const chargesHtml = `
+        <div class="trans-section">
+            <div class="trans-section-label">⚖️ Casos na Justiça</div>
+            <div class="trans-legal-notice">
+                ⚠️ <strong>Aviso legal:</strong> Dados obtidos de fontes públicas (Wikidata, Wikipedia, registros judiciais públicos). 
+                Registros de processos em andamento não implicam condenação. Inocência presumida até julgamento final. 
+                Conforme Lei 12.527/2011 (Lei de Acesso à Informação).
+            </div>
+            ${charges.length ? `
+                <div style="margin-bottom:8px;">
+                    ${charges.map(c => `
+                        <div class="trans-row">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <span style="color:#fca5a5;font-size:13px;">${escapeHtml(c)}</span>
+                        </div>`).join('')}
+                </div>` : ''}
+            ${d.bio && (d.bio.toLowerCase().includes('process') || d.bio.toLowerCase().includes('acus') || d.bio.toLowerCase().includes('condenad') || d.bio.toLowerCase().includes('preso') || d.bio.toLowerCase().includes('corrupç')) ?
+                `<div style="color:#9ca3af;font-size:12px;line-height:1.6;padding:8px;background:rgba(255,107,107,0.06);border-radius:8px;border-left:3px solid rgba(255,107,107,0.3);">
+                    ℹ️ Informações sobre processos jurídicos podem constar na biografia (Wikipedia) acima.
+                </div>` :
+                charges.length === 0 ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Nenhum processo criminal registrado em fontes públicas consultadas.</div>' : ''}
+        </div>`;
+
+    // ── Avaliação da Comunidade
+    const avgRating = r.average;
+    const ratingHtml = `
+        <div class="trans-section" id="trans-rating-section">
+            <div class="trans-section-label">⭐ Avaliação da Comunidade</div>
+            ${avgRating ? `
+                <div class="trans-rating-summary">
+                    <div class="trans-rating-big-score">${avgRating}</div>
+                    <div>
+                        <div>${_stars(avgRating)}</div>
+                        <div style="color:#6b7280;font-size:12px;margin-top:4px;">${r.count} avaliação${r.count!==1?'ões':''}</div>
+                    </div>
+                </div>` : '<div style="color:#6b7280;font-size:13px;margin-bottom:12px;">Seja o primeiro a avaliar!</div>'}
+
+            <div class="trans-rating-widget" id="trans-rating-widget-${p.id}">
+                <div style="color:#9ca3af;font-size:12px;margin-bottom:10px;">Sua avaliação:</div>
+                <div class="trans-stars-input" id="trans-stars-${p.id}">
+                    ${[1,2,3,4,5].map(n =>
+                        `<span class="trans-star" data-val="${n}"
+                            onmouseover="hoverRatingStar('${escapeHtml(p.id)}',${n})"
+                            onmouseout="unhoverRatingStar('${escapeHtml(p.id)}')"
+                            onclick="setRatingStar('${escapeHtml(p.id)}',${n})">☆</span>`
+                    ).join('')}
+                </div>
+                <textarea id="trans-rating-comment-${p.id}"
+                    placeholder="Deixe um comentário público sobre a atuação deste político (opcional)..."
+                    style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#c5c6c7;padding:10px;font-family:'DM Sans';font-size:13px;resize:none;height:80px;margin-top:10px;outline:none;"></textarea>
+                <button class="btn-main" style="margin-top:8px;padding:8px 20px;"
+                    onclick="submitRating('${escapeHtml(p.id)}')">📤 Enviar Avaliação</button>
+            </div>
+
+            ${(r.comments||[]).length ? `
+                <div class="trans-section-label" style="margin-top:16px;font-size:11px;">AVALIAÇÕES RECENTES</div>
+                <div class="trans-comments-list">
+                    ${r.comments.map(c => `
+                        <div class="trans-comment">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                                ${_stars(c.score)}
+                                <span style="color:#4b5563;font-size:11px;">${escapeHtml(c.date)}</span>
+                            </div>
+                            ${c.comment?`<div style="color:#9ca3af;font-size:12px;margin-top:4px;">"${escapeHtml(c.comment)}"</div>`:''}
+                        </div>`).join('')}
+                </div>` : ''}
+        </div>`;
 
     container.innerHTML = `
         <div class="trans-profile-wrap">
-            <!-- Back button -->
             <button class="trans-back-btn" onclick="renderTransparencyView('search')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
                 Voltar à busca
             </button>
-
-            <!-- Hero -->
+            <!-- HERO -->
             <div class="trans-profile-hero">
-                <img src="${escapeHtml(p.photo || d.photo || '')}" class="trans-profile-photo"
-                    onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=1a2030&color=66fcf1&size=120'">
-                <div class="trans-profile-hero-info">
-                    <div class="trans-profile-name">${escapeHtml(p.name)}</div>
-                    <div class="trans-profile-role">${escapeHtml(d.role || p.role || '')}</div>
-                    <div class="trans-card-meta" style="margin-top:6px;">
-                        ${(d.party||p.party) ? `<span class="trans-meta-chip">${escapeHtml(d.party||p.party)}</span>` : ''}
-                        ${(d.state||p.state) ? `<span class="trans-meta-chip">${escapeHtml(d.state||p.state)}</span>` : ''}
-                        ${(d.country||p.country) ? `<span class="trans-meta-chip">🌍 ${escapeHtml(d.country||p.country)}</span>` : ''}
+                <img src="${escapeHtml(d.photo||p.photo||'')}" class="trans-profile-photo"
+                    onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name||'?')}&background=1a2030&color=66fcf1&size=120'">
+                <div class="trans-profile-hero-info" style="flex:1;min-width:0;">
+                    <div class="trans-profile-name">${escapeHtml(d.full_name||p.name||'')}</div>
+                    <div class="trans-profile-role">${escapeHtml(d.role||p.role||d.description||'')}</div>
+                    <div class="trans-card-meta" style="margin-top:6px;flex-wrap:wrap;">
+                        ${((d.all_parties&&d.all_parties.length?d.all_parties:[d.party||p.party]).filter(Boolean)).map(pt=>
+                            `<span class="trans-meta-chip">${escapeHtml(pt)}</span>`).join('')}
+                        ${(d.state||p.state)?`<span class="trans-meta-chip">${escapeHtml(d.state||p.state)}</span>`:''}
+                        ${(d.country||p.country)?`<span class="trans-meta-chip">🌍 ${escapeHtml(d.country||p.country)}</span>`:''}
                     </div>
-                    ${avgRating ? `
-                    <div class="trans-rating-display">
-                        <span class="trans-stars-big">${'★'.repeat(Math.round(avgRating))}${'☆'.repeat(5-Math.round(avgRating))}</span>
-                        <span style="color:#ffd93d;font-weight:700;">${avgRating}</span>
-                        <span style="color:#6b7280;font-size:12px;">(${rating.count} avaliações)</span>
-                    </div>` : ''}
+                    ${avgRating?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                        ${_stars(avgRating)}<span style="color:#ffd93d;font-weight:700;font-size:14px;">${avgRating}</span>
+                        <span style="color:#6b7280;font-size:12px;">(${r.count})</span></div>`:''}
                 </div>
-                <button class="trans-compare-btn-lg ${window.__transState.compareList.includes(p.id) ? 'active' : ''}"
-                    onclick="toggleCompare(${JSON.stringify(p).replace(/"/g,'&quot;')})">
-                    ${window.__transState.compareList.includes(p.id) ? '✓ No comparativo' : '+ Comparar'}
+                <button class="trans-compare-btn-lg ${inCmp?'active':''}"
+                    onclick="toggleCompare(${JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')})">
+                    ${inCmp?'✓ No comparativo':'+ Comparar'}
                 </button>
             </div>
-
-            <!-- Bio -->
-            ${d.bio ? `<div class="trans-section"><div class="trans-section-label">📖 Biografia</div><p style="color:#9ca3af;font-size:13px;line-height:1.7;margin:0;">${escapeHtml(d.bio)}</p></div>` : ''}
-
-            <!-- Dados pessoais -->
-            <div class="trans-section">
-                <div class="trans-section-label">📋 Dados</div>
-                <div class="trans-data-grid">
-                    ${d.full_name ? `<div class="trans-data-item"><span class="trans-data-label">Nome completo</span><span class="trans-data-value">${escapeHtml(d.full_name)}</span></div>` : ''}
-                    ${d.birth_date ? `<div class="trans-data-item"><span class="trans-data-label">Nascimento</span><span class="trans-data-value">${escapeHtml(d.birth_date)}</span></div>` : ''}
-                    ${d.birth_place ? `<div class="trans-data-item"><span class="trans-data-label">Naturalidade</span><span class="trans-data-value">${escapeHtml(d.birth_place)}</span></div>` : ''}
-                    ${d.education ? `<div class="trans-data-item"><span class="trans-data-label">Formação</span><span class="trans-data-value">${escapeHtml(d.education)}</span></div>` : ''}
-                    ${d.occupation ? `<div class="trans-data-item"><span class="trans-data-label">Profissão</span><span class="trans-data-value">${escapeHtml(d.occupation)}</span></div>` : ''}
-                    ${d.email ? `<div class="trans-data-item"><span class="trans-data-label">E-mail</span><span class="trans-data-value">${escapeHtml(d.email)}</span></div>` : ''}
-                </div>
-            </div>
-
-            <!-- Aviso legal -->
-            <div class="trans-legal-notice">
-                ⚖️ <strong>Aviso legal:</strong> Informações obtidas de fontes públicas oficiais (APIs da Câmara, Senado, Wikidata e Portal da Transparência). Processos e dados financeiros são de domínio público conforme a Lei de Acesso à Informação (Lei 12.527/2011).
-            </div>
-
-            <!-- Despesas -->
-            <div class="trans-section">
-                <div class="trans-section-label">💰 Últimas Despesas Declaradas</div>
-                ${expenseRows}
-                ${p.source === 'camara' ? `<a href="https://www.camara.leg.br/deputados/${p.api_id}" target="_blank" class="trans-source-link">Ver tudo na Câmara ↗</a>` : ''}
-            </div>
-
-            <!-- Votações -->
-            <div class="trans-section">
-                <div class="trans-section-label">🗳️ Votações Recentes</div>
-                ${voteRows}
-            </div>
-
-            <!-- Avaliar -->
-            <div class="trans-section">
-                <div class="trans-section-label">⭐ Avaliação da Comunidade</div>
-                <div class="trans-rating-widget" id="trans-rating-widget">
-                    <div style="color:#9ca3af;font-size:13px;margin-bottom:10px;">Como você avalia a atuação deste político?</div>
-                    <div class="trans-stars-input" id="trans-stars-${p.id}">
-                        ${[1,2,3,4,5].map(n => `<span class="trans-star" data-val="${n}" onclick="setRatingStar('${escapeHtml(p.id)}',${n})">☆</span>`).join('')}
-                    </div>
-                    <textarea id="trans-rating-comment" placeholder="Deixe um comentário (opcional)..."
-                        style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#c5c6c7;padding:10px;font-family:'DM Sans';font-size:13px;resize:none;height:70px;margin-top:10px;outline:none;"></textarea>
-                    <button class="btn-main" style="margin-top:8px;padding:8px 20px;"
-                        onclick="submitRating('${escapeHtml(p.id)}')">Enviar Avaliação</button>
-                </div>
-                ${comments ? `<div class="trans-comments-list">${comments}</div>` : ''}
-            </div>
+            ${bioHtml}${dadosHtml}${cargosHtml}${salarioHtml}${despesasHtml}${votacoesHtml}${chargesHtml}${ratingHtml}
         </div>`;
 
-    // Rating interaction
-    window.__transCurrentRating = 0;
+    window.__transState.currentRating = 0;
 }
 
-function setRatingStar(politicianId, val) {
-    window.__transCurrentRating = val;
-    const stars = document.querySelectorAll(`#trans-stars-${CSS.escape(politicianId)} .trans-star`);
-    stars.forEach((s, i) => {
-        s.textContent = i < val ? '★' : '☆';
-        s.style.color = i < val ? '#ffd93d' : '#4b5563';
-    });
+// ── AVALIAÇÃO ─────────────────────────────────────────────────
+function hoverRatingStar(pid, val) {
+    if (window.__transState.currentRating > 0) return;
+    const stars = document.querySelectorAll(`#trans-stars-${CSS.escape(pid)} .trans-star`);
+    stars.forEach((s,i) => { s.textContent = i<val?'★':'☆'; s.style.color = i<val?'#ffd93d':'#4b5563'; });
 }
-
-async function submitRating(politicianId) {
-    if (!window.__transCurrentRating) {
-        showToast('Selecione uma nota de 1 a 5!');
-        return;
-    }
-    const comment = (document.getElementById('trans-rating-comment')?.value || '').trim();
+function unhoverRatingStar(pid) {
+    const cur = window.__transState.currentRating;
+    const stars = document.querySelectorAll(`#trans-stars-${CSS.escape(pid)} .trans-star`);
+    stars.forEach((s,i) => { s.textContent = i<cur?'★':'☆'; s.style.color = i<cur?'#ffd93d':'#4b5563'; });
+}
+function setRatingStar(pid, val) {
+    window.__transState.currentRating = val;
+    const stars = document.querySelectorAll(`#trans-stars-${CSS.escape(pid)} .trans-star`);
+    stars.forEach((s,i) => { s.textContent = i<val?'★':'☆'; s.style.color = i<val?'#ffd93d':'#4b5563'; });
+}
+async function submitRating(pid) {
+    const score = window.__transState.currentRating;
+    if (!score) { showToast('⭐ Selecione uma nota de 1 a 5!'); return; }
+    const comment = (document.getElementById(`trans-rating-comment-${pid}`)?.value||'').trim();
     try {
         const r = await authFetch('/transparency/rate', {
             method: 'POST',
-            body: JSON.stringify({
-                politician_id: politicianId,
-                user_id: user.id,
-                score: window.__transCurrentRating,
-                comment,
-            })
+            body: JSON.stringify({ politician_id: pid, user_id: user.id, score, comment })
         });
-        if (r.ok) {
-            showToast('✅ Avaliação enviada!');
-            document.getElementById('trans-rating-widget').innerHTML =
-                `<div style="color:#66fcf1;font-family:'Rajdhani';font-size:16px;">✓ Avaliação registrada. Obrigado por fiscalizar!</div>`;
-        }
-    } catch (e) {
-        showToast('Erro ao enviar avaliação.');
-    }
+        if (!r.ok) throw new Error();
+        const data = await r.json();
+        if (data.error) { showToast('Erro: ' + data.error); return; }
+        showToast('✅ Avaliação enviada! Obrigado por fiscalizar.');
+        const widget = document.getElementById(`trans-rating-widget-${pid}`);
+        if (widget) widget.innerHTML = `
+            <div style="background:rgba(102,252,241,0.08);border:1px solid rgba(102,252,241,0.2);border-radius:10px;padding:14px;text-align:center;">
+                <div>${_stars(score)}</div>
+                <div style="color:#66fcf1;font-family:'Rajdhani';font-size:16px;margin-top:6px;">Avaliação registrada!</div>
+                <div style="color:#6b7280;font-size:12px;margin-top:4px;">Média atual: ${data.new_average} ⭐ (${data.count} avaliações)</div>
+            </div>`;
+    } catch(e) { showToast('Erro ao enviar avaliação.'); }
 }
 
-// ────────────────────────────────────────────────────────────
-//  ABA: COMPARATIVO
-// ────────────────────────────────────────────────────────────
+// ── COMPARATIVO ───────────────────────────────────────────────
 function toggleCompare(p) {
     const list = window.__transState.compareList;
-    const pList = window.__transState.comparePoliticians || (window.__transState.comparePoliticians = []);
+    const pList = window.__transState.comparePoliticians;
     const idx = list.indexOf(p.id);
-
-    if (idx >= 0) {
-        list.splice(idx, 1);
-        pList.splice(idx, 1);
-    } else {
-        if (list.length >= 4) {
-            showToast('Máximo de 4 políticos no comparativo.');
-            return;
-        }
-        list.push(p.id);
-        pList.push(p);
+    if (idx >= 0) { list.splice(idx,1); pList.splice(idx,1); }
+    else {
+        if (list.length >= 4) { showToast('Máximo de 4 políticos no comparativo.'); return; }
+        list.push(p.id); pList.push(p);
     }
-
-    // Update compare badge
     const badge = document.getElementById('trans-compare-badge');
-    if (badge) {
-        badge.textContent = list.length || '';
-        badge.style.display = list.length ? 'flex' : 'none';
-    }
-
-    showToast(idx >= 0 ? '✗ Removido do comparativo' : `✓ ${p.name} adicionado ao comparativo`);
+    const count = document.getElementById('trans-compare-count');
+    if (badge) { badge.textContent = list.length||''; badge.style.display = list.length?'flex':'none'; }
+    if (count) { count.textContent = list.length||''; count.style.display = list.length?'inline':'none'; }
+    showToast(idx>=0 ? `✗ ${p.name} removido` : `✓ ${p.name} adicionado`);
 }
 
 async function renderCompareView(container) {
     const list = window.__transState.compareList;
-    const pList = window.__transState.comparePoliticians || [];
-
+    const pList = window.__transState.comparePoliticians;
     if (list.length < 2) {
-        container.innerHTML = `
-            <div class="news-empty" style="padding:60px 20px;">
-                <div style="font-size:40px;margin-bottom:16px;">⚖️</div>
-                <div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);margin-bottom:8px;">Comparativo de Políticos</div>
-                <div style="color:#6b7280;font-size:13px;line-height:1.6;">
-                    Adicione pelo menos 2 políticos ao comparativo usando o botão <strong style="color:#c5c6c7;">+</strong> nos cards de busca.
-                </div>
-                <button class="glass-btn" style="margin-top:20px;" onclick="renderTransparencyView('search')">← Buscar Políticos</button>
-            </div>`;
+        container.innerHTML = `<div class="news-empty" style="padding:60px 20px;">
+            <div style="font-size:40px;margin-bottom:16px;">⚖️</div>
+            <div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);margin-bottom:8px;">Comparativo de Políticos</div>
+            <div style="color:#6b7280;font-size:13px;">Adicione ao menos 2 políticos com o botão <strong style="color:#c5c6c7;">+</strong>.</div>
+            <button class="glass-btn" style="margin-top:20px;" onclick="renderTransparencyView('search')">← Buscar</button></div>`;
         return;
     }
-
     container.innerHTML = '<div class="news-loading"><div class="news-spinner"></div><span>Carregando comparativo...</span></div>';
-
     try {
         const r = await authFetch(`/transparency/compare?ids=${list.join(',')}`);
         if (!r.ok) throw new Error();
         const data = await r.json();
+        const pols = data.politicians||[];
+        if (!pols.length) throw new Error();
 
-        const politicians = data.politicians || [];
-        if (!politicians.length) throw new Error();
-
-        // Build comparison table
         const fields = [
-            { key: 'party', label: 'Partido' },
-            { key: 'state', label: 'Estado/UF' },
-            { key: 'country', label: 'País' },
-            { key: 'education', label: 'Formação' },
-            { key: 'occupation', label: 'Profissão anterior' },
-            { key: 'birth_date', label: 'Nascimento' },
+            ['Cargo',           d => (d.all_roles&&d.all_roles[0])||d.role||'—'],
+            ['Partido',         d => (d.all_parties&&d.all_parties[0])||d.party||'—'],
+            ['País',            d => d.country||'—'],
+            ['Formação',        d => d.education||'—'],
+            ['Profissão anterior',d=>d.occupation||'—'],
+            ['Nascimento',      d => _fmt_date(d.birth_date)||'—'],
+            ['Subsídio mensal', d => d.salary_info?_fmt_brl(d.salary_info.subsidio_mensal):'—'],
+            ['Total despesas',  d => { const t=(d.expenses||[]).reduce((s,e)=>s+(e.value||0),0); return t?_fmt_brl(t):'—'; }],
+            ['Votações registradas', d => d.votes&&d.votes.length ? d.votes.length+'': '—'],
         ];
 
-        const headers = politicians.map((p, i) => {
-            const orig = pList[i] || {};
-            return `
-                <th class="trans-cmp-header">
-                    <img src="${escapeHtml(orig.photo || '')}" class="trans-cmp-photo"
-                        onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(orig.name||'?')}&background=1a2030&color=66fcf1&size=60'">
-                    <div class="trans-cmp-name">${escapeHtml(orig.name || p.id)}</div>
-                    <div class="trans-cmp-role">${escapeHtml(orig.role || '')}</div>
-                </th>`;
+        const headers = pols.map((pol,i) => {
+            const orig = pList[i]||{};
+            return `<th class="trans-cmp-header">
+                <img src="${escapeHtml(orig.photo||pol.photo||'')}" class="trans-cmp-photo"
+                    onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(orig.name||'?')}&background=1a2030&color=66fcf1&size=60'">
+                <div class="trans-cmp-name">${escapeHtml(orig.name||pol.full_name||pol.id)}</div>
+                <div class="trans-cmp-role">${escapeHtml(orig.role||pol.role||'')}</div>
+            </th>`;
         }).join('');
 
-        const rows = fields.map(f => {
-            const cells = politicians.map(p =>
-                `<td class="trans-cmp-cell">${escapeHtml(p[f.key] || '—')}</td>`
-            ).join('');
-            return `<tr><td class="trans-cmp-label">${f.label}</td>${cells}</tr>`;
-        }).join('');
+        const rows = fields.map(([label, fn]) =>
+            `<tr><td class="trans-cmp-label">${label}</td>${pols.map(pol =>
+                `<td class="trans-cmp-cell">${escapeHtml(fn(pol))}</td>`).join('')}</tr>`
+        ).join('');
 
-        // Expenses row
-        const expCells = politicians.map(p => {
-            const total = (p.expenses || []).reduce((s, e) => s + (e.value || 0), 0);
-            return `<td class="trans-cmp-cell" style="color:#ffd93d;">R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>`;
-        }).join('');
-
-        container.innerHTML = `
-            <div class="trans-profile-wrap">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                    <div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);font-weight:700;">⚖️ Comparativo</div>
-                    <button class="trans-back-btn" onclick="renderTransparencyView('search')">← Voltar</button>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="trans-compare-table">
-                        <thead><tr><th class="trans-cmp-label">Campo</th>${headers}</tr></thead>
-                        <tbody>
-                            ${rows}
-                            <tr><td class="trans-cmp-label">💰 Total despesas (recente)</td>${expCells}</tr>
-                        </tbody>
-                    </table>
-                </div>
-                <button class="glass-btn" style="margin-top:16px;" onclick="window.__transState.compareList=[]; window.__transState.comparePoliticians=[]; renderTransparencyView('search');">
-                    ✕ Limpar comparativo
-                </button>
-            </div>`;
-    } catch (e) {
+        container.innerHTML = `<div class="trans-profile-wrap">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                <div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);font-weight:700;">⚖️ Comparativo</div>
+                <button class="trans-back-btn" onclick="renderTransparencyView('search')">← Voltar</button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="trans-compare-table">
+                    <thead><tr><th class="trans-cmp-label">Campo</th>${headers}</tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <button class="glass-btn" style="margin-top:16px;"
+                onclick="window.__transState.compareList=[];window.__transState.comparePoliticians=[];renderTransparencyView('search');">
+                ✕ Limpar comparativo</button>
+        </div>`;
+    } catch(e) {
         container.innerHTML = `<div class="news-empty">Erro ao carregar comparativo. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;
     }
 }
 
-// ────────────────────────────────────────────────────────────
-//  HOOK: inicializa quando view-news é aberta
-// ────────────────────────────────────────────────────────────
+// ── HOOK goView ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    const _newsOrig = window.goView;
-    if (typeof _newsOrig === 'function') {
+    const _orig = window.goView;
+    if (typeof _orig === 'function') {
         window.goView = function(v, btn) {
-            _newsOrig(v, btn);
+            _orig(v, btn);
             if (v === 'news') {
-                // Initialize both tabs on first open
-                const activeMainTab = document.querySelector('.news-main-tab.active');
-                if (activeMainTab) {
-                    const t = activeMainTab.dataset.main;
-                    if (t === 'news') initNews();
-                    else if (t === 'transparency') initTransparency();
-                }
+                const activeTab = document.querySelector('.news-main-tab.active');
+                if (activeTab?.dataset?.main === 'transparency') initTransparency();
+                else initNews();
             }
         };
     }
