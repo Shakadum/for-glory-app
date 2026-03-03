@@ -21,6 +21,7 @@ from app.api.routers.communities import router as communities_router
 from app.api.routers.calls import router as calls_router
 from app.api.routers.ws import router as ws_router
 from app.api.routers.news import router as news_router
+from app.api.routers.transparency import router as transparency_router
 
 # Order matters a bit: health/root last is fine
 app.include_router(auth_router)
@@ -34,4 +35,5 @@ app.include_router(communities_router)
 app.include_router(calls_router)
 app.include_router(ws_router)
 app.include_router(news_router)
+app.include_router(transparency_router)
 app.include_router(frontend_router)

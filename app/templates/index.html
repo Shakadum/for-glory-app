@@ -154,6 +154,198 @@
     #view-news { overflow: hidden; padding-bottom: 0; display: none; }
     #view-news.active { display: flex; }
     </style>
+
+    <!-- ===== TRANSPARENCY PORTAL STYLES ===== -->
+    <style>
+    /* Main tab bar (Notícias | Portal) */
+    .news-main-tabs {
+        display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+        background: rgba(0,0,0,0.3); flex-shrink: 0;
+    }
+    .news-main-tab {
+        display: flex; align-items: center; gap: 6px;
+        padding: 12px 16px; border: none; cursor: pointer;
+        font-family: 'DM Sans'; font-size: 13px; font-weight: 600;
+        background: transparent; color: #6b7280;
+        border-bottom: 2px solid transparent; white-space: nowrap;
+        transition: all 0.2s; position: relative;
+    }
+    .news-main-tab:hover { color: #c5c6c7; }
+    .news-main-tab.active { color: #66fcf1; border-bottom-color: #66fcf1; }
+
+    /* Panel wrapper */
+    .news-panel { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+    /* Compare badge */
+    .trans-compare-badge {
+        background: #ff6b6b; color: white; font-size: 10px; font-weight: 700;
+        width: 16px; height: 16px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        margin-left: 2px;
+    }
+    .trans-compare-count {
+        background: #66fcf1; color: #0b0c10; font-size: 10px; font-weight: 700;
+        padding: 1px 5px; border-radius: 10px; margin-left: 4px;
+    }
+
+    /* Sub-tabs (Buscar | Ficha | Comparar) */
+    .trans-subtabs {
+        display: flex; border-bottom: 1px solid rgba(255,255,255,0.06);
+        padding: 0 12px; background: rgba(0,0,0,0.2); flex-shrink: 0;
+    }
+    .trans-tab-btn {
+        padding: 9px 14px; border: none; background: transparent; cursor: pointer;
+        font-family: 'DM Sans'; font-size: 12px; font-weight: 600;
+        color: #4b5563; border-bottom: 2px solid transparent;
+        transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+    }
+    .trans-tab-btn:hover { color: #9ca3af; }
+    .trans-tab-btn.active { color: #66fcf1; border-bottom-color: #66fcf1; }
+
+    /* Search bar */
+    .trans-search-bar { padding: 0 0 16px 0; display: flex; flex-direction: column; gap: 10px; }
+    .trans-country-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .trans-chip {
+        padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+        background: transparent; cursor: pointer; font-size: 11px; font-weight: 700;
+        font-family: 'Rajdhani'; color: #6b7280; transition: all 0.18s; letter-spacing: 0.5px;
+    }
+    .trans-chip:hover { border-color: rgba(102,252,241,0.3); color: #c5c6c7; }
+    .trans-chip.active { background: rgba(102,252,241,0.12); border-color: #66fcf1; color: #66fcf1; }
+    .trans-input-row { display: flex; gap: 8px; }
+
+    /* Featured */
+    .trans-section-label {
+        font-family: 'Rajdhani'; font-weight: 700; font-size: 13px;
+        color: #66fcf1; letter-spacing: 1px; text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+    .trans-featured-grid { margin-bottom: 20px; }
+    .trans-featured-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+    .trans-featured-row::-webkit-scrollbar { display: none; }
+
+    /* Politician card */
+    .trans-card {
+        display: flex; align-items: center; gap: 12px;
+        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; padding: 12px; cursor: pointer;
+        transition: background 0.2s, border-color 0.2s; margin-bottom: 8px;
+    }
+    .trans-card:hover { background: rgba(102,252,241,0.05); border-color: rgba(102,252,241,0.2); }
+    .trans-card-left { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+    .trans-card-photo {
+        width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
+        border: 2px solid rgba(102,252,241,0.2);
+    }
+    .trans-card-source { font-size: 9px; font-weight: 700; font-family: 'Rajdhani'; letter-spacing: 1px; }
+    .trans-card-info { flex: 1; min-width: 0; }
+    .trans-card-name { font-family: 'Syne'; font-weight: 700; font-size: 14px; color: white; }
+    .trans-card-role { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    .trans-card-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .trans-meta-chip {
+        font-size: 10px; padding: 2px 7px; border-radius: 20px;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+        color: #9ca3af; font-family: 'DM Sans';
+    }
+    .trans-card-actions { flex-shrink: 0; }
+    .trans-compare-btn {
+        width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15);
+        background: transparent; color: #6b7280; cursor: pointer; font-size: 14px;
+        display: flex; align-items: center; justify-content: center; transition: all 0.18s;
+    }
+    .trans-compare-btn:hover { border-color: #66fcf1; color: #66fcf1; }
+    .trans-compare-btn.active { background: rgba(102,252,241,0.15); border-color: #66fcf1; color: #66fcf1; }
+    .trans-compare-btn-lg {
+        padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
+        background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px;
+        font-family: 'DM Sans'; font-weight: 600; transition: all 0.18s; white-space: nowrap;
+    }
+    .trans-compare-btn-lg:hover, .trans-compare-btn-lg.active {
+        background: rgba(102,252,241,0.12); border-color: #66fcf1; color: #66fcf1;
+    }
+
+    /* Profile */
+    .trans-profile-wrap { max-width: 680px; margin: 0 auto; }
+    .trans-back-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+        background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px;
+        font-family: 'DM Sans'; margin-bottom: 16px; transition: all 0.18s;
+    }
+    .trans-back-btn:hover { color: #66fcf1; border-color: rgba(102,252,241,0.3); }
+    .trans-profile-hero {
+        display: flex; align-items: flex-start; gap: 16px;
+        padding: 16px; background: rgba(102,252,241,0.04);
+        border: 1px solid rgba(102,252,241,0.1); border-radius: 14px; margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+    .trans-profile-photo {
+        width: 80px; height: 80px; border-radius: 50%; object-fit: cover;
+        border: 3px solid rgba(102,252,241,0.3); flex-shrink: 0;
+    }
+    .trans-profile-hero-info { flex: 1; min-width: 0; }
+    .trans-profile-name { font-family: 'Syne'; font-weight: 800; font-size: 20px; color: white; }
+    .trans-profile-role { font-size: 13px; color: #9ca3af; margin-top: 3px; }
+    .trans-rating-display { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .trans-stars-big { color: #ffd93d; font-size: 18px; letter-spacing: 2px; }
+
+    /* Section */
+    .trans-section {
+        background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; padding: 14px; margin-bottom: 12px;
+    }
+    .trans-row {
+        display: flex; align-items: center; gap: 8px; padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px;
+    }
+    .trans-row:last-child { border-bottom: none; }
+
+    /* Data grid */
+    .trans-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .trans-data-item { display: flex; flex-direction: column; gap: 2px; }
+    .trans-data-label { font-size: 10px; color: #4b5563; font-family: 'DM Sans'; text-transform: uppercase; letter-spacing: 0.5px; }
+    .trans-data-value { font-size: 13px; color: #c5c6c7; font-family: 'DM Sans'; }
+
+    /* Legal notice */
+    .trans-legal-notice {
+        background: rgba(255,170,0,0.06); border: 1px solid rgba(255,170,0,0.2);
+        border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #9ca3af;
+        line-height: 1.6; margin-bottom: 12px;
+    }
+
+    /* Source link */
+    .trans-source-link {
+        display: inline-block; font-size: 11px; color: #66fcf1;
+        text-decoration: none; margin-top: 8px; opacity: 0.7;
+    }
+    .trans-source-link:hover { opacity: 1; }
+
+    /* Rating */
+    .trans-stars-input { display: flex; gap: 6px; }
+    .trans-star {
+        font-size: 24px; cursor: pointer; color: #4b5563;
+        transition: color 0.1s, transform 0.1s;
+    }
+    .trans-star:hover { transform: scale(1.2); color: #ffd93d; }
+    .trans-comments-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .trans-comment {
+        background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px 12px;
+        display: flex; flex-direction: column; gap: 4px;
+    }
+    .trans-comment-stars { color: #ffd93d; font-size: 13px; letter-spacing: 2px; }
+
+    /* Compare table */
+    .trans-compare-table { width: 100%; border-collapse: collapse; min-width: 400px; }
+    .trans-cmp-header { padding: 12px 16px; text-align: center; border-bottom: 2px solid rgba(102,252,241,0.2); }
+    .trans-cmp-photo { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; margin-bottom: 6px; }
+    .trans-cmp-name { font-family: 'Syne'; font-weight: 700; font-size: 13px; color: white; }
+    .trans-cmp-role { font-size: 11px; color: #6b7280; }
+    .trans-cmp-label { padding: 8px 12px; font-size: 12px; color: #6b7280; font-weight: 600; font-family: 'DM Sans'; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .trans-cmp-cell { padding: 8px 16px; font-size: 12px; color: #c5c6c7; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.04); }
+
+    /* Results list */
+    .trans-results-list { display: flex; flex-direction: column; }
+    </style>
 </head>
 <body>
 <div id="toast">Notificação</div>
@@ -598,34 +790,62 @@
         </div>
 
         <div id="view-news" class="view">
-            <!-- HEADER -->
-            <div class="news-header">
-                <div class="news-header-top">
-                    <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:800; font-size:22px; letter-spacing:2px;">📡 NOTÍCIAS</span>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <button onclick="openNewsTravel()" class="glass-btn" style="padding:6px 12px; margin:0; font-size:12px;">✈ Viajar</button>
-                        <button onclick="loadNews(window.__newsLevel)" class="glass-btn" style="padding:6px 10px; margin:0;">↺</button>
+            <!-- MAIN TAB BAR: Notícias | Portal da Transparência -->
+            <div class="news-main-tabs">
+                <button class="news-main-tab active" data-main="news" onclick="switchMainTab('news')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>
+                    Notícias
+                </button>
+                <button class="news-main-tab" data-main="transparency" onclick="switchMainTab('transparency')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                    Portal da Transparência
+                    <span id="trans-compare-badge" class="trans-compare-badge" style="display:none;">0</span>
+                </button>
+            </div>
+
+            <!-- ══ PAINEL NOTÍCIAS ══ -->
+            <div id="panel-news" class="news-panel">
+                <div class="news-header">
+                    <div class="news-header-top">
+                        <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:800; font-size:20px; letter-spacing:2px;">📡 NOTÍCIAS</span>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button onclick="openNewsTravel()" class="glass-btn" style="padding:6px 12px; margin:0; font-size:12px;">✈ Viajar</button>
+                            <button onclick="loadNews(window.__newsLevel)" class="glass-btn" style="padding:6px 10px; margin:0;">↺</button>
+                        </div>
+                    </div>
+                    <div id="news-location-badge" class="news-location-badge">📍 Detectando...</div>
+                    <div class="news-zoom-bar">
+                        <button class="news-zoom-btn active" data-level="city" onclick="switchNewsLevel('city')">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Minha Cidade
+                        </button>
+                        <button class="news-zoom-btn" data-level="state" onclick="switchNewsLevel('state')">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            Estado & País
+                        </button>
+                        <button class="news-zoom-btn" data-level="world" onclick="switchNewsLevel('world')">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            Geopolítica
+                        </button>
                     </div>
                 </div>
-                <div id="news-location-badge" class="news-location-badge">📍 Detectando...</div>
-                <!-- ZOOM SELECTOR -->
-                <div class="news-zoom-bar">
-                    <button class="news-zoom-btn active" data-level="city" onclick="switchNewsLevel('city')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                        Minha Cidade
-                    </button>
-                    <button class="news-zoom-btn" data-level="state" onclick="switchNewsLevel('state')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        Estado & País
-                    </button>
-                    <button class="news-zoom-btn" data-level="world" onclick="switchNewsLevel('world')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                        Geopolítica
+                <div id="news-cards-container" class="news-cards-container"></div>
+            </div>
+
+            <!-- ══ PAINEL PORTAL DA TRANSPARÊNCIA ══ -->
+            <div id="panel-transparency" class="news-panel" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <!-- Sub-tabs do portal -->
+                <div class="trans-subtabs">
+                    <button class="trans-tab-btn active" data-tab="search" onclick="renderTransparencyView('search')">🔍 Buscar</button>
+                    <button class="trans-tab-btn" data-tab="profile" onclick="renderTransparencyView('profile')">👤 Ficha</button>
+                    <button class="trans-tab-btn" data-tab="compare" onclick="renderTransparencyView('compare')">
+                        ⚖️ Comparar
+                        <span id="trans-compare-count" class="trans-compare-count"></span>
                     </button>
                 </div>
+                <!-- Conteúdo dinâmico -->
+                <div id="trans-content" style="flex:1; overflow-y:auto; padding:16px;"></div>
             </div>
-            <!-- CARDS -->
-            <div id="news-cards-container" class="news-cards-container"></div>
         </div>
 
         <!-- Modal: viajar para outra cidade -->
@@ -762,5 +982,23 @@
 <script src="/static/app.js" defer></script>
 
 <script src="/static/news.js"></script>
+<script src="/static/transparency.js" defer></script>
+
+    <script>
+    function switchMainTab(tab) {
+        document.querySelectorAll('.news-main-tab').forEach(b => b.classList.toggle('active', b.dataset.main === tab));
+        document.getElementById('panel-news').style.display = tab === 'news' ? 'flex' : 'none';
+        document.getElementById('panel-transparency').style.display = tab === 'transparency' ? 'flex' : 'none';
+        if (tab === 'news') initNews();
+        if (tab === 'transparency') initTransparency();
+    }
+    // Open news panel by default on load
+    document.addEventListener('DOMContentLoaded', () => {
+        const pn = document.getElementById('panel-news');
+        const pt = document.getElementById('panel-transparency');
+        if (pn) pn.style.display = 'flex';
+        if (pt) pt.style.display = 'none';
+    });
+    </script>
 </body>
 </html>
