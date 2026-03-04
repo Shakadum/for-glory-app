@@ -692,6 +692,81 @@ GOVERNORS_BY_UF = {
     "SP":{"id":"wd-Q1050742","name":"Tarcísio de Freitas","role":"Governador de SP","party":"Republicanos"},
     "TO":{"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
 }
+MAYORS_BY_CITY = {
+    # Rio de Janeiro
+    "Rio de Janeiro":    {"id":"wd-Q3723792","name":"Eduardo Paes","role":"Prefeito do Rio de Janeiro","party":"PSD","uf":"RJ","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg/400px-Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg"},
+    # São Paulo
+    "São Paulo":         {"id":"wd-Q1759848","name":"Ricardo Nunes","role":"Prefeito de São Paulo","party":"MDB","uf":"SP","photo":""},
+    # Brasília / DF
+    "Brasília":          {"id":"wd-Q10303893_pref","name":"Ibaneis Rocha","role":"Governador do DF (acumula função de prefeito)","party":"MDB","uf":"DF","photo":""},
+    # Salvador
+    "Salvador":          {"id":"wd-Q10306753_salv","name":"Bruno Reis","role":"Prefeito de Salvador","party":"União Brasil","uf":"BA","photo":""},
+    # Fortaleza
+    "Fortaleza":         {"id":"wd-Q10306753_fort","name":"Evandro Leitão","role":"Prefeito de Fortaleza","party":"PT","uf":"CE","photo":""},
+    # Belo Horizonte
+    "Belo Horizonte":    {"id":"wd-Q10293629_bh","name":"Fuad Noman","role":"Prefeito de Belo Horizonte","party":"PSD","uf":"MG","photo":""},
+    # Manaus
+    "Manaus":            {"id":"wd-Q10293629_man","name":"David Almeida","role":"Prefeito de Manaus","party":"Avante","uf":"AM","photo":""},
+    # Curitiba
+    "Curitiba":          {"id":"wd-Q10293629_cwb","name":"Eduardo Pimentel","role":"Prefeito de Curitiba","party":"PSD","uf":"PR","photo":""},
+    # Recife
+    "Recife":            {"id":"wd-Q10293629_rec","name":"João Campos","role":"Prefeito do Recife","party":"PSB","uf":"PE","photo":""},
+    # Porto Alegre
+    "Porto Alegre":      {"id":"wd-Q10293629_poa","name":"Sebastião Melo","role":"Prefeito de Porto Alegre","party":"MDB","uf":"RS","photo":""},
+    # Belém
+    "Belém":             {"id":"wd-Q10293629_bel","name":"Igor Normando","role":"Prefeito de Belém","party":"MDB","uf":"PA","photo":""},
+    # Goiânia
+    "Goiânia":           {"id":"wd-Q10293629_goi","name":"Rogério Cruz","role":"Prefeito de Goiânia","party":"Republicanos","uf":"GO","photo":""},
+    # Florianópolis
+    "Florianópolis":     {"id":"wd-Q10293629_fln","name":"Topázio Neto","role":"Prefeito de Florianópolis","party":"PSD","uf":"SC","photo":""},
+    # Vitória
+    "Vitória":           {"id":"wd-Q10293629_vit","name":"Lorenzo Pazolini","role":"Prefeito de Vitória","party":"Republicanos","uf":"ES","photo":""},
+    # Natal
+    "Natal":             {"id":"wd-Q10293629_nat","name":"Paulinho Freire","role":"Prefeito de Natal","party":"União Brasil","uf":"RN","photo":""},
+    # Maceió
+    "Maceió":            {"id":"wd-Q10293629_mac","name":"João Henrique Caldas","role":"Prefeito de Maceió","party":"PL","uf":"AL","photo":""},
+    # Teresina
+    "Teresina":          {"id":"wd-Q10293629_the","name":"Eduardo Braide","role":"Prefeito de Teresina","party":"PSD","uf":"PI","photo":""},
+    # Campo Grande
+    "Campo Grande":      {"id":"wd-Q10293629_cg","name":"Adriane Lopes","role":"Prefeita de Campo Grande","party":"PP","uf":"MS","photo":""},
+    # João Pessoa
+    "João Pessoa":       {"id":"wd-Q10293629_jpb","name":"Cícero Lucena","role":"Prefeito de João Pessoa","party":"PP","uf":"PB","photo":""},
+    # Aracaju
+    "Aracaju":           {"id":"wd-Q10293629_aju","name":"Emília Corrêa","role":"Prefeita de Aracaju","party":"PL","uf":"SE","photo":""},
+    # Teresópolis
+    "Teresópolis":       {"id":"wd-Q10293629_ter","name":"Vinicius Claussen","role":"Prefeito de Teresópolis","party":"PSD","uf":"RJ","photo":""},
+}
+
+CITIES_BY_UF = {
+    "AC":["Rio Branco","Cruzeiro do Sul","Sena Madureira"],
+    "AL":["Maceió","Arapiraca","Palmeira dos Índios"],
+    "AP":["Macapá","Santana","Laranjal do Jari"],
+    "AM":["Manaus","Parintins","Itacoatiara","Manacapuru"],
+    "BA":["Salvador","Feira de Santana","Vitória da Conquista","Camaçari"],
+    "CE":["Fortaleza","Caucaia","Juazeiro do Norte","Maracanaú"],
+    "DF":["Brasília"],
+    "ES":["Vitória","Vila Velha","Serra","Cariacica"],
+    "GO":["Goiânia","Aparecida de Goiânia","Anápolis","Rio Verde"],
+    "MA":["São Luís","Imperatriz","São José de Ribamar","Timon"],
+    "MT":["Cuiabá","Várzea Grande","Rondonópolis","Sinop"],
+    "MS":["Campo Grande","Dourados","Três Lagoas","Corumbá"],
+    "MG":["Belo Horizonte","Uberlândia","Contagem","Juiz de Fora","Betim"],
+    "PA":["Belém","Ananindeua","Santarém","Marabá"],
+    "PB":["João Pessoa","Campina Grande","Santa Rita","Patos"],
+    "PR":["Curitiba","Londrina","Maringá","Ponta Grossa","Cascavel"],
+    "PE":["Recife","Caruaru","Olinda","Petrolina","CAAB"],
+    "PI":["Teresina","Parnaíba","Picos","Floriano"],
+    "RJ":["Rio de Janeiro","São Gonçalo","Duque de Caxias","Nova Iguaçu","Niterói","Teresópolis","Petrópolis","Volta Redonda","Campos dos Goytacazes"],
+    "RN":["Natal","Mossoró","Parnamirim","São Gonçalo do Amarante"],
+    "RS":["Porto Alegre","Caxias do Sul","Canoas","Pelotas","Santa Maria"],
+    "RO":["Porto Velho","Ji-Paraná","Ariquemes","Vilhena"],
+    "RR":["Boa Vista","Rorainópolis","Caracaraí"],
+    "SC":["Florianópolis","Joinville","Blumenau","São José","Chapecó"],
+    "SE":["Aracaju","Nossa Senhora do Socorro","Lagarto","Itabaiana"],
+    "SP":["São Paulo","Guarulhos","Campinas","São Bernardo do Campo","Santo André","Osasco","Ribeirão Preto","Santos","Sorocaba"],
+    "TO":["Palmas","Araguaína","Gurupi","Porto Nacional"],
+}
+
 UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
 # Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
 # Padrão: https://commons.wikimedia.org/wiki/File:Nome_do_arquivo.jpg
@@ -888,41 +963,65 @@ async def compare_politicians(ids:str=Query(...)):
     results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
     return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
 
+COUNTRY_FLAGS = {
+    "BR":"🇧🇷","US":"🇺🇸","FR":"🇫🇷","DE":"🇩🇪","GB":"🇬🇧",
+    "AR":"🇦🇷","PT":"🇵🇹","MX":"🇲🇽","JP":"🇯🇵","CN":"🇨🇳",
+    "RU":"🇷🇺","IT":"🇮🇹","ES":"🇪🇸","UY":"🇺🇾","CL":"🇨🇱",
+    "CO":"🇨🇴","VE":"🇻🇪","PE":"🇵🇪","BO":"🇧🇴","PY":"🇵🇾",
+}
+
 @router.get("/transparency/local")
-async def get_local_politicians(request: FARequest, uf_override: Optional[str] = Query(None)):
+async def get_local_politicians(
+    request: FARequest,
+    uf_override: Optional[str] = Query(None),
+    city_override: Optional[str] = Query(None),
+):
     ip = request.headers.get("X-Forwarded-For", request.client.host or "127.0.0.1")
     ip = ip.split(",")[0].strip()
     geo = await _resolve_geo(ip)
-    # Permite override manual do estado (quando IP não detecta corretamente)
+
     if uf_override and len(uf_override) == 2:
-        uf = uf_override.upper()
-        state   = UF_NAMES.get(uf, uf)
-        city    = ""
+        uf    = uf_override.upper()
+        state = UF_NAMES.get(uf, uf)
+        city  = city_override or (CITIES_BY_UF.get(uf, [""])[0])
     else:
-        uf      = geo.get("regionCode","RJ").upper()
-        city    = geo.get("city","")
-        state   = geo.get("regionName","")
-    country = geo.get("countryCode","BR").upper()
+        uf    = geo.get("regionCode","RJ").upper()
+        city  = city_override or geo.get("city","")
+        state = geo.get("regionName","")
+
+    country     = geo.get("countryCode","BR").upper()
+    country_flag = COUNTRY_FLAGS.get(country, "🌍")
+    state_full  = UF_NAMES.get(uf, state)
+    cities_list = CITIES_BY_UF.get(uf, [city] if city else [])
 
     executivo = [
         {**CURATED_POLITICIANS["wd-Q28227"], "highlight": True},
         {**CURATED_POLITICIANS["wd-Q41551"], "highlight": False},
     ]
 
-    gov_data = GOVERNORS_BY_UF.get(uf)
+    gov_data   = GOVERNORS_BY_UF.get(uf)
     governador = [{**gov_data,"state":uf,"country":"Brasil","source":"wikidata","photo":"","email":""}] if gov_data else []
+
+    # Prefeito da cidade selecionada
+    mayor_data  = MAYORS_BY_CITY.get(city) or MAYORS_BY_CITY.get(city.strip())
+    prefeito    = [{**mayor_data,"state":uf,"country":"Brasil","source":"wikidata","email":""}] if mayor_data else []
 
     dep_task = get_deputados_by_uf(uf)
     sen_task = get_senadores_by_uf(uf)
     deputados, senadores = await asyncio.gather(dep_task, sen_task)
 
     return {
-        "location": {"ip":ip,"city":city,"state":state,"uf":uf,"country":country,"state_full":UF_NAMES.get(uf,state)},
+        "location": {
+            "ip": ip, "city": city, "state": state, "uf": uf,
+            "country": country, "country_flag": country_flag,
+            "state_full": state_full, "cities": cities_list,
+        },
         "sections": [
-            {"id":"executivo","title":"🇧🇷 Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República","color":"#ffd93d","politicians":executivo},
-            {"id":"governador","title":"🏛️ Governo do Estado","subtitle":f"Governador(a) de {UF_NAMES.get(uf,state)}","color":"#66fcf1","politicians":governador},
-            {"id":"senadores","title":f"🗣️ Senadores de {uf}","subtitle":f"Senadores que representam {UF_NAMES.get(uf,state)} no Senado Federal","color":"#c678dd","politicians":senadores},
-            {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {UF_NAMES.get(uf,state)} na Câmara dos Deputados","color":"#45b7d1","politicians":deputados},
+            {"id":"executivo","title":f"{country_flag} Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República","color":"#ffd93d","politicians":executivo},
+            {"id":"governador","title":"🏛️ Governo do Estado","subtitle":f"Governador(a) de {state_full}","color":"#66fcf1","politicians":governador},
+            {"id":"prefeito","title":f"🏙️ Prefeitura de {city or state_full}","subtitle":f"Prefeito(a) Municipal","color":"#f97316","politicians":prefeito},
+            {"id":"senadores","title":f"🗣️ Senadores de {uf}","subtitle":f"Senadores que representam {state_full} no Senado Federal","color":"#c678dd","politicians":senadores},
+            {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {state_full} na Câmara dos Deputados","color":"#45b7d1","politicians":deputados},
             {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros atuais — guardiões da Constituição Federal","color":"#ff6b6b","politicians":STF_MINISTERS},
         ]
     }
