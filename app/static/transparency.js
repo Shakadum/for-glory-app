@@ -108,97 +108,6 @@ async function loadLocalPanel() {
     }
 }
 
-// City lists per UF (mirrors backend CITIES_BY_UF)
-const CITIES_BY_UF = {
-    AC:["Rio Branco","Cruzeiro do Sul","Sena Madureira"],
-    AL:["Maceió","Arapiraca","Palmeira dos Índios"],
-    AP:["Macapá","Santana","Laranjal do Jari"],
-    AM:["Manaus","Parintins","Itacoatiara","Manacapuru"],
-    BA:["Salvador","Feira de Santana","Vitória da Conquista","Camaçari"],
-    CE:["Fortaleza","Caucaia","Juazeiro do Norte","Maracanaú"],
-    DF:["Brasília"],
-    ES:["Vitória","Vila Velha","Serra","Cariacica"],
-    GO:["Goiânia","Aparecida de Goiânia","Anápolis","Rio Verde"],
-    MA:["São Luís","Imperatriz","São José de Ribamar","Timon"],
-    MT:["Cuiabá","Várzea Grande","Rondonópolis","Sinop"],
-    MS:["Campo Grande","Dourados","Três Lagoas","Corumbá"],
-    MG:["Belo Horizonte","Uberlândia","Contagem","Juiz de Fora","Betim"],
-    PA:["Belém","Ananindeua","Santarém","Marabá"],
-    PB:["João Pessoa","Campina Grande","Santa Rita","Patos"],
-    PR:["Curitiba","Londrina","Maringá","Ponta Grossa","Cascavel"],
-    PE:["Recife","Caruaru","Olinda","Petrolina"],
-    PI:["Teresina","Parnaíba","Picos","Floriano"],
-    RJ:["Rio de Janeiro","São Gonçalo","Duque de Caxias","Nova Iguaçu","Niterói","Teresópolis","Petrópolis","Volta Redonda","Campos dos Goytacazes"],
-    RN:["Natal","Mossoró","Parnamirim","São Gonçalo do Amarante"],
-    RS:["Porto Alegre","Caxias do Sul","Canoas","Pelotas","Santa Maria"],
-    RO:["Porto Velho","Ji-Paraná","Ariquemes","Vilhena"],
-    RR:["Boa Vista","Rorainópolis","Caracaraí"],
-    SC:["Florianópolis","Joinville","Blumenau","São José","Chapecó"],
-    SE:["Aracaju","Nossa Senhora do Socorro","Lagarto","Itabaiana"],
-    SP:["São Paulo","Guarulhos","Campinas","São Bernardo do Campo","Santo André","Osasco","Ribeirão Preto","Santos","Sorocaba"],
-    TO:["Palmas","Araguaína","Gurupi","Porto Nacional"],
-};
-
-function updateCityDropdown(uf) {
-    const sel = document.getElementById('trans-city-select');
-    if (!sel) return;
-    const cities = CITIES_BY_UF[uf] || [];
-    sel.innerHTML = cities.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-}
-
-function renderLocalPanelData(data) {
-    const el = document.getElementById('trans-local-panel');
-    if (!el) return;
-
-    const loc      = data.location || {};
-    const sections = data.sections  || [];
-    const flag     = loc.country_flag || '🌍';
-    const cities   = loc.cities || CITIES_BY_UF[loc.uf] || [];
-    const curCity  = loc.city || '';
-    const curUF    = loc.uf  || 'RJ';
-
-    const allUFs  = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SE','SP','TO'];
-    const ufNames = {AC:'Acre',AL:'Alagoas',AP:'Amapá',AM:'Amazonas',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MT:'Mato Grosso',MS:'Mato Grosso do Sul',MG:'Minas Gerais',PA:'Pará',PB:'Paraíba',PR:'Paraná',PE:'Pernambuco',PI:'Piauí',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RS:'Rio Grande do Sul',RO:'Rondônia',RR:'Roraima',SC:'Santa Catarina',SE:'Sergipe',SP:'São Paulo',TO:'Tocantins'};
-
-    el.innerHTML = `
-        <!-- LOCATION BANNER -->
-        <div class="trans-location-banner">
-            <div class="trans-location-icon">📍</div>
-            <div style="flex:1;min-width:0;">
-                <div class="trans-location-title">Seus Representantes</div>
-                <div class="trans-location-sub" id="trans-loc-display">
-                    <span style="font-size:20px;vertical-align:middle;margin-right:4px;">${flag}</span>
-                    <strong style="color:#c5c6c7;">${escapeHtml(curCity||loc.state_full||curUF)}</strong>
-                    <span style="color:#4b5563;margin-left:4px;">· ${escapeHtml(loc.state_full||curUF)} · ${escapeHtml(loc.country||'Brasil')}</span>
-                </div>
-                <!-- Override row -->
-                <div class="trans-loc-override" id="trans-loc-override" style="display:none;margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center;">
-                    <span style="color:#9ca3af;font-size:11px;">Estado:</span>
-                    <select id="trans-uf-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;"
-                        onchange="updateCityDropdown(this.value)">
-                        ${allUFs.map(u=>`<option value="${u}" ${u===curUF?'selected':''}>${u} — ${ufNames[u]||u}</option>`).join('')}
-                    </select>
-                    <span style="color:#9ca3af;font-size:11px;">Cidade:</span>
-                    <select id="trans-city-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;">
-                        ${cities.map(c=>`<option value="${escapeHtml(c)}" ${c===curCity?'selected':''}>${escapeHtml(c)}</option>`).join('')}
-                    </select>
-                    <button class="btn-main" style="margin:0;padding:5px 14px;font-size:12px;" onclick="applyUFOverride()">Aplicar</button>
-                    <button class="glass-btn" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('trans-loc-override').style.display='none'">✕</button>
-                </div>
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
-                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
-                    onclick="toggleLocOverride()" title="Corrigir cidade/estado">✏️ Corrigir</button>
-                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
-                    onclick="loadLocalPanel()" title="Atualizar">↺</button>
-            </div>
-        </div>
-
-        <!-- SECTIONS -->
-        ${sections.map(s => renderSection(s)).join('')}
-    `;
-}
-
 function renderSection(s) {
     const pols = s.politicians || [];
     if (!pols.length) return '';
@@ -225,14 +134,13 @@ function renderSection(s) {
 function renderExecCard(p, color) {
     const inCmp = window.__transState.compareList.includes(p.id);
     const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
-    const safeName = encodeURIComponent((p.name||'?').split(' ').slice(-2).join(' '));
-    const safeColor = color.replace('#','');
+    const avatar = _safeAvatarUrl(p.name, color);
     return `
         <div class="trans-exec-card" onclick='openPolitician(${pJson})'
             style="--accent:${color};">
             <div class="trans-exec-photo-wrap">
-                <img src="${escapeHtml(p.photo||'')}" class="trans-exec-photo"
-                    onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=${safeName}&background=131820&color=${safeColor}&bold=true&size=160'">
+                <img src="${escapeHtml(p.photo||avatar)}" class="trans-exec-photo"
+                    onerror="this.onerror=null;this.src='${avatar}'">
                 <div class="trans-exec-overlay"></div>
                 ${p.highlight ? '<div class="trans-exec-badge">👑 Presidente</div>' : ''}
             </div>
@@ -254,13 +162,12 @@ function renderExecCard(p, color) {
 function renderMiniCard(p, color) {
     const inCmp = window.__transState.compareList.includes(p.id);
     const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
-    const safeName = encodeURIComponent((p.name||'?').split(' ').slice(-2).join(' '));
-    const safeColor = color.replace('#','');
+    const avatar = _safeAvatarUrl(p.name, color);
     return `
         <div class="trans-mini-card" onclick='openPolitician(${pJson})'
             style="--accent:${color};">
-            <img src="${escapeHtml(p.photo||'')}" class="trans-mini-photo"
-                onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=${safeName}&background=131820&color=${safeColor}&bold=true&size=80'">
+            <img src="${escapeHtml(p.photo||avatar)}" class="trans-mini-photo"
+                onerror="this.onerror=null;this.src='${avatar}'">
             <div class="trans-mini-info">
                 <div class="trans-mini-name">${escapeHtml(p.name||'')}</div>
                 ${p.party ? `<span class="trans-mini-party" style="color:${color};">${escapeHtml(p.party)}</span>` : ''}
@@ -277,12 +184,12 @@ function politicianCard(p) {
     const inCmp = window.__transState.compareList.includes(p.id);
     const srcColor = {camara:'#66fcf1',senado:'#ffd93d',wikidata:'#c678dd'}[p.source]||'#888';
     const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
-    const safeName = encodeURIComponent((p.name||'?').split(' ').slice(-2).join(' '));
+    const avatar = _safeAvatarUrl(p.name, '66fcf1');
     return `
     <div class="trans-card" onclick='openPolitician(${pJson})'>
         <div class="trans-card-left">
-            <img src="${escapeHtml(p.photo||'')}" class="trans-card-photo"
-                onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=${safeName}&background=1a2030&color=66fcf1&size=80'">
+            <img src="${escapeHtml(p.photo||avatar)}" class="trans-card-photo"
+                onerror="this.onerror=null;this.src='${avatar}'">
             <div class="trans-card-source" style="color:${srcColor}">${(p.source||'').toUpperCase()}</div>
         </div>
         <div class="trans-card-info">
@@ -371,14 +278,14 @@ function renderProfile(p, d, container) {
     const avgR=r.average;
     const ratingHtml=`<div class="trans-section"><div class="trans-section-label">⭐ Avaliação da Comunidade</div>${avgR?`<div class="trans-rating-summary"><div class="trans-rating-big-score">${avgR}</div><div>${_stars(avgR)}<div style="color:#6b7280;font-size:12px;margin-top:4px;">${r.count} avaliação${r.count!==1?'ões':''}</div></div></div>`:'<div style="color:#6b7280;font-size:13px;margin-bottom:12px;">Seja o primeiro a avaliar!</div>'}<div class="trans-rating-widget" id="trans-rating-widget-${p.id}"><div style="color:#9ca3af;font-size:12px;margin-bottom:10px;">Sua avaliação:</div><div class="trans-stars-input" id="trans-stars-${p.id}">${[1,2,3,4,5].map(n=>`<span class="trans-star" data-val="${n}" onmouseover="hoverRatingStar('${escapeHtml(p.id)}',${n})" onmouseout="unhoverRatingStar('${escapeHtml(p.id)}')" onclick="setRatingStar('${escapeHtml(p.id)}',${n})">☆</span>`).join('')}</div><textarea id="trans-rating-comment-${p.id}" placeholder="Comentário público sobre a atuação deste político (opcional)..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#c5c6c7;padding:10px;font-family:\'DM Sans\';font-size:13px;resize:none;height:80px;margin-top:10px;outline:none;"></textarea><button class="btn-main" style="margin-top:8px;padding:8px 20px;" onclick="submitRating('${escapeHtml(p.id)}')">📤 Enviar Avaliação</button></div>${(r.comments||[]).length?`<div class="trans-section-label" style="margin-top:16px;font-size:11px;">AVALIAÇÕES RECENTES</div><div class="trans-comments-list">${r.comments.map(c=>`<div class="trans-comment"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">${_stars(c.score)}<span style="color:#4b5563;font-size:11px;">${escapeHtml(c.date)}</span></div>${c.comment?`<div style="color:#9ca3af;font-size:12px;margin-top:4px;">"${escapeHtml(c.comment)}"</div>`:''}</div>`).join('')}</div>`:''}</div>`;
 
-    const safeName = encodeURIComponent((p.name||'?').split(' ').slice(-2).join(' '));
+    const _profileAvatar = _safeAvatarUrl(p.name, '66fcf1');
     container.innerHTML=`<div class="trans-profile-wrap">
         <button class="trans-back-btn" onclick="renderTransparencyView('search')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Voltar
         </button>
         <div class="trans-profile-hero">
-            <img src="${escapeHtml(d.photo||p.photo||'')}" class="trans-profile-photo"
-                onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=${safeName}&background=1a2030&color=66fcf1&size=120'">
+            <img src="${escapeHtml(d.photo||p.photo||_profileAvatar)}" class="trans-profile-photo"
+                onerror="this.onerror=null;this.src='${_profileAvatar}'">
             <div class="trans-profile-hero-info" style="flex:1;min-width:0;">
                 <div class="trans-profile-name">${escapeHtml(d.full_name||p.name||'')}</div>
                 <div class="trans-profile-role">${escapeHtml(d.role||p.role||d.description||'')}</div>
@@ -446,12 +353,33 @@ function toggleLocOverride() {
     const el = document.getElementById('trans-loc-override');
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
+
+async function loadCitiesForUF(uf, selectedCity = '') {
+    const sel = document.getElementById('trans-city-select');
+    if (!sel) return;
+    sel.innerHTML = '<option>Carregando...</option>';
+    sel.disabled = true;
+    try {
+        const r = await authFetch(`/transparency/cities/${uf}`);
+        if (!r.ok) throw new Error();
+        const data = await r.json();
+        const cities = data.cities || [];
+        sel.innerHTML = cities.map(c =>
+            `<option value="${escapeHtml(c)}" ${c === selectedCity ? 'selected' : ''}>${escapeHtml(c)}</option>`
+        ).join('');
+        sel.disabled = false;
+    } catch(e) {
+        sel.innerHTML = '<option value="">Erro ao carregar</option>';
+        sel.disabled = false;
+    }
+}
+
 async function applyUFOverride() {
     const uf   = document.getElementById('trans-uf-select')?.value;
     const city = document.getElementById('trans-city-select')?.value || '';
     if (!uf) return;
     const el = document.getElementById('trans-local-panel');
-    if (el) el.innerHTML = '<div class="news-loading" style="margin:24px auto;"><div class="news-spinner"></div><span>Carregando representantes de ' + escapeHtml(city||uf) + '...</span></div>';
+    if (el) el.innerHTML = `<div class="news-loading" style="margin:24px auto;"><div class="news-spinner"></div><span>Carregando representantes de ${escapeHtml(city || uf)}...</span></div>`;
     try {
         let url = `/transparency/local?uf_override=${uf}`;
         if (city) url += `&city_override=${encodeURIComponent(city)}`;
@@ -463,6 +391,65 @@ async function applyUFOverride() {
     } catch(e) {
         showToast('Erro ao carregar representantes.');
     }
+}
+
+function _safeAvatarUrl(name, color) {
+    const initials = encodeURIComponent((name||'?').split(' ').filter(Boolean).slice(-2).join(' '));
+    const c = (color||'66fcf1').replace('#','');
+    return `https://ui-avatars.com/api/?name=${initials}&background=131820&color=${c}&bold=true&size=128`;
+}
+
+function renderLocalPanelData(data) {
+    const el = document.getElementById('trans-local-panel');
+    if (!el) return;
+
+    const loc      = data.location || {};
+    const sections = data.sections  || [];
+    const flag     = loc.country_flag || '🌍';
+    const curCity  = loc.city || '';
+    const curUF    = loc.uf  || 'RJ';
+
+    const allUFs  = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SE','SP','TO'];
+    const ufNames = {AC:'Acre',AL:'Alagoas',AP:'Amapá',AM:'Amazonas',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MT:'Mato Grosso',MS:'Mato Grosso do Sul',MG:'Minas Gerais',PA:'Pará',PB:'Paraíba',PR:'Paraná',PE:'Pernambuco',PI:'Piauí',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RS:'Rio Grande do Sul',RO:'Rondônia',RR:'Roraima',SC:'Santa Catarina',SE:'Sergipe',SP:'São Paulo',TO:'Tocantins'};
+
+    el.innerHTML = `
+        <!-- LOCATION BANNER -->
+        <div class="trans-location-banner">
+            <div class="trans-location-icon">📍</div>
+            <div style="flex:1;min-width:0;">
+                <div class="trans-location-title">Seus Representantes</div>
+                <div class="trans-location-sub">
+                    <span style="font-size:18px;vertical-align:middle;">${flag}</span>
+                    <strong style="color:#c5c6c7;margin-left:4px;">${escapeHtml(curCity || loc.state_full || curUF)}</strong>
+                    ${curCity ? `<span style="color:#4b5563;font-size:10px;margin-left:6px;">· ${escapeHtml(loc.state_full||curUF)} · ${escapeHtml(loc.country||'Brasil')}</span>` : ''}
+                </div>
+                <!-- Override row -->
+                <div class="trans-loc-override" id="trans-loc-override" style="display:none;margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <span style="color:#9ca3af;font-size:11px;">Estado:</span>
+                    <select id="trans-uf-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;"
+                        onchange="loadCitiesForUF(this.value)">
+                        ${allUFs.map(u=>`<option value="${u}" ${u===curUF?'selected':''}>${u} — ${ufNames[u]||u}</option>`).join('')}
+                    </select>
+                    <span style="color:#9ca3af;font-size:11px;">Cidade:</span>
+                    <select id="trans-city-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;">
+                        <option value="${escapeHtml(curCity)}">${escapeHtml(curCity || 'Selecione...')}</option>
+                    </select>
+                    <button class="btn-main" style="margin:0;padding:5px 14px;font-size:12px;" onclick="applyUFOverride()">Aplicar</button>
+                    <button class="glass-btn" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('trans-loc-override').style.display='none'">✕</button>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
+                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
+                    onclick="toggleLocOverride();if(document.getElementById('trans-loc-override').style.display!=='none')loadCitiesForUF('${escapeHtml(curUF)}','${escapeHtml(curCity)}')"
+                    title="Selecionar cidade/estado">✏️ Corrigir</button>
+                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
+                    onclick="loadLocalPanel()" title="Atualizar">↺</button>
+            </div>
+        </div>
+
+        <!-- SECTIONS -->
+        ${sections.map(s => renderSection(s)).join('')}
+    `;
 }
 
 // ── HOOK ──────────────────────────────────────────────────────
