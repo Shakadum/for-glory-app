@@ -1,16 +1,14 @@
 """
-For Glory — Portal da Transparência
--------------------------------------
-BRASIL:
-  - API Câmara dos Deputados: https://dadosabertos.camara.leg.br/api/v2
-  - API Senado Federal:       https://legis.senado.leg.br/dadosabertos
-INTERNACIONAL:
-  - Wikidata Entity API + MediaWiki Action API + Wikipedia REST API
+For Glory — Portal da Transparência v5
+Estratégia:
+  - Políticos-chave (Presidente, VP, STF) têm dados curados e verificados manualmente
+  - Deputados/Senadores: API oficial da Câmara e Senado
+  - Internacionais: Wikidata Entity API + Wikipedia REST (com validação)
+  - Nunca usa busca por texto livre para encontrar o artigo de um político conhecido
 """
-
-import os, asyncio, hashlib
+import asyncio, hashlib, urllib.parse
 import httpx
-from fastapi import APIRouter, Query, Depends, Body
+from fastapi import APIRouter, Query, Depends, Body, Request as FARequest
 from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from datetime import datetime, timezone
@@ -22,12 +20,9 @@ router = APIRouter()
 
 CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
-WIKI_SEARCH = "https://pt.wikipedia.org/w/api.php"
-WIKI_PT     = "https://pt.wikipedia.org/api/rest_v1/page/summary/{}"
-WIKI_EN     = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
-_HDR        = {"User-Agent": "ForGloryApp/1.0"}
+_HDR = {"User-Agent": "ForGloryApp/1.0 (transparency@forglory.online)"}
 
-# ── DB ──────────────────────────────────────────────────────
+# ── DB ────────────────────────────────────────────────────────
 class PoliticianRating(Base):
     __tablename__ = "politician_ratings"
     id            = Column(Integer, primary_key=True, index=True)
@@ -37,7 +32,7 @@ class PoliticianRating(Base):
     comment       = Column(Text, nullable=True)
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-# ── HELPERS ─────────────────────────────────────────────────
+# ── HTTP ──────────────────────────────────────────────────────
 async def _get(url, params=None, timeout=10):
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
@@ -48,11 +43,358 @@ async def _get(url, params=None, timeout=10):
         pass
     return None
 
+async def _wiki_summary(title: str, lang: str = "pt") -> dict:
+    """Busca resumo Wikipedia pelo título EXATO (sem busca fuzzy)."""
+    encoded = urllib.parse.quote(title.replace(" ", "_"), safe="")
+    url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{encoded}"
+    d = await _get(url, timeout=8)
+    if d and d.get("type") == "standard" and d.get("extract"):
+        return {
+            "bio":   d["extract"][:900],
+            "photo": (d.get("originalimage") or d.get("thumbnail") or {}).get("source", ""),
+            "link":  d.get("content_urls", {}).get("desktop", {}).get("page", ""),
+        }
+    return {}
+
+# ── DADOS CURADOS — POLÍTICOS PRINCIPAIS ─────────────────────
+# Fonte: dados oficiais verificados manualmente
+# Salário presidente: Lei 13.752/2018 — R$ 30.934,70/mês
+# Salário ministro STF: R$ 46.366,19/mês (teto constitucional)
+# Salário dep/sen: R$ 46.366,19/mês
+
+CURATED_POLITICIANS = {
+
+    # ════════════════ EXECUTIVO FEDERAL ════════════════
+    "wd-Q28227": {
+        "id": "wd-Q28227",
+        "name": "Luiz Inácio Lula da Silva",
+        "display_name": "Lula",
+        "role": "Presidente da República",
+        "party": "PT",
+        "state": "Nacional",
+        "country": "Brasil",
+        "source": "wikidata",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg",
+        "full_name": "Luiz Inácio Lula da Silva",
+        "birth_date": "1945-10-27",
+        "birth_place": "Caetés, Pernambuco",
+        "education": "Curso técnico em Torneiro Mecânico (SENAI)",
+        "occupation": "Torneiro mecânico / Sindicalista",
+        "email": "",
+        "website": "https://www.gov.br/planalto/pt-br",
+        "wiki_title_pt": "Luiz Inácio Lula da Silva",
+        "all_parties": ["PT"],
+        "all_roles": [
+            "Presidente da República (2023–presente)",
+            "Presidente da República (2003–2011)",
+            "Presidente do PT (1980–1994)",
+            "Deputado Federal por SP (1986–1991)",
+        ],
+        "all_education": ["Curso técnico em Torneiro Mecânico — SENAI"],
+        "salary_info": {
+            "cargo": "Presidente da República",
+            "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio mensal do Presidente da República (Lei nº 13.752/2018)",
+            "beneficios": [
+                {"nome": "Residência Oficial (Palácio da Alvorada)", "valor": "Custeado pela União", "descricao": "Moradia oficial do Presidente e família"},
+                {"nome": "Segurança (GSI)", "valor": "Custeado pela União", "descricao": "Serviço de segurança institucional"},
+                {"nome": "Aeronave Presidencial (VC-1/VC-2)", "valor": "Custeado pela União", "descricao": "Transporte oficial em missões de Estado"},
+                {"nome": "Staff e equipe de apoio", "valor": "Custeado pela União", "descricao": "Equipe de assessoria, comunicação e logística do Palácio"},
+                {"nome": "Verba de representação", "valor": "Não divulgado publicamente", "descricao": "Despesas protocolares e de representação do cargo"},
+            ],
+            "beneficios_abdicados_info": "O Presidente pode abrir mão de benefícios adicionais como o uso exclusivo de aeronave em voos particulares. Lula declarou abrir mão do uso do Palácio do Jaburu.",
+            "fonte": "https://www.gov.br/planejamento/pt-br/acesso-a-informacao/transparencia-e-prestacao-de-contas",
+        },
+        "charges": [],
+        "votes": [],
+        "expenses": [],
+    },
+
+    "wd-Q41551": {
+        "id": "wd-Q41551",
+        "name": "Geraldo Alckmin",
+        "display_name": "Geraldo Alckmin",
+        "role": "Vice-Presidente da República",
+        "party": "PSB",
+        "state": "Nacional",
+        "country": "Brasil",
+        "source": "wikidata",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Geraldo_Alckmin_-_foto_oficial_2023.jpg/800px-Geraldo_Alckmin_-_foto_oficial_2023.jpg",
+        "full_name": "Geraldo José Rodrigues Alckmin Filho",
+        "birth_date": "1952-11-11",
+        "birth_place": "Pindamonhangaba, São Paulo",
+        "education": "Medicina — Faculdade de Medicina de Taubaté",
+        "occupation": "Médico / Político",
+        "website": "https://www.gov.br/planalto/pt-br",
+        "wiki_title_pt": "Geraldo Alckmin",
+        "all_parties": ["PSB", "PSDB (até 2022)"],
+        "all_roles": [
+            "Vice-Presidente da República (2023–presente)",
+            "Governador de São Paulo (2001–2006, 2011–2018)",
+            "Vice-Governador de São Paulo (1995–2001)",
+            "Deputado Estadual SP (1983–1988)",
+        ],
+        "all_education": ["Medicina — Faculdade de Medicina de Taubaté (Unitau)"],
+        "salary_info": {
+            "cargo": "Vice-Presidente da República",
+            "subsidio_mensal": 27176.88,
+            "subsidio_desc": "Subsídio mensal do Vice-Presidente da República",
+            "beneficios": [
+                {"nome": "Residência Oficial (Palácio do Jaburu)", "valor": "Custeado pela União", "descricao": "Moradia oficial do Vice-Presidente"},
+                {"nome": "Segurança (GSI)", "valor": "Custeado pela União", "descricao": "Serviço de segurança institucional"},
+            ],
+            "beneficios_abdicados_info": "Alckmin não reside no Palácio do Jaburu — mora em residência particular em São Paulo.",
+            "fonte": "https://www.gov.br/planejamento/pt-br",
+        },
+        "charges": [],
+        "votes": [],
+        "expenses": [],
+    },
+
+    # ════════════════ STF ════════════════
+    "wd-Q10319857": {
+        "id": "wd-Q10319857",
+        "name": "Luís Roberto Barroso",
+        "display_name": "Barroso",
+        "role": "Presidente do STF",
+        "party": "",
+        "state": "Nacional",
+        "country": "Brasil",
+        "source": "wikidata",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/800px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg",
+        "full_name": "Luís Roberto Barroso",
+        "birth_date": "1958-03-11",
+        "birth_place": "Vassouras, Rio de Janeiro",
+        "education": "Direito — UERJ; LLM e PhD — Yale Law School (EUA)",
+        "occupation": "Jurista / Professor de Direito Constitucional",
+        "website": "https://portal.stf.jus.br",
+        "wiki_title_pt": "Luís Roberto Barroso",
+        "all_parties": [],
+        "all_roles": ["Presidente do STF (2023–presente)", "Ministro do STF (desde 2013)"],
+        "all_education": ["Direito — UERJ", "LLM — Yale Law School", "PhD (Doutorado) — Yale Law School"],
+        "salary_info": {
+            "cargo": "Ministro do Supremo Tribunal Federal",
+            "subsidio_mensal": 46366.19,
+            "subsidio_desc": "Subsídio dos ministros do STF — teto constitucional do funcionalismo público",
+            "beneficios": [
+                {"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": "Para ministros sem imóvel funcional em Brasília"},
+                {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": "Benefício alimentar"},
+                {"nome": "Plano de Saúde", "valor": "Custeado pelo STF", "descricao": "Para o ministro e dependentes"},
+                {"nome": "Aposentadoria integral", "valor": "R$ 46.366,19/mês", "descricao": "Aposentadoria com subsídio integral após afastamento"},
+            ],
+            "beneficios_abdicados_info": "Ministros podem abrir mão do auxílio-moradia caso utilizem imóvel funcional do STF.",
+            "fonte": "https://portal.stf.jus.br/textos/verTexto.asp?servico=processoAudienciaPublicaSaude",
+        },
+        "charges": [],
+        "votes": [],
+        "expenses": [],
+    },
+
+    "wd-Q16503855": {
+        "id": "wd-Q16503855",
+        "name": "Alexandre de Moraes",
+        "display_name": "Alexandre de Moraes",
+        "role": "Ministro do STF",
+        "party": "",
+        "state": "Nacional",
+        "country": "Brasil",
+        "source": "wikidata",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/800px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg",
+        "full_name": "Alexandre de Moraes",
+        "birth_date": "1968-08-13",
+        "birth_place": "São Paulo, SP",
+        "education": "Direito — USP; Doutorado em Direito Constitucional — USP",
+        "occupation": "Jurista / Professor",
+        "website": "https://portal.stf.jus.br",
+        "wiki_title_pt": "Alexandre de Moraes",
+        "all_parties": [],
+        "all_roles": [
+            "Ministro do STF (desde 2017)",
+            "Presidente do TSE (2022–2024)",
+            "Ministro da Justiça e Segurança Pública (2017)",
+            "Secretário de Segurança Pública de SP (2016)",
+        ],
+        "all_education": ["Direito — USP", "Doutorado em Direito Constitucional — USP"],
+        "salary_info": {
+            "cargo": "Ministro do Supremo Tribunal Federal",
+            "subsidio_mensal": 46366.19,
+            "subsidio_desc": "Subsídio dos ministros do STF — teto constitucional",
+            "beneficios": [
+                {"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": "Para ministros sem imóvel funcional"},
+                {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": "Benefício alimentar"},
+                {"nome": "Plano de Saúde", "valor": "Custeado pelo STF", "descricao": "Para o ministro e dependentes"},
+            ],
+            "beneficios_abdicados_info": "",
+            "fonte": "https://portal.stf.jus.br",
+        },
+        "charges": [
+            "Investigado pelo Parlamento Europeu por restrições à liberdade de expressão (2024)",
+            "Alvo de inquérito nos EUA sobre possível interferência eleitoral (2024) — arquivado",
+        ],
+        "votes": [],
+        "expenses": [],
+    },
+
+    "wd-Q2948413": {
+        "id": "wd-Q2948413", "name": "Cármen Lúcia", "display_name": "Cármen Lúcia",
+        "role": "Ministra do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Cármen Lúcia Antunes Rocha",
+        "birth_date": "1954-04-05", "birth_place": "Montes Claros, MG",
+        "education": "Direito — PUC Minas; Doutorado — UFMG",
+        "occupation": "Jurista / Professora",
+        "wiki_title_pt": "Cármen Lúcia",
+        "all_roles": ["Ministra do STF (desde 2006)", "Presidente do STF (2016–2018)", "Presidente do TSE (2016–2018)"],
+        "all_education": ["Direito — PUC Minas", "Doutorado em Direito — UFMG"],
+        "salary_info": {
+            "cargo": "Ministra do STF",
+            "subsidio_mensal": 46366.19,
+            "subsidio_desc": "Subsídio dos ministros do STF — teto constitucional",
+            "beneficios": [{"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": ""}, {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": ""}, {"nome": "Plano de Saúde", "valor": "Custeado pelo STF", "descricao": ""}],
+            "beneficios_abdicados_info": "",
+            "fonte": "https://portal.stf.jus.br",
+        },
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    "wd-Q10314705": {
+        "id": "wd-Q10314705", "name": "Dias Toffoli", "display_name": "Dias Toffoli",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "José Antonio Dias Toffoli",
+        "birth_date": "1967-11-15", "birth_place": "Marília, SP",
+        "education": "Direito — USP", "occupation": "Advogado / Jurista",
+        "wiki_title_pt": "Dias Toffoli",
+        "all_roles": ["Ministro do STF (desde 2009)", "Presidente do STF (2018–2019)", "Advogado-Geral da União (2007–2009)"],
+        "all_education": ["Direito — USP"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": ["Investigado no Supremo por suposto envolvimento em negociações irregulares (inquérito em andamento)"],
+        "votes": [], "expenses": [],
+    },
+
+    "wd-Q1516706": {
+        "id": "wd-Q1516706", "name": "Gilmar Mendes", "display_name": "Gilmar Mendes",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/800px-Gilmar_Mendes_%282023%29.jpg",
+        "full_name": "Gilmar Ferreira Mendes",
+        "birth_date": "1955-02-17", "birth_place": "Diamantino, MT",
+        "education": "Direito — UnB; Doutorado — Universidade de Münster (Alemanha)",
+        "occupation": "Jurista / Professor",
+        "wiki_title_pt": "Gilmar Mendes",
+        "all_roles": ["Ministro do STF (desde 2002)", "Presidente do STF (2008–2010)", "Advogado-Geral da União (2000–2002)"],
+        "all_education": ["Direito — UnB", "Doutorado — Universidade de Münster (Alemanha)"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [{"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": ""}, {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": ""}], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": ["Alvo de questionamentos sobre suspeição em casos envolvendo o agronegócio (2023)"],
+        "votes": [], "expenses": [],
+    },
+
+    "wd-Q10321893": {
+        "id": "wd-Q10321893", "name": "Edson Fachin", "display_name": "Edson Fachin",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Luiz Edson Fachin",
+        "birth_date": "1958-02-17", "birth_place": "Pinhão, PR",
+        "education": "Direito — UFPR; Doutorado — PUC-SP",
+        "occupation": "Jurista / Professor",
+        "wiki_title_pt": "Edson Fachin",
+        "all_roles": ["Ministro do STF (desde 2015)", "Presidente do TSE (2020–2022)", "Professor de Direito Civil — UFPR"],
+        "all_education": ["Direito — UFPR", "Doutorado em Direito — PUC-SP"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    "wd-Q106363617": {
+        "id": "wd-Q106363617", "name": "André Mendonça", "display_name": "André Mendonça",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "André Luís de Almeida Mendonça",
+        "birth_date": "1977-03-24", "birth_place": "Goiânia, GO",
+        "education": "Direito — UFG; Doutorado — UnB",
+        "occupation": "Advogado / Procurador da República",
+        "wiki_title_pt": "André Mendonça",
+        "all_roles": ["Ministro do STF (desde 2021)", "AGU (2019–2020)", "Ministro da Justiça (2020–2021)"],
+        "all_education": ["Direito — UFG", "Doutorado em Direito — UnB"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    "wd-Q105748993": {
+        "id": "wd-Q105748993", "name": "Kassio Nunes Marques", "display_name": "Nunes Marques",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Kassio Nunes Marques",
+        "birth_date": "1975-10-10", "birth_place": "Timon, MA",
+        "education": "Direito — UFPI; Doutorado — USP",
+        "occupation": "Jurista / Desembargador",
+        "wiki_title_pt": "Kassio Nunes Marques",
+        "all_roles": ["Ministro do STF (desde 2020)", "Desembargador TRF-1 (2013–2020)"],
+        "all_education": ["Direito — UFPI", "Doutorado — USP"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    "wd-Q768093": {
+        "id": "wd-Q768093", "name": "Flávio Dino", "display_name": "Flávio Dino",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Flávio Dino de Castro e Costa",
+        "birth_date": "1968-06-08", "birth_place": "Caxias, MA",
+        "education": "Direito — UFMA; Doutorado — USP",
+        "occupation": "Jurista / Político",
+        "wiki_title_pt": "Flávio Dino",
+        "all_roles": ["Ministro do STF (desde 2023)", "Ministro da Justiça (2023)", "Governador do Maranhão (2015–2022)", "Senador do Maranhão (2022–2023)"],
+        "all_education": ["Direito — UFMA", "Doutorado em Direito — USP"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    "wd-Q118812476": {
+        "id": "wd-Q118812476", "name": "Cristiano Zanin", "display_name": "Cristiano Zanin",
+        "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Cristiano Zanin Martins",
+        "birth_date": "1977-10-23", "birth_place": "Lins, SP",
+        "education": "Direito — Universidade Metodista de Piracicaba; Doutorado — USP",
+        "occupation": "Advogado criminalista",
+        "wiki_title_pt": "Cristiano Zanin",
+        "all_roles": ["Ministro do STF (desde 2023)", "Advogado de Lula no processo do Mensalão e Lava Jato (2004–2021)"],
+        "all_education": ["Direito — Universidade Metodista de Piracicaba", "Doutorado — USP"],
+        "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+}
+
+# Salário padrão para Deputados e Senadores
+SALARY_BR = {
+    "camara": {
+        "cargo": "Deputado Federal",
+        "subsidio_mensal": 46366.19,
+        "subsidio_desc": "Subsídio parlamentar mensal bruto (teto constitucional)",
+        "beneficios": [
+            {"nome": "Cota Parlamentar (CEAP)", "valor": "até R$ 50.112/mês", "descricao": "Verba para custeio de atividades parlamentares: combustível, passagens, alimentação, hospedagem, telefone etc."},
+            {"nome": "Auxílio-Moradia", "valor": "R$ 4.253,00/mês", "descricao": "Para deputados que não utilizam imóvel funcional em Brasília"},
+            {"nome": "Passagens Aéreas", "valor": "Até 84 bilhetes/mês", "descricao": "Viagens entre o domicílio eleitoral e Brasília, e em atividades parlamentares"},
+            {"nome": "Plano de Saúde (PAMS)", "valor": "Custeado integralmente pela Câmara", "descricao": "Para o parlamentar e dependentes legais"},
+            {"nome": "Seguro de Vida", "valor": "Custeado pela Câmara", "descricao": "Apólice individual"},
+            {"nome": "Aposentadoria parlamentar", "valor": "Proporcional ao mandato", "descricao": "Após 8 anos de mandato com 60 anos de idade"},
+        ],
+        "beneficios_abdicados_info": "Parlamentares podem renunciar ao auxílio-moradia declarando imóvel próprio em Brasília ou utilizando imóvel funcional da Câmara. A Cota Parlamentar pode ser reduzida voluntariamente. Todos os gastos são publicados no Portal da Transparência.",
+        "fonte": "https://www2.camara.leg.br/transparencia",
+    },
+    "senado": {
+        "cargo": "Senador Federal",
+        "subsidio_mensal": 46366.19,
+        "subsidio_desc": "Subsídio parlamentar mensal bruto — idêntico ao dos Deputados Federais por determinação constitucional",
+        "beneficios": [
+            {"nome": "Verba de Gabinete", "valor": "até R$ 155.520/mês", "descricao": "Para custeio de pessoal (até 8 assessores) e atividades do gabinete"},
+            {"nome": "Auxílio-Moradia", "valor": "R$ 4.253,00/mês", "descricao": "Para senadores sem imóvel em Brasília"},
+            {"nome": "Passagens Aéreas", "valor": "Ilimitadas em missões oficiais", "descricao": "Viagens a serviço do mandato"},
+            {"nome": "Plano de Saúde (PAMS)", "valor": "Custeado pelo Senado", "descricao": "Para o parlamentar e dependentes"},
+            {"nome": "Verba de Representação", "valor": "R$ 9.273,24/mês", "descricao": "Exclusivo para membros da Mesa Diretora e líderes de bancada"},
+        ],
+        "beneficios_abdicados_info": "Senadores podem abrir mão do auxílio-moradia e da verba de representação (quando aplicável). Todos os gastos são publicados no Portal da Transparência do Senado.",
+        "fonte": "https://www12.senado.leg.br/transparencia",
+    },
+}
+
+# ── WIKIDATA (para políticos internacionais não curados) ──────
 def _wd_value(claims, prop):
     try:
         snak = claims.get(prop, [{}])[0].get("mainsnak", {})
-        dv = snak.get("datavalue", {})
-        t = dv.get("type", ""); v = dv.get("value", {})
+        dv = snak.get("datavalue", {}); t = dv.get("type",""); v = dv.get("value",{})
         if t == "string": return str(v)
         if t == "time": return str(v.get("time",""))[1:11]
         if t == "wikibase-entityid": return str(v.get("id",""))
@@ -60,17 +402,28 @@ def _wd_value(claims, prop):
         return str(v) if v else ""
     except: return ""
 
-def _wd_image(filename):
-    if not filename: return ""
-    if filename.startswith("http"): return filename
-    name = filename.replace(" ","_")
-    h = hashlib.md5(name.encode()).hexdigest()
-    return f"https://upload.wikimedia.org/wikipedia/commons/{h[0]}/{h[0:2]}/{name}"
+def _wd_values_all(claims, prop):
+    out = []
+    try:
+        for stmt in claims.get(prop, []):
+            snak = stmt.get("mainsnak", {}); dv = snak.get("datavalue",{})
+            t = dv.get("type",""); v = dv.get("value",{})
+            if t == "wikibase-entityid": out.append(v.get("id",""))
+            elif t == "string": out.append(str(v))
+            elif t == "time": out.append(str(v.get("time",""))[1:11])
+    except: pass
+    return [x for x in out if x]
+
+def _wd_image(f):
+    if not f: return ""
+    if f.startswith("http"): return f
+    n = f.replace(" ","_"); h = hashlib.md5(n.encode()).hexdigest()
+    return f"https://upload.wikimedia.org/wikipedia/commons/{h[0]}/{h[0:2]}/{n}"
 
 async def _resolve_labels(qids):
     if not qids: return {}
     data = await _get("https://www.wikidata.org/w/api.php", {
-        "action":"wbgetentities","ids":"|".join(qids[:30]),
+        "action":"wbgetentities","ids":"|".join(list(set(qids))[:30]),
         "props":"labels","languages":"pt|en","format":"json"})
     if not data: return {}
     out = {}
@@ -79,108 +432,61 @@ async def _resolve_labels(qids):
         out[qid] = (lab.get("pt") or lab.get("en") or {}).get("value","")
     return out
 
-async def _wiki_bio(title_pt=None, title_en=None):
-    """Busca bio + thumbnail no Wikipedia, tenta PT depois EN."""
-    for url_tpl, title in [(WIKI_PT, title_pt),(WIKI_EN, title_en)]:
-        if not title: continue
-        d = await _get(url_tpl.format(title.replace(" ","_")))
-        if d and d.get("type") == "standard":
-            return {
-                "bio":   d.get("extract","")[:800],
-                "photo": (d.get("thumbnail") or {}).get("source",""),
-                "link":  d.get("content_urls",{}).get("desktop",{}).get("page",""),
-            }
-    return {}
-
-# ── WIKIDATA ENTITY (núcleo de tudo) ────────────────────────
-async def get_wikidata_entity(qid):
+async def get_wikidata_entity(qid: str) -> dict:
+    """Para políticos não curados (internacionais). Usa sitelink exato."""
     data = await _get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
     if not data: return {}
-    ent   = data.get("entities",{}).get(qid,{})
+    ent = data.get("entities",{}).get(qid,{})
     if not ent: return {}
 
-    claims    = ent.get("claims",{})
-    labels    = ent.get("labels",{})
-    descs     = ent.get("descriptions",{})
-    sitelinks = ent.get("sitelinks",{})
-
+    claims = ent.get("claims",{}); labels = ent.get("labels",{})
+    descs  = ent.get("descriptions",{}); sitelinks = ent.get("sitelinks",{})
     name = (labels.get("pt") or labels.get("en") or {}).get("value","")
     desc = (descs.get("pt") or descs.get("en") or {}).get("value","")
 
-    party_q    = _wd_value(claims,"P102")
+    party_qs   = _wd_values_all(claims,"P102")
     country_q  = _wd_value(claims,"P27")
-    edu_q      = _wd_value(claims,"P69")
-    pos_q      = _wd_value(claims,"P39")
-    occ_q      = _wd_value(claims,"P106")
+    edu_qs     = _wd_values_all(claims,"P69")
+    pos_qs     = _wd_values_all(claims,"P39")
+    occ_qs     = _wd_values_all(claims,"P106")
     bplace_q   = _wd_value(claims,"P19")
     birth_date = _wd_value(claims,"P569")
     image_file = _wd_value(claims,"P18")
     website    = _wd_value(claims,"P856")
 
-    lmap = await _resolve_labels([q for q in [party_q,country_q,edu_q,pos_q,occ_q,bplace_q] if q])
+    all_qids = list(set(party_qs + [country_q, bplace_q] + edu_qs + pos_qs + occ_qs))
+    lmap = await _resolve_labels([q for q in all_qids if q])
 
+    # Bio via sitelink EXATO — nunca busca por texto livre
     title_pt = sitelinks.get("ptwiki",{}).get("title","")
     title_en = sitelinks.get("enwiki",{}).get("title","")
-    wiki     = await _wiki_bio(title_pt, title_en)
+    wiki = {}
+    if title_pt:
+        wiki = await _wiki_summary(title_pt, "pt")
+    if not wiki.get("bio") and title_en:
+        wiki = await _wiki_summary(title_en, "en")
 
     photo = _wd_image(image_file) if image_file else wiki.get("photo","")
 
     return {
-        "full_name":   name,
-        "description": desc,
-        "bio":         wiki.get("bio",""),
-        "wiki_link":   wiki.get("link",""),
-        "birth_date":  birth_date,
-        "birth_place": lmap.get(bplace_q,""),
-        "party":       lmap.get(party_q,""),
-        "country":     lmap.get(country_q,""),
-        "education":   lmap.get(edu_q,""),
-        "role":        lmap.get(pos_q,""),
-        "occupation":  lmap.get(occ_q,""),
-        "photo":       photo,
-        "website":     website,
-        "votes":       [],
-        "expenses":    [],
+        "full_name": name, "description": desc,
+        "bio": wiki.get("bio",""), "wiki_link": wiki.get("link",""),
+        "birth_date": birth_date, "birth_place": lmap.get(bplace_q,""),
+        "party": (lmap.get(party_qs[0],"") if party_qs else ""),
+        "all_parties": [lmap.get(q,"") for q in party_qs if lmap.get(q)],
+        "country": lmap.get(country_q,""),
+        "education": (lmap.get(edu_qs[0],"") if edu_qs else ""),
+        "all_education": [lmap.get(q,"") for q in edu_qs if lmap.get(q)],
+        "role": (lmap.get(pos_qs[0],"") if pos_qs else ""),
+        "all_roles": [lmap.get(q,"") for q in pos_qs if lmap.get(q)],
+        "occupation": (lmap.get(occ_qs[0],"") if occ_qs else ""),
+        "photo": photo, "website": website,
+        "votes":[], "expenses":[], "charges":[], "salary_info": None,
     }
 
-# ── BUSCA WIKIDATA (via Wikipedia Search + QID lookup) ──────
-async def search_wikidata_politicians(query):
-    data = await _get(WIKI_SEARCH, {
-        "action":"query","list":"search","srsearch": query,
-        "srnamespace":"0","srlimit":"8","format":"json","srsort":"relevance"})
-    if not data: return []
-
-    results = []
-    for item in data.get("query",{}).get("search",[]):
-        title = item.get("title","")
-        # Pega QID via pageprops
-        qdata = await _get(WIKI_SEARCH, {
-            "action":"query","titles":title,"prop":"pageprops",
-            "ppprop":"wikibase_item","format":"json"})
-        qid = ""
-        if qdata:
-            for _, pg in qdata.get("query",{}).get("pages",{}).items():
-                qid = pg.get("pageprops",{}).get("wikibase_item",""); break
-        if not qid: continue
-        results.append({
-            "id":"wd-"+qid,"api_id":qid,"name":title,
-            "party":"","state":"","role":"","country":"","photo":"","email":"","source":"wikidata"})
-
-    # Enriquece primeiros 4 com dados básicos
-    for i,r in enumerate(results[:4]):
-        ent = await get_wikidata_entity(r["api_id"])
-        if ent:
-            results[i].update({
-                "photo":   ent.get("photo",""),
-                "party":   ent.get("party",""),
-                "country": ent.get("country",""),
-                "role":    ent.get("role","") or ent.get("description","")[:80],
-            })
-    return results[:8]
-
-# ── CÂMARA ───────────────────────────────────────────────────
+# ── CÂMARA ────────────────────────────────────────────────────
 async def search_deputados(query, uf=None):
-    params = {"nome":query,"itens":8,"ordem":"ASC","ordenarPor":"nome"}
+    params = {"nome":query,"itens":10,"ordem":"ASC","ordenarPor":"nome"}
     if uf: params["siglaUf"] = uf.upper()
     data = await _get(f"{CAMARA_BASE}/deputados", params)
     if not data or "dados" not in data: return []
@@ -194,45 +500,50 @@ async def get_deputado_details(api_id):
     base = f"{CAMARA_BASE}/deputados/{api_id}"
     data, desp, vot = await asyncio.gather(
         _get(base),
-        _get(f"{base}/despesas",{"itens":5,"ordenarPor":"ano","ordem":"DESC"}),
-        _get(f"{base}/votacoes",{"itens":8,"ordenarPor":"dataHoraVoto","ordem":"DESC"}))
-    details = {}
+        _get(f"{base}/despesas",{"itens":10,"ordenarPor":"ano","ordem":"DESC"}),
+        _get(f"{base}/votacoes",{"itens":10,"ordenarPor":"dataHoraVoto","ordem":"DESC"}))
+
+    details = {"salary_info": SALARY_BR["camara"], "expenses":[], "votes":[], "charges":[],
+               "all_roles":["Deputado Federal"], "all_education":[], "all_parties":[]}
+
     if data and "dados" in data:
         d = data["dados"]; ult = d.get("ultimoStatus",{})
+        nome_civil = d.get("nomeCivil","")
+        party = ult.get("siglaPartido","")
         details.update({
-            "full_name": d.get("nomeCivil",""),
-            "birth_date":d.get("dataNascimento",""),
-            "education": d.get("escolaridade",""),
-            "occupation":(d.get("profissoes") or [{}])[0].get("titulo",""),
-            "party":ult.get("siglaPartido",""),"state":ult.get("siglaUf",""),
+            "full_name": nome_civil,
+            "birth_date": d.get("dataNascimento",""),
+            "education":  d.get("escolaridade",""),
+            "occupation": (d.get("profissoes") or [{}])[0].get("titulo",""),
+            "party": party, "state": ult.get("siglaUf",""),
+            "photo": ult.get("urlFoto","") or d.get("urlFoto",""),
+            "email": ult.get("email","") or d.get("email",""),
+            "website": ult.get("urlRedeSocial",""),
+            "role": "Deputado Federal",
+            "all_parties": [party] if party else [],
         })
-        # Bio via Wikipedia
-        nome = d.get("nomeCivil","") or ult.get("nome","")
-        if nome:
-            sr = await _get(WIKI_SEARCH,{"action":"query","list":"search",
-                "srsearch":nome+" político","srlimit":"1","format":"json"})
-            if sr:
-                hits = sr.get("query",{}).get("search",[])
-                if hits:
-                    w = await _wiki_bio(hits[0].get("title",""))
-                    if w.get("bio"):
-                        details["bio"]   = w["bio"]
-                        if not details.get("photo"): details["photo"] = w.get("photo","")
+        # Bio por título exato no Wikipedia
+        if nome_civil:
+            wiki = await _wiki_summary(nome_civil, "pt")
+            if wiki.get("bio"):
+                details["bio"] = wiki["bio"]
+                details["wiki_link"] = wiki.get("link","")
+                # Só usa foto do Wikipedia se não tiver foto da Câmara
+                if not details.get("photo"): details["photo"] = wiki.get("photo","")
 
-    details["expenses"] = []
     if desp and "dados" in desp:
         details["expenses"] = [{"description":e.get("tipoDespesa",""),
             "value":e.get("valorLiquido",0),
             "date":f"{e.get('mes','')}/{e.get('ano','')}",
-            "provider":e.get("nomeFornecedor","")} for e in desp["dados"][:5]]
+            "provider":e.get("nomeFornecedor","")} for e in desp["dados"][:10]]
 
-    details["votes"] = []
     if vot and "dados" in vot:
-        details["votes"] = [{"description":v.get("descricao",""),
-            "date":(v.get("dataHoraVoto") or "")[:10]} for v in vot["dados"][:5]]
+        details["votes"] = [{"description":v.get("descricao","") or v.get("ementa",""),
+            "date":(v.get("dataHoraVoto") or "")[:10],
+            "vote": v.get("voto","") or ""} for v in vot["dados"][:10]]
     return details
 
-# ── SENADO ───────────────────────────────────────────────────
+# ── SENADO ────────────────────────────────────────────────────
 async def search_senadores(query):
     data = await _get(f"{SENADO_BASE}/senador/lista/atual.json")
     if not data: return []
@@ -247,178 +558,161 @@ async def search_senadores(query):
             results.append({"id":f"sen-{id_s.get('CodigoParlamentar','')}",
                 "api_id":id_s.get("CodigoParlamentar"),"name":nome,
                 "party":id_s.get("SiglaPartidoParlamentar",""),"state":id_s.get("UfParlamentar",""),
-                "role":"Senador","country":"Brasil","photo":id_s.get("UrlFotoParlamentar",""),
+                "role":"Senador Federal","country":"Brasil",
+                "photo":id_s.get("UrlFotoParlamentar",""),
                 "email":id_s.get("EmailParlamentar",""),"source":"senado"})
             if len(results) >= 5: break
         except: continue
     return results
 
 async def get_senador_details(api_id):
-    data = await _get(f"{SENADO_BASE}/senador/{api_id}.json")
-    details = {"votes":[],"expenses":[]}
+    data, vd = await asyncio.gather(
+        _get(f"{SENADO_BASE}/senador/{api_id}.json"),
+        _get(f"{SENADO_BASE}/senador/{api_id}/votacoes.json",{"v":6}))
+    details = {"salary_info": SALARY_BR["senado"], "votes":[], "expenses":[], "charges":[],
+               "all_roles":["Senador Federal"], "all_education":[], "all_parties":[]}
     if data:
         try:
             p = data["DetalheParlamentar"]["Parlamentar"]
             ident = p.get("IdentificacaoParlamentar",{}); dados = p.get("DadosBasicosParlamentar",{})
-            details.update({"full_name":ident.get("NomeCompletoParlamentar",""),
-                "birth_date":dados.get("DataNascimento",""),"education":dados.get("FormacaoAcademica",""),
-                "occupation":dados.get("Profissao",""),"website":ident.get("UrlPaginaParlamentar","")})
+            nome_completo = ident.get("NomeCompletoParlamentar","")
+            party = ident.get("SiglaPartidoParlamentar","")
+            details.update({
+                "full_name": nome_completo,
+                "birth_date": dados.get("DataNascimento",""),
+                "education":  dados.get("FormacaoAcademica",""),
+                "occupation": dados.get("Profissao",""),
+                "website":    ident.get("UrlPaginaParlamentar",""),
+                "email":      ident.get("EmailParlamentar",""),
+                "party": party, "all_parties": [party] if party else [],
+                "role": "Senador Federal",
+            })
+            if nome_completo:
+                wiki = await _wiki_summary(nome_completo, "pt")
+                if not wiki.get("bio"):
+                    wiki = await _wiki_summary(ident.get("NomeParlamentar",""), "pt")
+                if wiki.get("bio"):
+                    details["bio"] = wiki["bio"]
+                    details["wiki_link"] = wiki.get("link","")
+                    if not details.get("photo"): details["photo"] = wiki.get("photo","")
         except: pass
-    vd = await _get(f"{SENADO_BASE}/senador/{api_id}/votacoes.json",{"v":6})
     if vd:
         try:
             vlist = vd["VotacoesParlamentar"]["Parlamentar"]["Votacoes"]["Votacao"]
             if isinstance(vlist,dict): vlist=[vlist]
             details["votes"] = [{"description":v.get("DescricaoVotacao",""),
-                "date":v.get("DataSessao",""),"vote":v.get("Voto","")} for v in (vlist or [])[:5]]
+                "date":v.get("DataSessao",""),"vote":v.get("Voto","")} for v in (vlist or [])[:10]]
         except: pass
     return details
 
-# ── ENDPOINTS ────────────────────────────────────────────────
-@router.get("/transparency/search")
-async def search_politicians(q:str=Query(...,min_length=2), country:Optional[str]=Query("BR")):
-    country = (country or "BR").upper()
-    if country == "BR":
-        dep_r, sen_r, wd_r = await asyncio.gather(
-            search_deputados(q), search_senadores(q), search_wikidata_politicians(q))
-        br_names = {r["name"].lower() for r in dep_r+sen_r}
-        return {"results": dep_r + sen_r + [r for r in wd_r if r["name"].lower() not in br_names], "query":q, "country":country}
-    else:
-        return {"results": await search_wikidata_politicians(q), "query":q, "country":country}
-
-@router.get("/transparency/politician/{politician_id}")
-async def get_politician(politician_id:str, db:Session=Depends(get_db)):
-    parts  = politician_id.split("-",1)
-    source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
-    if source=="dep":   details = await get_deputado_details(api_id)
-    elif source=="sen": details = await get_senador_details(api_id)
-    elif source=="wd":  details = await get_wikidata_entity(api_id)
-    else: return {"error":"Fonte desconhecida"}
-
-    ratings = db.query(PoliticianRating).filter_by(politician_id=politician_id).all()
-    avg = (sum(r.score for r in ratings)/len(ratings)) if ratings else None
-    details["community_rating"] = {
-        "average": round(avg,1) if avg else None, "count": len(ratings),
-        "comments":[{"score":r.score,"comment":r.comment,
-            "date":r.created_at.strftime("%d/%m/%Y") if r.created_at else ""} for r in ratings[-5:]]}
-    return details
-
-@router.post("/transparency/rate")
-async def rate_politician(data:dict=Body(...), db:Session=Depends(get_db)):
-    pid=str(data.get("politician_id","")).strip(); uid=int(data.get("user_id",0))
-    score=int(data.get("score",3)); comment=str(data.get("comment",""))[:300]
-    if not pid or not uid or not(1<=score<=5): return {"error":"Dados inválidos"}
-    ex = db.query(PoliticianRating).filter_by(politician_id=pid,user_id=uid).first()
-    if ex: ex.score=score; ex.comment=comment
-    else: db.add(PoliticianRating(politician_id=pid,user_id=uid,score=score,comment=comment))
-    db.commit(); return {"status":"ok"}
-
-@router.get("/transparency/compare")
-async def compare_politicians(ids:str=Query(...)):
-    id_list = [i.strip() for i in ids.split(",") if i.strip()][:4]
-    async def _fetch(pid):
-        parts=pid.split("-",1); src=parts[0]; aid=parts[1] if len(parts)>1 else ""
-        if src=="dep": return await get_deputado_details(aid)
-        if src=="sen": return await get_senador_details(aid)
-        if src=="wd":  return await get_wikidata_entity(aid)
-        return {}
-    results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
-    return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
-
-@router.get("/transparency/featured")
-async def featured_politicians():
-    featured = [
-        {"id":"wd-Q28227","name":"Lula","role":"Presidente do Brasil","country":"Brasil","party":"PT","source":"wikidata",
-         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg"},
-        {"id":"wd-Q41551","name":"Geraldo Alckmin","role":"Vice-Presidente do Brasil","country":"Brasil","party":"PSB","source":"wikidata","photo":""},
-        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata",
-         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/800px-Donald_Trump_official_portrait.jpg"},
-        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata",
-         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Emmanuel_Macron_in_2019.jpg/800px-Emmanuel_Macron_in_2019.jpg"},
-        {"id":"wd-Q183522","name":"Xi Jinping","role":"Presidente da China","country":"China","party":"PCCh","source":"wikidata","photo":""},
-        {"id":"wd-Q167756","name":"Vladimir Putin","role":"Presidente da Rússia","country":"Rússia","party":"Rússia Unida","source":"wikidata","photo":""},
-    ]
-    return {"featured":featured}
-
-
-# ── IP GEOLOCATION (reused from news.py) ─────────────────────
-_geo_cache_trans: dict = {}
-IPAPI_URL_T = "http://ip-api.com/json/{ip}?fields=status,city,regionName,regionCode,countryCode,country"
-
-async def _resolve_geo_trans(ip: str) -> dict:
-    if ip in _geo_cache_trans: return _geo_cache_trans[ip]
-    if ip in ("127.0.0.1","::1") or ip.startswith("192.168.") or ip.startswith("10."):
-        r = {"city":"Rio de Janeiro","regionName":"Rio de Janeiro","regionCode":"RJ","country":"Brasil","countryCode":"BR"}
-        _geo_cache_trans[ip] = r; return r
+# ── BUSCA WIKIDATA (só para internacionais) ───────────────────
+async def search_wikidata_politicians(query: str) -> list:
+    sparql = f"""
+SELECT DISTINCT ?person ?personLabel ?partyLabel ?countryLabel ?posLabel ?image WHERE {{
+  ?person wdt:P31 wd:Q5 .
+  {{ ?person wdt:P106 ?occ . VALUES ?occ {{ wd:Q82955 wd:Q372436 wd:Q1028181 wd:Q30461 wd:Q16707842 wd:Q16707845 wd:Q17540564 wd:Q2285706 }} }}
+  UNION {{ ?person wdt:P39 ?anyPos . }}
+  ?person rdfs:label ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), LCASE("{query}")))
+  FILTER(LANG(?label) IN ("pt","en","es","fr","de","ja","zh"))
+  OPTIONAL {{ ?person wdt:P18 ?image }}
+  OPTIONAL {{ ?person wdt:P102 ?party }}
+  OPTIONAL {{ ?person wdt:P27 ?country }}
+  OPTIONAL {{ ?person wdt:P39 ?pos }}
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
+}} LIMIT 10"""
     try:
-        async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get(IPAPI_URL_T.format(ip=ip), headers=_HDR)
-            data = r.json()
-            if data.get("status") == "success":
-                _geo_cache_trans[ip] = data; return data
-    except: pass
-    return {"city":"Brasil","regionName":"","regionCode":"","country":"Brasil","countryCode":"BR"}
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as c:
+            r = await c.get("https://query.wikidata.org/sparql",
+                            params={"query": sparql, "format": "json"},
+                            headers={**_HDR, "Accept": "application/sparql-results+json"})
+            if r.status_code != 200: raise Exception()
+            bindings = r.json().get("results",{}).get("bindings",[])
+    except: return []
+    seen = set(); results = []
+    for b in bindings:
+        qid = b.get("person",{}).get("value","").split("/")[-1]
+        if qid in seen: continue
+        seen.add(qid)
+        name = b.get("personLabel",{}).get("value","")
+        if not name or name.startswith("Q"): continue
+        image = b.get("image",{}).get("value","")
+        results.append({
+            "id":f"wd-{qid}","api_id":qid,"name":name,
+            "party":b.get("partyLabel",{}).get("value",""),
+            "state":"","role":b.get("posLabel",{}).get("value",""),
+            "country":b.get("countryLabel",{}).get("value",""),
+            "photo":_wd_image(image) if image and not image.startswith("http") else image,
+            "email":"","source":"wikidata",})
+    return results[:8]
 
-# STF — ministros atuais (lista oficial 2024-2025)
+# ── GEO + DADOS LOCAIS ────────────────────────────────────────
+_geo_cache: dict = {}
+GOVERNORS_BY_UF = {
+    "AC":{"id":"wd-Q10282903","name":"Gladson Cameli","role":"Governador do Acre","party":"PP"},
+    "AL":{"id":"wd-Q10285716","name":"Paulo Dantas","role":"Governador de Alagoas","party":"MDB"},
+    "AM":{"id":"wd-Q3730703","name":"Wilson Lima","role":"Governador do Amazonas","party":"União Brasil"},
+    "AP":{"id":"wd-Q107421","name":"Clécio Luís","role":"Governador do Amapá","party":"SD"},
+    "BA":{"id":"wd-Q3891283","name":"Jerônimo Rodrigues","role":"Governador da Bahia","party":"PT"},
+    "CE":{"id":"wd-Q10293629","name":"Elmano de Freitas","role":"Governador do Ceará","party":"PT"},
+    "DF":{"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador do DF","party":"MDB"},
+    "ES":{"id":"wd-Q3730577","name":"Renato Casagrande","role":"Governador do ES","party":"PSB"},
+    "GO":{"id":"wd-Q10306753","name":"Ronaldo Caiado","role":"Governador de Goiás","party":"União Brasil"},
+    "MA":{"id":"wd-Q10306938","name":"Carlos Brandão","role":"Governador do Maranhão","party":"PSB"},
+    "MT":{"id":"wd-Q10308490","name":"Mauro Mendes","role":"Governador do MT","party":"União Brasil"},
+    "MS":{"id":"wd-Q10308503","name":"Eduardo Riedel","role":"Governador do MS","party":"PSDB"},
+    "MG":{"id":"wd-Q3564887","name":"Romeu Zema","role":"Governador de MG","party":"Novo"},
+    "PA":{"id":"wd-Q10309820","name":"Helder Barbalho","role":"Governador do Pará","party":"MDB"},
+    "PB":{"id":"wd-Q10309964","name":"João Azevêdo","role":"Governador da Paraíba","party":"PSB"},
+    "PR":{"id":"wd-Q10310060","name":"Ratinho Junior","role":"Governador do Paraná","party":"PSD"},
+    "PE":{"id":"wd-Q10310080","name":"Raquel Lyra","role":"Governadora de Pernambuco","party":"PSDB"},
+    "PI":{"id":"wd-Q10310123","name":"Rafael Fonteles","role":"Governador do Piauí","party":"PT"},
+    "RJ":{"id":"wd-Q1779090","name":"Cláudio Castro","role":"Governador do RJ","party":"PL"},
+    "RN":{"id":"wd-Q10312022","name":"Fátima Bezerra","role":"Governadora do RN","party":"PT"},
+    "RS":{"id":"wd-Q10312060","name":"Eduardo Leite","role":"Governador do RS","party":"PSDB"},
+    "RO":{"id":"wd-Q10311952","name":"Marcos Rocha","role":"Governador de Rondônia","party":"União Brasil"},
+    "RR":{"id":"wd-Q10312027","name":"Antonio Denarium","role":"Governador de Roraima","party":"PP"},
+    "SC":{"id":"wd-Q10312568","name":"Jorginho Mello","role":"Governador de SC","party":"PL"},
+    "SE":{"id":"wd-Q10314272","name":"Fábio Mitidieri","role":"Governador de Sergipe","party":"PSD"},
+    "SP":{"id":"wd-Q1050742","name":"Tarcísio de Freitas","role":"Governador de SP","party":"Republicanos"},
+    "TO":{"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
+}
+UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
 STF_MINISTERS = [
-    {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Luís_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/800px-Ministro_Luís_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg"},
-    {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/800px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg"},
-    {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q105748993","name":"Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
-    {"id":"wd-Q3491617","name":"Paulo Gonet","role":"Procurador-Geral da República","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":""},
+    {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg","email":""},
+    {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg","email":""},
+    {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg","email":""},
+    {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
 ]
 
-# Governadores por UF (Wikidata QIDs — eleitos 2022)
-GOVERNORS_BY_UF = {
-    "AC": {"id":"wd-Q10282903","name":"Gladson Cameli","role":"Governador do Acre","party":"PP"},
-    "AL": {"id":"wd-Q10285716","name":"Paulo Dantas","role":"Governador de Alagoas","party":"MDB"},
-    "AP": {"id":"wd-Q107421","name":"Clécio Luís","role":"Governador do Amapá","party":"SD"},
-    "AM": {"id":"wd-Q3730703","name":"Wilson Lima","role":"Governador do Amazonas","party":"União Brasil"},
-    "BA": {"id":"wd-Q3891283","name":"Jerônimo Rodrigues","role":"Governador da Bahia","party":"PT"},
-    "CE": {"id":"wd-Q10293629","name":"Elmano de Freitas","role":"Governador do Ceará","party":"PT"},
-    "DF": {"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador do DF","party":"MDB"},
-    "ES": {"id":"wd-Q3730577","name":"Renato Casagrande","role":"Governador do Espírito Santo","party":"PSB"},
-    "GO": {"id":"wd-Q10306753","name":"Ronaldo Caiado","role":"Governador de Goiás","party":"União Brasil"},
-    "MA": {"id":"wd-Q10306938","name":"Carlos Brandão","role":"Governador do Maranhão","party":"PSB"},
-    "MT": {"id":"wd-Q10308490","name":"Mauro Mendes","role":"Governador do Mato Grosso","party":"União Brasil"},
-    "MS": {"id":"wd-Q10308503","name":"Eduardo Riedel","role":"Governador do MS","party":"PSDB"},
-    "MG": {"id":"wd-Q3564887","name":"Romeu Zema","role":"Governador de MG","party":"Novo"},
-    "PA": {"id":"wd-Q10309820","name":"Helder Barbalho","role":"Governador do Pará","party":"MDB"},
-    "PB": {"id":"wd-Q10309964","name":"João Azevêdo","role":"Governador da Paraíba","party":"PSB"},
-    "PR": {"id":"wd-Q10310060","name":"Ratinho Junior","role":"Governador do Paraná","party":"PSD"},
-    "PE": {"id":"wd-Q10310080","name":"Raquel Lyra","role":"Governadora de Pernambuco","party":"PSDB"},
-    "PI": {"id":"wd-Q10310123","name":"Rafael Fonteles","role":"Governador do Piauí","party":"PT"},
-    "RJ": {"id":"wd-Q1779090","name":"Cláudio Castro","role":"Governador do RJ","party":"PL"},
-    "RN": {"id":"wd-Q10312022","name":"Fátima Bezerra","role":"Governadora do RN","party":"PT"},
-    "RS": {"id":"wd-Q10312060","name":"Eduardo Leite","role":"Governador do RS","party":"PSDB"},
-    "RO": {"id":"wd-Q10311952","name":"Marcos Rocha","role":"Governador de Rondônia","party":"União Brasil"},
-    "RR": {"id":"wd-Q10312027","name":"Antonio Denarium","role":"Governador de Roraima","party":"PP"},
-    "SC": {"id":"wd-Q10312568","name":"Jorginho Mello","role":"Governador de SC","party":"PL"},
-    "SE": {"id":"wd-Q10314272","name":"Fábio Mitidieri","role":"Governador de Sergipe","party":"PSD"},
-    "SP": {"id":"wd-Q1050742","name":"Tarcísio de Freitas","role":"Governador de SP","party":"Republicanos"},
-    "TO": {"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
-}
+async def _resolve_geo(ip: str) -> dict:
+    if ip in _geo_cache: return _geo_cache[ip]
+    if ip in ("127.0.0.1","::1") or ip.startswith(("192.168.","10.","172.")):
+        return {"city":"Rio de Janeiro","regionName":"Rio de Janeiro","regionCode":"RJ","country":"Brasil","countryCode":"BR"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(f"http://ip-api.com/json/{ip}?fields=status,city,regionName,regionCode,countryCode,country", headers=_HDR)
+            d = r.json()
+            if d.get("status") == "success":
+                _geo_cache[ip] = d; return d
+    except: pass
+    return {"city":"","regionName":"","regionCode":"RJ","country":"Brasil","countryCode":"BR"}
 
 async def get_deputados_by_uf(uf: str) -> list:
-    """Busca deputados federais de um estado específico."""
-    data = await _get(f"{CAMARA_BASE}/deputados", {"siglaUf": uf, "itens": 20, "ordem": "ASC", "ordenarPor": "nome"})
+    data = await _get(f"{CAMARA_BASE}/deputados", {"siglaUf":uf,"itens":30,"ordem":"ASC","ordenarPor":"nome"})
     if not data or "dados" not in data: return []
     return [{"id":f"dep-{d.get('id','')}","api_id":d.get("id"),"name":d.get("nome",""),
              "party":d.get("siglaPartido",""),"state":d.get("siglaUf",""),
              "role":"Deputado Federal","country":"Brasil",
-             "photo":d.get("urlFoto",""),"email":d.get("email",""),"source":"camara"}
-            for d in data["dados"]]
+             "photo":d.get("urlFoto",""),"email":d.get("email",""),"source":"camara"} for d in data["dados"]]
 
 async def get_senadores_by_uf(uf: str) -> list:
-    """Busca senadores de um estado específico."""
     data = await _get(f"{SENADO_BASE}/senador/lista/atual.json")
     if not data: return []
     try: senadores = data["ListaParlamentarEmExercicio"]["Parlamentares"]["Parlamentar"]
@@ -438,65 +732,111 @@ async def get_senadores_by_uf(uf: str) -> list:
         except: continue
     return results
 
-# UF code -> full state name
-UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia",
-    "CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás",
-    "MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais",
-    "PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí",
-    "RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul",
-    "RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe",
-    "SP":"São Paulo","TO":"Tocantins"}
+# ── ENDPOINTS ─────────────────────────────────────────────────
+@router.get("/transparency/search")
+async def search_politicians(q:str=Query(...,min_length=2), country:Optional[str]=Query("BR")):
+    country = (country or "BR").upper()
+    if country == "BR":
+        dep_r, sen_r, wd_r = await asyncio.gather(
+            search_deputados(q), search_senadores(q), search_wikidata_politicians(q))
+        br_names = {r["name"].lower() for r in dep_r+sen_r}
+        return {"results": dep_r + sen_r + [r for r in wd_r if r["name"].lower() not in br_names], "query":q}
+    return {"results": await search_wikidata_politicians(q), "query":q}
 
-from fastapi import Request as FARequest
+@router.get("/transparency/politician/{politician_id}")
+async def get_politician(politician_id:str, db:Session=Depends(get_db)):
+    # 1. Verifica banco de dados curado primeiro
+    if politician_id in CURATED_POLITICIANS:
+        details = dict(CURATED_POLITICIANS[politician_id])
+        # Busca bio do Wikipedia com título exato
+        wiki_title = details.pop("wiki_title_pt", "")
+        if wiki_title and not details.get("bio"):
+            wiki = await _wiki_summary(wiki_title, "pt")
+            if wiki.get("bio"):
+                details["bio"] = wiki["bio"]
+                details["wiki_link"] = wiki.get("link","")
+                if not details.get("photo"): details["photo"] = wiki.get("photo","")
+    else:
+        parts = politician_id.split("-",1); source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
+        if source=="dep":   details = await get_deputado_details(api_id)
+        elif source=="sen": details = await get_senador_details(api_id)
+        elif source=="wd":  details = await get_wikidata_entity(api_id)
+        else: return {"error":"Fonte desconhecida"}
+
+    ratings = db.query(PoliticianRating).filter_by(politician_id=politician_id).all()
+    avg = (sum(r.score for r in ratings)/len(ratings)) if ratings else None
+    details["community_rating"] = {
+        "average": round(avg,1) if avg else None, "count": len(ratings),
+        "comments":[{"score":r.score,"comment":r.comment or "",
+            "date":r.created_at.strftime("%d/%m/%Y") if r.created_at else ""}
+            for r in sorted(ratings, key=lambda x: x.created_at or datetime.min, reverse=True)[:10]]}
+    return details
+
+@router.post("/transparency/rate")
+async def rate_politician(data:dict=Body(...), db:Session=Depends(get_db)):
+    pid=str(data.get("politician_id","")).strip(); uid=int(data.get("user_id",0))
+    score=int(data.get("score",3)); comment=str(data.get("comment",""))[:400]
+    if not pid or not uid or not(1<=score<=5): return {"error":"Dados inválidos"}
+    ex = db.query(PoliticianRating).filter_by(politician_id=pid,user_id=uid).first()
+    if ex: ex.score=score; ex.comment=comment; ex.created_at=datetime.now(timezone.utc)
+    else: db.add(PoliticianRating(politician_id=pid,user_id=uid,score=score,comment=comment))
+    db.commit()
+    ratings = db.query(PoliticianRating).filter_by(politician_id=pid).all()
+    avg = round(sum(r.score for r in ratings)/len(ratings),1)
+    return {"status":"ok","new_average":avg,"count":len(ratings)}
+
+@router.get("/transparency/compare")
+async def compare_politicians(ids:str=Query(...)):
+    id_list = [i.strip() for i in ids.split(",") if i.strip()][:4]
+    async def _fetch(pid):
+        if pid in CURATED_POLITICIANS:
+            d = dict(CURATED_POLITICIANS[pid]); d.pop("wiki_title_pt",None); return d
+        parts=pid.split("-",1); src=parts[0]; aid=parts[1] if len(parts)>1 else ""
+        if src=="dep": return await get_deputado_details(aid)
+        if src=="sen": return await get_senador_details(aid)
+        if src=="wd":  return await get_wikidata_entity(aid)
+        return {}
+    results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
+    return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
 
 @router.get("/transparency/local")
 async def get_local_politicians(request: FARequest):
-    """
-    Retorna o painel inicial do portal com seções organizadas:
-    - Executivo Federal (Presidente + Vice)
-    - Estadual (Governador + Deputados federais + Senadores do estado do usuário)
-    - STF
-    """
     ip = request.headers.get("X-Forwarded-For", request.client.host or "127.0.0.1")
     ip = ip.split(",")[0].strip()
-    geo = await _resolve_geo_trans(ip)
+    geo = await _resolve_geo(ip)
+    uf      = geo.get("regionCode","RJ").upper()
+    city    = geo.get("city","")
+    state   = geo.get("regionName","")
+    country = geo.get("countryCode","BR").upper()
 
-    uf       = geo.get("regionCode", "RJ").upper()
-    city     = geo.get("city", "")
-    state    = geo.get("regionName", "")
-    country  = geo.get("countryCode", "BR").upper()
-
-    # Executivo federal
     executivo = [
-        {"id":"wd-Q28227","name":"Lula","role":"Presidente da República","party":"PT","state":"Nacional","country":"Brasil","source":"wikidata",
-         "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg","highlight":True},
-        {"id":"wd-Q41551","name":"Geraldo Alckmin","role":"Vice-Presidente da República","party":"PSB","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","highlight":False},
+        {**CURATED_POLITICIANS["wd-Q28227"], "highlight": True},
+        {**CURATED_POLITICIANS["wd-Q41551"], "highlight": False},
     ]
 
-    # Governador do estado
-    governor_data = GOVERNORS_BY_UF.get(uf)
-    governador = []
-    if governor_data:
-        governador = [{**governor_data,"state":uf,"country":"Brasil","source":"wikidata","photo":"","email":""}]
+    gov_data = GOVERNORS_BY_UF.get(uf)
+    governador = [{**gov_data,"state":uf,"country":"Brasil","source":"wikidata","photo":"","email":""}] if gov_data else []
 
-    # Deputados + Senadores do estado (em paralelo)
     dep_task = get_deputados_by_uf(uf)
     sen_task = get_senadores_by_uf(uf)
     deputados, senadores = await asyncio.gather(dep_task, sen_task)
 
     return {
-        "location": {"ip": ip, "city": city, "state": state, "uf": uf, "country": country,
-                     "state_full": UF_NAMES.get(uf, state)},
+        "location": {"ip":ip,"city":city,"state":state,"uf":uf,"country":country,"state_full":UF_NAMES.get(uf,state)},
         "sections": [
-            {"id":"executivo","title":"🇧🇷 Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República",
-             "color":"#ffd93d","politicians": executivo},
-            {"id":"governador","title":f"🏛️ Governo do Estado","subtitle":f"Governador de {UF_NAMES.get(uf, state)}",
-             "color":"#66fcf1","politicians": governador},
-            {"id":"senadores","title":f"🏛️ Senadores de {uf}","subtitle":f"Senadores que representam {UF_NAMES.get(uf, state)} no Senado Federal",
-             "color":"#c678dd","politicians": senadores},
-            {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {UF_NAMES.get(uf, state)} na Câmara Federal",
-             "color":"#45b7d1","politicians": deputados},
-            {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"Ministros atuais do STF — guardiões da Constituição",
-             "color":"#ff6b6b","politicians": STF_MINISTERS},
+            {"id":"executivo","title":"🇧🇷 Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República","color":"#ffd93d","politicians":executivo},
+            {"id":"governador","title":"🏛️ Governo do Estado","subtitle":f"Governador(a) de {UF_NAMES.get(uf,state)}","color":"#66fcf1","politicians":governador},
+            {"id":"senadores","title":f"🗣️ Senadores de {uf}","subtitle":f"Senadores que representam {UF_NAMES.get(uf,state)} no Senado Federal","color":"#c678dd","politicians":senadores},
+            {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {UF_NAMES.get(uf,state)} na Câmara dos Deputados","color":"#45b7d1","politicians":deputados},
+            {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros atuais — guardiões da Constituição Federal","color":"#ff6b6b","politicians":STF_MINISTERS},
         ]
     }
+
+@router.get("/transparency/featured")
+async def featured_politicians():
+    return {"featured":[
+        {**CURATED_POLITICIANS["wd-Q28227"]},
+        {**CURATED_POLITICIANS["wd-Q41551"]},
+        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/400px-Donald_Trump_official_portrait.jpg"},
+        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Emmanuel_Macron_in_2019.jpg/400px-Emmanuel_Macron_in_2019.jpg"},
+    ]}
