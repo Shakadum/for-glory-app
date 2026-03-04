@@ -111,30 +111,68 @@ def get_channel_bg(channel_id: int, db: Session = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────
 #  ACTIVE CALL TRACKER  (in-memory — resets on server restart)
 # ─────────────────────────────────────────────────────────────
-_active_calls: dict = {}   # channel_name -> {"started_at": timestamp, "users": set()}
+# ─────────────────────────────────────────────────────────────
+#  ACTIVE CALL TRACKER (in-memory — resets on server restart)
+#  - Resolve "call fantasma": TTL + ping
+# ─────────────────────────────────────────────────────────────
+# channel_name -> {"started_at": float, "users": {user_id: last_seen_ts}}
+_active_calls: dict = {}
+
+def _prune_call(channel: str, ttl_seconds: int = 35):
+    import time
+    info = _active_calls.get(channel)
+    if not info:
+        return None
+    now = time.time()
+    users = info.get("users") or {}
+    stale = [uid for uid, ts in users.items() if (now - float(ts or 0)) > ttl_seconds]
+    for uid in stale:
+        users.pop(uid, None)
+    if not users:
+        _active_calls.pop(channel, None)
+        return None
+    info["users"] = users
+    return info
 
 @router.post("/call/start")
 async def call_start(d: dict = Body(...), user=Depends(get_current_user)):
+    import time
     ch = str(d.get("channel", "")).strip()
     if not ch:
         raise HTTPException(400, "channel required")
     if ch not in _active_calls:
-        _active_calls[ch] = {"started_at": __import__("time").time(), "users": set()}
-    _active_calls[ch]["users"].add(user.id)
+        _active_calls[ch] = {"started_at": time.time(), "users": {}}
+    _active_calls[ch]["users"][user.id] = time.time()
+    return {"status": "ok"}
+
+@router.post("/call/ping")
+async def call_ping(d: dict = Body(...), user=Depends(get_current_user)):
+    """Refresh participation timestamp to avoid ghost calls when tabs suspend/close."""
+    import time
+    ch = str(d.get("channel", "")).strip()
+    if not ch:
+        raise HTTPException(400, "channel required")
+    if ch not in _active_calls:
+        _active_calls[ch] = {"started_at": time.time(), "users": {}}
+    _active_calls[ch]["users"][user.id] = time.time()
     return {"status": "ok"}
 
 @router.post("/call/end")
 async def call_end(d: dict = Body(...), user=Depends(get_current_user)):
     ch = str(d.get("channel", "")).strip()
-    if ch in _active_calls:
-        _active_calls[ch]["users"].discard(user.id)
-        if not _active_calls[ch]["users"]:
-            del _active_calls[ch]
+    info = _active_calls.get(ch)
+    if info:
+        users = info.get("users") or {}
+        users.pop(user.id, None)
+        if not users:
+            _active_calls.pop(ch, None)
+        else:
+            info["users"] = users
     return {"status": "ok"}
 
 @router.get("/call/active")
 async def call_active(channel: str, user=Depends(get_current_user)):
-    info = _active_calls.get(channel)
-    if not info or not info["users"]:
+    info = _prune_call(channel)
+    if not info:
         return {"active": False}
-    return {"active": True, "participants": len(info["users"])}
+    return {"active": True, "participants": len(info.get("users") or {})}

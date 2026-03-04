@@ -1,11 +1,34 @@
 
 
-function sendSystemDmMessage(text) {
+function appendLocalCallEvent(text) {
   try {
     if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
       dmWS.send(String(text));
     }
   } catch (e) { console.warn('system dm message failed', e); }
+}
+
+function appendLocalCallEvent(text){
+  try{
+    const view = document.getElementById('view-dm');
+    const list = document.getElementById('dm-list');
+    if(!view || !list) return;
+    if(!view.classList.contains('active')) return;
+
+    const ts = new Date().toISOString();
+    const timeHtml = (typeof formatMsgTime === 'function') ? `<span class="msg-time">${formatMsgTime(ts)}</span>` : '';
+    const c = `<span style="color:var(--primary);font-weight:600;">${escapeHtml(String(text||''))}</span>`;
+    const msgId = `call_evt_${Date.now()}`;
+    const h = `<div id="${msgId}" class="msg-row">
+        <img src="/static/default-avatar.svg" class="msg-av" style="cursor:default;">
+        <div>
+            <div style="font-size:11px;color:#888;margin-bottom:2px;">Sistema</div>
+            <div class="msg-bubble">${c}${timeHtml}</div>
+        </div>
+    </div>`;
+    list.insertAdjacentHTML('beforeend', h);
+    list.scrollTop = list.scrollHeight;
+  }catch(e){ console.warn('appendLocalCallEvent failed', e); }
 }
 // ===== Emoji data (fallback) =====
 const EMOJIS = window.EMOJIS || [
@@ -588,6 +611,7 @@ async function sendCallInvite() {
 
 // Entrar em call já em andamento (sem ring)
 async function joinActiveCall(channel, type) {
+    if (window.__leavingCall) return showToast("Aguarde encerrar a call...");
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = false;
     window.pendingCallType = type;
@@ -598,6 +622,7 @@ async function joinActiveCall(channel, type) {
 }
 
 async function initCall(typeParam, targetId) {
+    if (window.__leavingCall) return showToast("Aguarde encerrar a call...");
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = true;
     window.callTargetId = targetId;
@@ -654,6 +679,7 @@ async function acceptCall() {
 }
 
 async function connectToAgora(channelName, typeParam) {
+    window.currentCallType = typeParam;
     window.currentAgoraChannel = sanitizeChannelName(channelName);
     if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
     document.getElementById('call-active-profile').style.display = 'none';
@@ -718,6 +744,7 @@ if (rtc.client) { await rtc.client.leave(); }
         
         await rtc.client.publish([rtc.localAudioTrack]);
         window.callHasConnected = true;
+        _startCallKeepAlive();
         // Registra call ativa no backend (permite others to join)
         try {
             await authFetch('/call/start', {method:'POST', body: JSON.stringify({channel: window.currentAgoraChannel})});
@@ -727,7 +754,7 @@ if (rtc.client) { await rtc.client.leave(); }
         if (!window.__callStartLogged) {
           window.__callStartLogged = true;
           const dt = new Date();
-          sendSystemDmMessage(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
+          appendLocalCallEvent(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
         }
         try {
             window.callStartedAt = Date.now();
@@ -763,6 +790,8 @@ async function uploadCallBg(inputElem){
 }
 
 function leaveCall() {
+    if (window.__leavingCall) return;
+    window.__leavingCall = true;
     // ── 1. Fecha a UI imediatamente — sem await, sem bloqueio ──────────
     clearInterval(callInterval);
     try { document.getElementById('expanded-call-panel').style.display = 'none'; } catch(_) {}
@@ -796,7 +825,7 @@ function leaveCall() {
     window.callTargetId        = null;
     window.__callStartLogged   = false;
     window.__callStartedAt     = null;
-    window.__leavingCall       = false;
+    // window.__leavingCall será liberado após cleanup
 
     // ── 4. Limpeza pesada em background (não bloqueia UI) ──────────────
     (async () => {
@@ -807,7 +836,7 @@ function leaveCall() {
                 const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
                 const mm = String(Math.floor(sec / 60)).padStart(2, '0');
                 const ss = String(sec % 60).padStart(2, '0');
-                sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
+                appendLocalCallEvent(`📞 Chamada finalizada (duração ${mm}:${ss})`);
             }
         } catch(_) {}
 
@@ -818,8 +847,13 @@ function leaveCall() {
         } catch(_) {}
 
         // Sai do canal Agora — com timeout de 4s para não travar
+        try { if (_client && _audioTrack) { try { await _client.unpublish([_audioTrack]); } catch(_) {} } } catch(_) {}
+        try { if (_client && _client.removeAllListeners) { try { _client.removeAllListeners(); } catch(_) {} } } catch(_) {}
         try {
-            if (_audioTrack) _audioTrack.close();
+            if (_audioTrack) {
+                try { if (typeof _audioTrack.stop === 'function') _audioTrack.stop(); } catch(_) {}
+                try { _audioTrack.close(); } catch(_) {}
+            }
         } catch(_) {}
         try {
             if (_client) await Promise.race([
@@ -833,6 +867,7 @@ function leaveCall() {
             if (channel)
                 await authFetch('/call/end', { method: 'POST', body: JSON.stringify({ channel }) });
         } catch(_) {}
+        try { window.__leavingCall = false; } catch(_) {}
     })();
 }
 
@@ -1230,13 +1265,6 @@ function updateUI(){
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
-function startApp(){
-    document.getElementById('modal-login').classList.add('hidden'); document.getElementById('app').style.display = 'flex'; 
-    updateUI(); fetchOnlineUsers(); fetchUnread(); goView('profile', document.getElementById('nav-profile-btn'));
-    
-    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let token = localStorage.getItem('token');
-    // --- WebSocket global (notificações / chamadas) ---
 function connectGlobalWS(){
     try{ if(globalWS) globalWS.close(); }catch(e){}
     let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1244,12 +1272,13 @@ function connectGlobalWS(){
     globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}?token=${token}`);
 
     globalWS.onmessage = (e) => {
-        let d = JSON.parse(e.data);
-        if(d.type === 'pong') return; 
-        if(d.type === 'ping') { fetchUnread(); }
+        let d = {};
+        try { d = JSON.parse(e.data); } catch(_) { return; }
+        if(d.type === 'pong' || d.type === 'ping') { fetchUnread(); return; }
 
         if(d.type === 'sync_bg' && window.currentAgoraChannel === d.channel) {
-            document.getElementById('expanded-call-panel').style.backgroundImage = `url('${d.bg_url}')`;
+            const panel = document.getElementById('expanded-call-panel');
+            if (panel) panel.style.backgroundImage = `url('${d.bg_url}')`;
         }
 
         if(d.type === 'new_dm') {
@@ -1258,9 +1287,7 @@ function connectGlobalWS(){
             else { safePlaySound(window.msgSound); fetchUnread(); }
         }
 
-        if(d.type === 'kick_call' && d.target_id === user.id) {
-            showToast("Você foi removido da chamada."); leaveCall();
-        }
+        if(d.type === 'kick_call' && d.target_id === user.id) { showToast("Você foi removido da chamada."); leaveCall(); }
 
         if(d.type === 'call_accepted') {
             stopSounds();
@@ -1268,27 +1295,21 @@ function connectGlobalWS(){
             connectToAgora(window.currentAgoraChannel, window.pendingCallType);
         }
 
-        if(d.type === 'call_rejected') {
-            showToast("❌ Chamada recusada.");
-            leaveCall();
-        }
+        if(d.type === 'call_rejected') { showToast("❌ Chamada recusada."); leaveCall(); }
 
         if(d.type === 'call_cancelled') {
             showToast("⚠️ A chamada foi cancelada.");
             document.getElementById('modal-incoming-call').classList.add('hidden'); 
             stopSounds();
         }
-        if(d.type === 'message_deleted') {
-            applyRemoteDelete(d.msg_id);
-        }
 
+        if(d.type === 'message_deleted') { applyRemoteDelete(d.msg_id); }
 
         if(d.type === 'incoming_call') {
             window.pendingCallerId = d.caller_id;
             document.getElementById('incoming-call-name').innerText = d.caller_name || 'Usuário';
             document.getElementById('incoming-call-av').src = safeAvatarUrl(d.caller_avatar, d.caller_name);
 
-            // Canal: nunca pode ser null (Agora exige nome válido <= 64 bytes)
             let ch = d.channel_name;
             if(!ch && d.call_type === 'dm') ch = buildDmCallChannel(user.id, d.caller_id);
             if(!ch) ch = `call_${Date.now()}_${d.caller_id}_${user.id}`;
@@ -1301,58 +1322,85 @@ function connectGlobalWS(){
         }
     };
 
-    globalWS.onclose = () => { 
-        // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
-        setTimeout(() => { if(user) connectGlobalWS();
-// ── Reconexão ao voltar do segundo plano ──────────────────────────────
-document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'hidden' && rtc.client && window.currentAgoraChannel) {
-        try {
-            // Verifica se o audio track ainda está publicado
-            if (rtc.localAudioTrack && rtc.localAudioTrack.enabled === false) {
-                await rtc.localAudioTrack.setEnabled(true);
-            }
-            // Se o cliente desconectou, tenta reconectar
-            const state = rtc.client.connectionState;
-            if (state === 'DISCONNECTED' || state === 'DISCONNECTING') {
-                showToast('🔄 Reconectando call...');
-                await connectToAgora(window.currentAgoraChannel, window.pendingCallType);
-            }
-        } catch(e) { console.warn('visibilitychange reconnect:', e); }
-    }
-});
+    globalWS.onclose = () => { setTimeout(() => { if(user) connectGlobalWS(); }, 4000); };
+}
 
-// Mantém AudioContext ativo no mobile (evita suspensão pelo browser)
-let _keepAliveInterval = null;
+function startApp(){
+    document.getElementById('modal-login').classList.add('hidden'); 
+    document.getElementById('app').style.display = 'flex'; 
+    updateUI(); fetchOnlineUsers(); fetchUnread(); goView('profile', document.getElementById('nav-profile-btn'));
+
+    connectGlobalWS();
+
+    if(!window._globalPingInterval){
+        window._globalPingInterval = setInterval(()=>{ 
+            if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } 
+        }, 20000);
+    }
+
+    installCallRuntimeHooks();
+
+    syncInterval=setInterval(()=>{ 
+        try { const vf = document.getElementById('view-feed'); if(vf && vf.classList.contains('active')) loadFeed(); } catch(_) {}
+        fetchOnlineUsers(); 
+    },4000);
+}
+
+// ── Hooks da call (instalar apenas uma vez) ─────────────────────────────
+let __callHooksInstalled = false;
+let _callKeepAliveInterval = null;
+let _callAloneSince = null;
+
+function installCallRuntimeHooks(){
+    if (__callHooksInstalled) return;
+    __callHooksInstalled = true;
+
+    document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState !== 'hidden' && rtc.client && window.currentAgoraChannel) {
+            try {
+                const state = rtc.client.connectionState;
+                if (state === 'DISCONNECTED' || state === 'DISCONNECTING') {
+                    showToast('🔄 Reconectando call...');
+                    await connectToAgora(window.currentAgoraChannel, window.currentCallType || window.pendingCallType);
+                }
+            } catch(e) { console.warn('visibilitychange reconnect:', e); }
+        }
+    });
+}
+
+async function _callPingBackend(){
+    try {
+        if (!window.currentAgoraChannel) return;
+        await authFetch('/call/ping', { method:'POST', body: JSON.stringify({ channel: window.currentAgoraChannel }) });
+    } catch(_) {}
+}
+
 function _startCallKeepAlive() {
-    if (_keepAliveInterval) return;
-    _keepAliveInterval = setInterval(() => {
+    if (_callKeepAliveInterval) return;
+    _callAloneSince = null;
+    _callKeepAliveInterval = setInterval(async () => {
         try {
-            if (rtc.client && AgoraRTC) {
-                // Agora SDK mantém conexão — apenas verificamos estado
-                const s = rtc.client.connectionState;
-                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
-                    console.warn('Keep-alive: state =', s);
+            if (rtc.client && window.currentAgoraChannel) {
+                await _callPingBackend();
+
+                const remoteCount = Object.keys(rtc.remoteUsers || {}).length;
+                if (remoteCount === 0) {
+                    if (!_callAloneSince) _callAloneSince = Date.now();
+                    if (Date.now() - _callAloneSince > 15000) {
+                        showToast("Ninguém entrou na call. Encerrando...");
+                        leaveCall();
+                    }
+                } else {
+                    _callAloneSince = null;
                 }
             }
         } catch(_) {}
     }, 8000);
 }
+
 function _stopCallKeepAlive() {
-    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
-}
-
- }, 4000); 
-    };
-}
-connectGlobalWS();
-
-if(!window._globalPingInterval){
-    window._globalPingInterval = setInterval(()=>{ 
-        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } 
-    }, 20000);
-}
-    syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
+    if (_callKeepAliveInterval) { clearInterval(_callKeepAliveInterval); _callKeepAliveInterval = null; }
+    _callAloneSince = null;
 }
 
 function logout(){ localStorage.removeItem('token'); user = null; if(syncInterval) clearInterval(syncInterval); if(globalWS) globalWS.close(); showLoginScreen(); }
