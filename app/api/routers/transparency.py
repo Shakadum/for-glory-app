@@ -538,9 +538,20 @@ async def get_deputado_details(api_id):
             "provider":e.get("nomeFornecedor","")} for e in desp["dados"][:10]]
 
     if vot and "dados" in vot:
-        details["votes"] = [{"description":v.get("descricao","") or v.get("ementa",""),
-            "date":(v.get("dataHoraVoto") or "")[:10],
-            "vote": v.get("voto","") or ""} for v in vot["dados"][:10]]
+        vote_items = []
+        for v in vot["dados"][:12]:
+            prop = v.get("proposicao_") or {}
+            ementa = prop.get("ementa","") or v.get("descricao","") or v.get("titulo","")
+            sigla  = prop.get("siglaTipo","")
+            numero = prop.get("numero","")
+            ano    = prop.get("ano","")
+            label  = f"{sigla} {numero}/{ano} — {ementa}" if sigla and ementa else ementa or v.get("descricao","")
+            vote_items.append({
+                "description": label[:180],
+                "date": (v.get("dataHoraVoto") or v.get("data",""))[:10],
+                "vote": v.get("voto","") or "",
+            })
+        details["votes"] = [vi for vi in vote_items if vi["description"]]
     return details
 
 # ── SENADO ────────────────────────────────────────────────────
@@ -600,8 +611,12 @@ async def get_senador_details(api_id):
         try:
             vlist = vd["VotacoesParlamentar"]["Parlamentar"]["Votacoes"]["Votacao"]
             if isinstance(vlist,dict): vlist=[vlist]
-            details["votes"] = [{"description":v.get("DescricaoVotacao",""),
-                "date":v.get("DataSessao",""),"vote":v.get("Voto","")} for v in (vlist or [])[:10]]
+            details["votes"] = [
+                {"description": v.get("DescricaoVotacao","") or v.get("Titulo",""),
+                 "date": v.get("DataSessao",""),
+                 "vote": v.get("Voto","") or v.get("DescricaoVoto","")}
+                for v in (vlist or [])[:12] if v.get("DescricaoVotacao") or v.get("Titulo")
+            ]
         except: pass
     return details
 
@@ -678,17 +693,29 @@ GOVERNORS_BY_UF = {
     "TO":{"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
 }
 UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
+# Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
+# Padrão: https://commons.wikimedia.org/wiki/File:Nome_do_arquivo.jpg
 STF_MINISTERS = [
-    {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg","email":""},
-    {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg","email":""},
-    {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg","email":""},
-    {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
-    {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","photo":"","email":""},
+    {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg"},
+    {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Carmen_lucia_antunes_rocha_3_crop.jpg/400px-Carmen_lucia_antunes_rocha_3_crop.jpg"},
+    {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Dias_Toffoli_%282023%29.jpg/400px-Dias_Toffoli_%282023%29.jpg"},
+    {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg"},
+    {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Edson_Fachin_2023.jpg/400px-Edson_Fachin_2023.jpg"},
+    {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg"},
+    {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg"},
+    {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Kassio_Nunes_Marques_2023.jpg/400px-Kassio_Nunes_Marques_2023.jpg"},
+    {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg/400px-Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg"},
+    {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg"},
 ]
 
 async def _resolve_geo(ip: str) -> dict:
@@ -732,6 +759,53 @@ async def get_senadores_by_uf(uf: str) -> list:
         except: continue
     return results
 
+
+async def get_executive_actions(year_start: str = "2023-01-01") -> dict:
+    """
+    Busca ações do Executivo Federal:
+    - Medidas Provisórias (MPV) editadas
+    - Proposições de lei do Executivo recentemente aprovadas
+    - Mensagens presidenciais (MSG) ao Congresso
+    Fonte: API da Câmara dos Deputados (dados abertos)
+    """
+    mpv_task = _get(f"{CAMARA_BASE}/proposicoes", {
+        "siglaTipo": "MPV", "dataInicio": year_start,
+        "itens": 8, "ordem": "DESC", "ordenarPor": "id"})
+    msg_task = _get(f"{CAMARA_BASE}/proposicoes", {
+        "siglaTipo": "MSG", "dataInicio": year_start,
+        "itens": 8, "ordem": "DESC", "ordenarPor": "id"})
+    pl_exec_task = _get(f"{CAMARA_BASE}/proposicoes", {
+        "siglaTipo": "PL", "dataInicio": year_start,
+        "autor": "EXECUTIVO", "itens": 6,
+        "ordem": "DESC", "ordenarPor": "id"})
+
+    mpvs_data, msgs_data, pls_data = await asyncio.gather(mpv_task, msg_task, pl_exec_task)
+
+    actions = []
+    for source, tipo_label in [(mpvs_data, "Medida Provisória"), (msgs_data, "Mensagem ao Congresso"), (pls_data, "Projeto de Lei — Executivo")]:
+        if not source or "dados" not in source: continue
+        for p in source["dados"][:5]:
+            ementa = p.get("ementa","") or p.get("titulo","")
+            if not ementa: continue
+            actions.append({
+                "type":        tipo_label,
+                "sigla":       p.get("siglaTipo",""),
+                "numero":      f"{p.get('numero','')}/{p.get('ano','')}",
+                "description": ementa[:200],
+                "date":        p.get("dataApresentacao","")[:10] if p.get("dataApresentacao") else "",
+            })
+    # Sort by date desc
+    actions.sort(key=lambda x: x["date"], reverse=True)
+    return {"actions": actions[:12], "source": "API da Câmara dos Deputados (dadosabertos.camara.leg.br)"}
+
+
+async def fetch_photo_from_wikipedia(wiki_title: str) -> str:
+    """Busca a foto principal do artigo Wikipedia pelo título exato."""
+    if not wiki_title: return ""
+    wiki = await _wiki_summary(wiki_title, "pt")
+    return wiki.get("photo","")
+
+
 # ── ENDPOINTS ─────────────────────────────────────────────────
 @router.get("/transparency/search")
 async def search_politicians(q:str=Query(...,min_length=2), country:Optional[str]=Query("BR")):
@@ -748,14 +822,29 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
     # 1. Verifica banco de dados curado primeiro
     if politician_id in CURATED_POLITICIANS:
         details = dict(CURATED_POLITICIANS[politician_id])
-        # Busca bio do Wikipedia com título exato
         wiki_title = details.pop("wiki_title_pt", "")
-        if wiki_title and not details.get("bio"):
-            wiki = await _wiki_summary(wiki_title, "pt")
-            if wiki.get("bio"):
-                details["bio"] = wiki["bio"]
-                details["wiki_link"] = wiki.get("link","")
-                if not details.get("photo"): details["photo"] = wiki.get("photo","")
+
+        # Busca bio + foto via Wikipedia (título exato do sitelink)
+        async def _empty(): return {}
+        bio_task  = _wiki_summary(wiki_title, "pt") if wiki_title else _empty()
+        # Busca ações do executivo para Presidente e VP
+        is_exec = politician_id in ("wd-Q28227", "wd-Q41551")
+        act_task = get_executive_actions() if is_exec else _empty()
+
+        wiki_res, act_res = await asyncio.gather(bio_task, act_task)
+
+        if wiki_res and wiki_res.get("bio"):
+            details["bio"]       = wiki_res["bio"]
+            details["wiki_link"] = wiki_res.get("link","")
+        if not details.get("photo") and wiki_res:
+            details["photo"] = wiki_res.get("photo","")
+        if is_exec and act_res:
+            details["executive_actions"] = act_res.get("actions",[])
+            details["actions_source"]    = act_res.get("source","")
+        # Para STF sem foto, busca pelo Wikipedia
+        if not details.get("photo") and wiki_title:
+            photo = await fetch_photo_from_wikipedia(wiki_title)
+            if photo: details["photo"] = photo
     else:
         parts = politician_id.split("-",1); source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
         if source=="dep":   details = await get_deputado_details(api_id)
@@ -800,13 +889,19 @@ async def compare_politicians(ids:str=Query(...)):
     return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
 
 @router.get("/transparency/local")
-async def get_local_politicians(request: FARequest):
+async def get_local_politicians(request: FARequest, uf_override: Optional[str] = Query(None)):
     ip = request.headers.get("X-Forwarded-For", request.client.host or "127.0.0.1")
     ip = ip.split(",")[0].strip()
     geo = await _resolve_geo(ip)
-    uf      = geo.get("regionCode","RJ").upper()
-    city    = geo.get("city","")
-    state   = geo.get("regionName","")
+    # Permite override manual do estado (quando IP não detecta corretamente)
+    if uf_override and len(uf_override) == 2:
+        uf = uf_override.upper()
+        state   = UF_NAMES.get(uf, uf)
+        city    = ""
+    else:
+        uf      = geo.get("regionCode","RJ").upper()
+        city    = geo.get("city","")
+        state   = geo.get("regionName","")
     country = geo.get("countryCode","BR").upper()
 
     executivo = [

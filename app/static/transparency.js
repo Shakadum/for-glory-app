@@ -115,16 +115,37 @@ function renderLocalPanelData(data) {
     const loc = data.location || {};
     const sections = data.sections || [];
 
+    const allUFs = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SE','SP','TO'];
+    const ufNames = {AC:'Acre',AL:'Alagoas',AP:'Amapá',AM:'Amazonas',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MT:'Mato Grosso',MS:'Mato Grosso do Sul',MG:'Minas Gerais',PA:'Pará',PB:'Paraíba',PR:'Paraná',PE:'Pernambuco',PI:'Piauí',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RS:'Rio Grande do Sul',RO:'Rondônia',RR:'Roraima',SC:'Santa Catarina',SE:'Sergipe',SP:'São Paulo',TO:'Tocantins'};
+    const detectedCity = loc.city||'';
+    const detectedState = loc.state_full||loc.state||'';
+
     el.innerHTML = `
         <!-- LOCATION BANNER -->
         <div class="trans-location-banner">
             <div class="trans-location-icon">📍</div>
-            <div>
+            <div style="flex:1;min-width:0;">
                 <div class="trans-location-title">Seus Representantes</div>
-                <div class="trans-location-sub">${escapeHtml(loc.city||'')}${loc.city&&loc.state_full?', ':''}${escapeHtml(loc.state_full||'')} · ${escapeHtml(loc.country||'Brasil')}</div>
+                <div class="trans-location-sub" id="trans-loc-display">
+                    📌 ${escapeHtml(detectedState||loc.uf||'')} · ${escapeHtml(loc.country||'Brasil')}
+                    ${detectedCity ? `<span style="color:#4b5563;font-size:10px;margin-left:6px;">IP aponta para ${escapeHtml(detectedCity)} — ajuste se estiver errado</span>` : ''}
+                </div>
+                <!-- Override row -->
+                <div class="trans-loc-override" id="trans-loc-override" style="display:none;margin-top:8px;gap:6px;flex-wrap:wrap;">
+                    <span style="color:#9ca3af;font-size:11px;align-self:center;">Selecionar estado:</span>
+                    <select id="trans-uf-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;">
+                        ${allUFs.map(u => `<option value="${u}" ${u===loc.uf?'selected':''}>${u} — ${ufNames[u]||u}</option>`).join('')}
+                    </select>
+                    <button class="btn-main" style="margin:0;padding:5px 14px;font-size:12px;" onclick="applyUFOverride()">Aplicar</button>
+                    <button class="glass-btn" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('trans-loc-override').style.display='none'">✕</button>
+                </div>
             </div>
-            <button class="glass-btn" style="margin-left:auto;padding:5px 12px;font-size:11px;flex-shrink:0;" 
-                onclick="loadLocalPanel()" title="Atualizar localização">↺ Atualizar</button>
+            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
+                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
+                    onclick="toggleLocOverride()" title="Corrigir estado">✏️ Corrigir</button>
+                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
+                    onclick="loadLocalPanel()" title="Atualizar">↺</button>
+            </div>
         </div>
 
         <!-- SECTIONS -->
@@ -136,8 +157,8 @@ function renderSection(s) {
     const pols = s.politicians || [];
     if (!pols.length) return '';
     
-    const isPresident = s.id === 'executivo';
-    const isBig = isPresident;
+    const isBig  = s.id === 'executivo';
+    const is3col = s.id === 'deputados' || s.id === 'stf';
 
     return `
         <div class="trans-local-section">
@@ -148,7 +169,7 @@ function renderSection(s) {
                 </div>
                 <div class="trans-local-count" style="background:${s.color}20;color:${s.color};">${pols.length}</div>
             </div>
-            <div class="${isBig ? 'trans-exec-row' : (pols.length>4 ? 'trans-grid-scroll' : 'trans-grid-wrap')}">
+            <div class="${isBig ? 'trans-exec-row' : is3col ? 'trans-grid-3col' : 'trans-grid-wrap'}">
                 ${pols.map(p => isBig ? renderExecCard(p, s.color) : renderMiniCard(p, s.color)).join('')}
             </div>
         </div>`;
@@ -163,7 +184,7 @@ function renderExecCard(p, color) {
             style="--accent:${color};">
             <div class="trans-exec-photo-wrap">
                 <img src="${escapeHtml(p.photo||'')}" class="trans-exec-photo"
-                    onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name||'?')}&background=1a2030&color=${color.replace('#','')}&size=160'">
+                    onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name='+encodeURIComponent((p.name||'?').split(' ').slice(-2).join('+'))+'&background=131820&color='+('${color}'.replace('#',''))+'&bold=true&size=160'">
                 <div class="trans-exec-overlay"></div>
                 ${p.highlight ? '<div class="trans-exec-badge">👑 Presidente</div>' : ''}
             </div>
@@ -189,7 +210,7 @@ function renderMiniCard(p, color) {
         <div class="trans-mini-card" onclick='openPolitician(${pJson})'
             style="--accent:${color};">
             <img src="${escapeHtml(p.photo||'')}" class="trans-mini-photo"
-                onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name||'?')}&background=0d1117&color=${color.replace('#','')}&size=80'">
+                onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name='+encodeURIComponent((p.name||'?').split(' ').slice(-2).join('+'))+'&background=131820&color='+('${color}'.replace('#',''))+'&bold=true&size=80'">
             <div class="trans-mini-info">
                 <div class="trans-mini-name">${escapeHtml(p.name||'')}</div>
                 ${p.party ? `<span class="trans-mini-party" style="color:${color};">${escapeHtml(p.party)}</span>` : ''}
@@ -271,8 +292,27 @@ function renderProfile(p, d, container) {
     const despHtml=`<div class="trans-section"><div class="trans-section-label" style="display:flex;justify-content:space-between;""><span>🧾 Despesas Declaradas</span>${totalDesp?`<span style="color:#ffd93d;font-size:12px;">${_fmt_brl(totalDesp)}</span>`:''}</div>${expenses.length?expenses.map(e=>`<div class="trans-row"><div style="flex:1;min-width:0;"><div style="color:#c5c6c7;font-size:12px;font-weight:600;">${escapeHtml(e.description||'')}</div><div style="color:#6b7280;font-size:11px;">${escapeHtml(e.provider||'')}</div></div><div style="text-align:right;flex-shrink:0;margin-left:8px;"><div style="color:#ffd93d;font-weight:700;font-size:12px;">${_fmt_brl(e.value)}</div><div style="color:#4b5563;font-size:10px;">${escapeHtml(e.date||'')}</div></div></div>`).join(''):'<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem despesas registradas para este cargo.</div>'}</div>`;
 
     const votes=d.votes||[];
-    const vIcon=v=>{const vv=(v||'').toLowerCase();if(vv==='sim'||vv==='yes')return '<span style="color:#2ecc71;">✅ Sim</span>';if(vv==='não'||vv==='nao'||vv==='no')return '<span style="color:#ff5555;">❌ Não</span>';if(vv.includes('abst'))return '<span style="color:#ffd93d;">⬜ Abstenção</span>';return v?`<span style="color:#9ca3af;">${escapeHtml(v)}</span>`:''};
-    const votHtml=`<div class="trans-section"><div class="trans-section-label">🗳️ Votações Recentes</div>${votes.length?votes.map(v=>`<div class="trans-row" style="align-items:flex-start;gap:10px;"><div style="flex:1;min-width:0;"><div style="color:#c5c6c7;font-size:12px;line-height:1.5;">${escapeHtml(v.description||'Votação sem descrição')}</div><div style="color:#4b5563;font-size:10px;margin-top:2px;">${escapeHtml(v.date||'')}</div></div><div style="flex-shrink:0;font-size:12px;">${vIcon(v.vote)}</div></div>`).join(''):'<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem votações registradas para este cargo.</div>'}</div>`;
+    const vIcon=v=>{const vv=(v||'').toLowerCase();if(vv==='sim'||vv==='yes')return '<span style="color:#2ecc71;font-weight:600;">✅ Sim</span>';if(vv==='não'||vv==='nao'||vv==='no')return '<span style="color:#ff5555;font-weight:600;">❌ Não</span>';if(vv.includes('abst'))return '<span style="color:#ffd93d;font-weight:600;">⬜ Abstenção</span>';if(vv==='obstrução'||vv.includes('obstru'))return '<span style="color:#c678dd;font-weight:600;">🚫 Obstrução</span>';return v?`<span style="color:#9ca3af;">${escapeHtml(v)}</span>`:''};
+    // Executivo: mostra ações em vez de votações
+    const execActions = d.executive_actions || [];
+    const votHtml = execActions.length ? `
+        <div class="trans-section">
+            <div class="trans-section-label">📜 Ações do Executivo Federal</div>
+            <div style="color:#6b7280;font-size:11px;margin-bottom:10px;">Medidas Provisórias, Projetos de Lei e Mensagens ao Congresso enviadas pelo Executivo</div>
+            ${execActions.map(a=>`
+                <div class="trans-row" style="align-items:flex-start;gap:10px;">
+                    <div style="flex-shrink:0;">
+                        <span class="trans-meta-chip" style="background:rgba(255,211,61,0.1);border-color:rgba(255,211,61,0.3);color:#ffd93d;font-weight:700;">${escapeHtml(a.sigla||'')}</span>
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="color:#9ca3af;font-size:10px;font-weight:600;letter-spacing:0.5px;">${escapeHtml(a.type||'')}</div>
+                        <div style="color:#c5c6c7;font-size:12px;line-height:1.5;margin-top:2px;">${escapeHtml((a.description||'').substring(0,200))}</div>
+                        <div style="color:#4b5563;font-size:10px;margin-top:2px;">${escapeHtml(a.numero||'')} · ${escapeHtml(a.date||'')}</div>
+                    </div>
+                </div>`).join('')}
+            ${d.actions_source ? `<div style="margin-top:8px;"><a href="https://dadosabertos.camara.leg.br" target="_blank" class="trans-source-link">Fonte: ${escapeHtml(d.actions_source)} ↗</a></div>` : ''}
+        </div>` :
+        `<div class="trans-section"><div class="trans-section-label">🗳️ Votações Recentes</div>${votes.length?votes.map(v=>`<div class="trans-row" style="align-items:flex-start;gap:10px;"><div style="flex:1;min-width:0;"><div style="color:#c5c6c7;font-size:12px;line-height:1.5;">${escapeHtml(v.description||'Votação sem descrição registrada')}</div><div style="color:#4b5563;font-size:10px;margin-top:2px;">${escapeHtml(v.date||'')}</div></div><div style="flex-shrink:0;font-size:12px;">${vIcon(v.vote)}</div></div>`).join(''):'<div style="color:#6b7280;font-size:13px;padding:8px 0;">Sem votações registradas. Isso pode ocorrer para cargos do Executivo (Presidente, Governadores) e do Judiciário (STF), que não votam no Congresso Nacional.</div>'}</div>`;
 
     const charges=d.charges||[];
     const chargesHtml=`<div class="trans-section"><div class="trans-section-label">⚖️ Casos na Justiça</div><div class="trans-legal-notice">⚠️ Dados de fontes públicas oficiais. Processos em andamento não implicam condenação (Lei 12.527/2011).</div>${charges.length?charges.map(c=>`<div class="trans-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="color:#fca5a5;font-size:13px;">${escapeHtml(c)}</span></div>`).join(''):'<div style="color:#6b7280;font-size:13px;padding:8px 0;">Nenhum processo criminal registrado em fontes públicas consultadas.</div>'}</div>`;
@@ -347,6 +387,27 @@ async function renderCompareView(container){
         const rows=fields.map(([label,fn])=>`<tr><td class="trans-cmp-label">${label}</td>${pols.map(pol=>`<td class="trans-cmp-cell">${escapeHtml(fn(pol))}</td>`).join('')}</tr>`).join('');
         container.innerHTML=`<div class="trans-profile-wrap"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);font-weight:700;">⚖️ Comparativo</div><button class="trans-back-btn" onclick="renderTransparencyView('search')">← Voltar</button></div><div style="overflow-x:auto;"><table class="trans-compare-table"><thead><tr><th class="trans-cmp-label">Campo</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div><button class="glass-btn" style="margin-top:16px;" onclick="window.__transState.compareList=[];window.__transState.comparePoliticians=[];renderTransparencyView('search');">✕ Limpar comparativo</button></div>`;
     }catch(e){container.innerHTML=`<div class="news-empty">Erro. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;}
+}
+
+// ── LOCATION OVERRIDE ─────────────────────────────────────────
+function toggleLocOverride() {
+    const el = document.getElementById('trans-loc-override');
+    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+async function applyUFOverride() {
+    const uf = document.getElementById('trans-uf-select')?.value;
+    if (!uf) return;
+    const el = document.getElementById('trans-local-panel');
+    if (el) el.innerHTML = '<div class="news-loading" style="margin:24px auto;"><div class="news-spinner"></div><span>Carregando representantes de '+uf+'...</span></div>';
+    try {
+        const r = await authFetch(`/transparency/local?uf_override=${uf}`);
+        if (!r.ok) throw new Error();
+        const data = await r.json();
+        window.__transState.localData = data;
+        renderLocalPanelData(data);
+    } catch(e) {
+        showToast('Erro ao carregar representantes.');
+    }
 }
 
 // ── HOOK ──────────────────────────────────────────────────────
