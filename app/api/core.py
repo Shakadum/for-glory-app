@@ -86,10 +86,36 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 # ========== FUNÇÃO DE AUTENTICAÇÃO COM LOGS ==========
-def authenticate_user(db: Session, username: str, password: str):
-    user = db.query(User).filter(User.username == username).first()
+def authenticate_user(db: Session, login: str, password: str):
+    """Login can be either username OR email."""
+    if not login:
+        return False
+    login_str = str(login).strip()
+    login_lower = login_str.lower()
+
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.username == login_str,
+                func.lower(User.email) == login_lower,
+            )
+        )
+        .first()
+    )
+
     if not user or not user.password_hash:
-        logger.warning(f"❌ Usuário {username} não encontrado ou sem hash")
+        logger.warning(f"❌ Usuário {login_str} não encontrado (username/email) ou sem hash")
+        return False
+
+    try:
+        if verify_password(password, user.password_hash):
+            logger.info("✅ Senha correta")
+            return user
+        logger.warning("❌ Senha incorreta")
+        return False
+    except Exception:
+        logger.exception("Erro ao verificar senha")
         return False
 
     # Verifica com passlib (bcrypt)
