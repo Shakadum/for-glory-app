@@ -1775,7 +1775,47 @@ function connectDmWS(id, name, type, loadToken) {
     };
 }
 
-function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
+function getExpectedDmChatKey(chatId, chatType){
+    if(!user) return null;
+    return chatType === 'group'
+        ? `group_${chatId}`
+        : `dm_${Math.min(user.id, chatId)}_${Math.max(user.id, chatId)}`;
+}
+
+function wsMatchesCurrentChat(){
+    if(!dmWS || dmWS.readyState !== WebSocket.OPEN) return false;
+    const expected = getExpectedDmChatKey(currentChatId, currentChatType);
+    return !!expected && dmWS.__chatKey === expected;
+}
+
+async function sendDM(){
+    let i=document.getElementById('dm-msg');
+    if(!i) return;
+    let msg=i.value.trim();
+    if(!msg) return;
+
+    // Limpa o input imediatamente (UX). Se falhar, re-coloca.
+    i.value='';
+    toggleEmoji(true);
+
+    try{
+        // Se o WS não for do chat atual (troca rápida), NÃO enviar por WS (evita enviar no chat errado)
+        if(wsMatchesCurrentChat()){
+            dmWS.send(msg);
+            return;
+        }
+        // Fallback HTTP sempre mirando no chat atual
+        if(currentChatType === 'group'){
+            await authFetch(`/group/${currentChatId}/send`, {method:'POST', body: JSON.stringify({content: msg})});
+        } else {
+            await authFetch('/dm/send', {method:'POST', body: JSON.stringify({target_id: currentChatId, content: msg})});
+        }
+    }catch(e){
+        console.error(e);
+        i.value = msg;
+        showToast("Erro ao enviar.");
+    }
+}
 async function uploadDMImage(){
   let f=document.getElementById('dm-file').files[0];
   if(!f) return;
@@ -1790,7 +1830,7 @@ async function uploadDMImage(){
     let payload = url;
     if((f.type||'').startsWith('audio/')) payload = "[AUDIO]"+url;
 
-    if(dmWS && dmWS.readyState===WebSocket.OPEN){
+    if(wsMatchesCurrentChat()){
       dmWS.send(payload);
     } else {
       // fallback HTTP
