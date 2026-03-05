@@ -160,7 +160,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         payload["id"] = pm.id
                         await manager.broadcast(payload, ch)
                         # notifica o destinatário em qualquer canal que ele esteja
-                        await manager.send_personal({**payload, "type": "new_dm"}, to_uid)
+                        await manager.send_personal({"type": "new_dm", "from": uid, "msg_id": pm.id}, to_uid)
                         continue
 
                 if ch.startswith("group_"):

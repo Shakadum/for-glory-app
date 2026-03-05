@@ -395,23 +395,32 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user)
 ):
-    # Validações simples
-# UploadFile pode não ter .size dependendo do servidor/versão. Calcula de forma segura.
-try:
-    file.file.seek(0, os.SEEK_END)
-    size = file.file.tell()
-    file.file.seek(0)
-except Exception:
-    size = None
+    """(LEGADO) Upload para Cloudinary.
+    OBS: a versão atual usa o router app/api/routers/posts.py.
+    Mantido aqui apenas para compatibilidade, sem quebrar import/execução.
+    """
+    # UploadFile pode não ter .size dependendo do servidor/versão. Calcula de forma segura.
+    try:
+        file.file.seek(0, os.SEEK_END)
+        size = file.file.tell()
+        file.file.seek(0)
+    except Exception:
+        size = None
 
-if size is not None and size > 100 * 1024 * 1024:
-    raise HTTPException(status_code=400, detail="Arquivo muito grande (máx 100MB)")
-    allowed = ["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm", "audio/webm", "audio/mpeg"]
+    if size is not None and size > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Arquivo muito grande (máx 100MB)")
+
+    allowed = [
+        "image/jpeg", "image/png", "image/gif",
+        "video/mp4", "video/webm", "video/quicktime",
+        "audio/webm", "audio/ogg", "audio/mpeg", "audio/wav",
+    ]
     if file.content_type not in allowed:
         raise HTTPException(400, "Tipo de arquivo não permitido")
+
     try:
         result = cloudinary.uploader.upload(file.file, resource_type="auto")
-        return {"secure_url": result["secure_url"]}
+        return {"secure_url": result.get("secure_url") or result.get("url")}
     except Exception as e:
         raise HTTPException(500, f"Erro no upload: {e}")
 

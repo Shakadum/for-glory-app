@@ -146,3 +146,53 @@ async def delete_msg(
 # ENDPOINTS DE GRUPOS
 # ----------------------------------------------------------------------
 
+
+
+class SendDmData(BaseModel):
+    target_id: int
+    content: str
+
+
+@router.post("/dm/send")
+async def send_dm_http(
+    d: SendDmData,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Fallback HTTP para enviar DM quando WS falhar (mobile/rede ruim)."""
+    to_uid = int(d.target_id)
+    if to_uid == current_user.id:
+        raise HTTPException(400, "Destino inválido")
+
+    content = (d.content or "").strip()
+    if not content:
+        raise HTTPException(400, "Mensagem vazia")
+    if len(content) > 2000:
+        raise HTTPException(400, "Mensagem muito longa")
+
+    now = datetime.now(timezone.utc)
+    pm = PrivateMessage(sender_id=current_user.id, receiver_id=to_uid, content=content, timestamp=now)
+    db.add(pm)
+    db.commit()
+    db.refresh(pm)
+
+    u_sum = format_user_summary(current_user)
+    payload = {
+        "type": "msg",
+        "id": pm.id,
+        "user_id": current_user.id,
+        "username": u_sum.get("username") or current_user.username,
+        "avatar": u_sum.get("avatar_url") or current_user.avatar_url,
+        "rank": u_sum.get("rank"),
+        "color": u_sum.get("color"),
+        "special_emblem": u_sum.get("special_emblem"),
+        "content": content,
+        "timestamp": now.isoformat(),
+        "can_delete": True,
+    }
+    low, high = min(current_user.id, to_uid), max(current_user.id, to_uid)
+    await manager.broadcast(payload, f"dm_{low}_{high}")
+    # notifica (só badge/inbox), sem reenviar conteúdo pra evitar duplicação
+    await manager.send_personal({"type": "new_dm", "from": current_user.id, "msg_id": pm.id}, to_uid)
+
+    return {"status": "ok", "id": pm.id}

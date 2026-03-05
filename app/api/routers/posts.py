@@ -4,7 +4,10 @@ from app.api.core import *
 router = APIRouter()
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+):
     """Faz upload de arquivo para o Cloudinary.
     Retorna a URL segura (https) e metadados básicos.
     """

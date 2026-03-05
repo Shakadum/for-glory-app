@@ -1149,6 +1149,15 @@ async function fetchUnread(){
     if(!user) return;
     try {
         let r = await fetch(`/notifications?nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+        if(!r.ok){
+            // token expirado / rede: zera badges para evitar "notificação fantasma"
+            const badgeInbox = document.getElementById('inbox-badge'); if(badgeInbox) badgeInbox.style.display='none';
+            const badgeBases = document.getElementById('bases-badge'); if(badgeBases) badgeBases.style.display='none';
+            const badgeProfile = document.getElementById('profile-badge'); if(badgeProfile) badgeProfile.style.display='none';
+            window.unreadData = {};
+            window.lastTotalUnread = 0;
+            return;
+        }
         let d = await r.json(); 
         window.unreadData = d.dms.by_sender || {};
         let badgeInbox = document.getElementById('inbox-badge');
@@ -1544,7 +1553,6 @@ async function fetchChatMessages(id, type, loadToken) {
                     let m = (d.user_id === user.id);
                     let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';
         if(c && (c.toLowerCase()==='undefined' || c.toLowerCase()==='null')) c='';
-                    if(c && (c.toLowerCase()==='undefined' || c.toLowerCase()==='null')) c='';
                     let delBtn = '';
                     let timeHtml = d.timestamp ? `<span class="msg-time">${formatMsgTime(d.timestamp)}</span>` : '';
                     if (c === '[DELETED]') {
@@ -1671,7 +1679,10 @@ function connectDmWS(id, name, type, loadToken) {
     let token = localStorage.getItem('token');
     let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
+    const __wsLocal = dmWS;
+    dmWS.__chatKey = ch;
     dmWS.onclose = () => {
+        if (__wsLocal !== dmWS) return;
         setTimeout(() => {
             // If user switched chats, don't reconnect/fetch the old chat.
             if (loadToken !== currentChatLoadToken) return;
@@ -1682,6 +1693,7 @@ function connectDmWS(id, name, type, loadToken) {
         }, 2000);
     };
     dmWS.onmessage = (e) => {
+        if (__wsLocal !== dmWS) return;
         let d = JSON.parse(e.data);
 
         // Não misturar mensagens de outra conversa (mobile alterna rápido e pode chegar msg de chat antigo)
@@ -1695,8 +1707,8 @@ function connectDmWS(id, name, type, loadToken) {
         let m = parseInt(d.user_id) === parseInt(user.id);
         let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';
         if(c && (c.toLowerCase()==='undefined' || c.toLowerCase()==='null')) c='';
-                    if(c && (c.toLowerCase()==='undefined' || c.toLowerCase()==='null')) c='';
         if (d.type === 'ping' || d.type === 'pong') return;
+        if (d.type === 'new_dm') { fetchUnread(); return; }
 
         // Evita aparecer "Usuário"/mensagens vazias quando chegam eventos de controle (call_accepted, sync_bg, etc.)
         // Esses eventos não são mensagens de chat e não devem ser renderizados na lista.
@@ -1772,10 +1784,25 @@ async function uploadDMImage(){
     let res = await authFetch('/upload', { method:'POST', body: formData, headers:{} });
     let data = await res.json();
     const url = pickUploadedUrl(data);
-    if(!url){ showToast("Erro no upload da imagem."); return; }
-    if(dmWS) dmWS.send(url);
-  }catch(e){ console.error(e); showToast("Erro no upload da imagem."); }
+    if(!url){ showToast("Erro no upload."); return; }
+
+    // áudio enviado pelo clip também vira áudio (não imagem/vídeo)
+    let payload = url;
+    if((f.type||'').startsWith('audio/')) payload = "[AUDIO]"+url;
+
+    if(dmWS && dmWS.readyState===WebSocket.OPEN){
+      dmWS.send(payload);
+    } else {
+      // fallback HTTP
+      if(currentChatType === 'group'){
+        await authFetch(`/group/${currentChatId}/send`, {method:'POST', body: JSON.stringify({content: payload})});
+      } else {
+        await authFetch('/dm/send', {method:'POST', body: JSON.stringify({target_id: currentChatId, content: payload})});
+      }
+    }
+  }catch(e){ console.error(e); showToast("Erro no upload."); }
 }
+
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
@@ -1953,9 +1980,21 @@ async function uploadCommImage(){
         formData.append('file',f);
         let res=await authFetch('/upload',{method:'POST',body:formData});
         let data=await res.json();
-        await authFetch(`/community/channel/${activeChannelId}/send`,{method:'POST',body:JSON.stringify({content:(pickUploadedUrl(data) || '')})});
-    }catch(e){ console.error(e); }
+        const url = pickUploadedUrl(data);
+        if(!url){ showToast("Erro no upload."); return; }
+
+        let payload = url;
+        if((f.type||'').startsWith('audio/')) payload = "[AUDIO]"+url;
+
+        // envia pelo WS do canal se possível, senão via HTTP
+        if(commWS && commWS.readyState===WebSocket.OPEN){
+            commWS.send(payload);
+        } else {
+            await authFetch(`/community/channel/${activeChannelId}/send`,{method:'POST',body:JSON.stringify({content:payload})});
+        }
+    }catch(e){ console.error(e); showToast("Erro no upload."); }
 }
+
 
 async function openPublicProfile(uid){
     try{

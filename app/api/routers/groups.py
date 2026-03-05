@@ -27,9 +27,21 @@ def create_group(
 @router.get("/group/{group_id}/messages")
 def get_group_messages(
     group_id: int,
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    msgs = db.query(GroupMessage).filter_by(group_id=group_id).order_by(GroupMessage.timestamp.asc()).limit(100).all()
+    """Mensagens do grupo (somente membros)."""
+    is_member = db.query(GroupMember).filter_by(group_id=group_id, user_id=current_user.id).first()
+    if not is_member:
+        raise HTTPException(403, "Você não faz parte deste grupo")
+
+    msgs = (
+        db.query(GroupMessage)
+        .filter_by(group_id=group_id)
+        .order_by(GroupMessage.timestamp.asc())
+        .limit(100)
+        .all()
+    )
     return [{
         **format_user_summary(m.sender),
         "id": m.id,
@@ -40,6 +52,52 @@ def get_group_messages(
         "username": m.sender.username,
         "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
     } for m in msgs]
+
+
+class SendGroupMsgData(BaseModel):
+    content: str
+
+
+@router.post("/group/{group_id}/send")
+async def send_group_message(
+    group_id: int,
+    d: SendGroupMsgData,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Fallback HTTP para enviar mensagem quando WS falhar (mobile)."""
+    is_member = db.query(GroupMember).filter_by(group_id=group_id, user_id=current_user.id).first()
+    if not is_member:
+        raise HTTPException(403, "Você não faz parte deste grupo")
+
+    content = (d.content or "").strip()
+    if not content:
+        raise HTTPException(400, "Mensagem vazia")
+    if len(content) > 2000:
+        raise HTTPException(400, "Mensagem muito longa")
+
+    now = datetime.now(timezone.utc)
+    gm = GroupMessage(group_id=group_id, sender_id=current_user.id, content=content, timestamp=now)
+    db.add(gm)
+    db.commit()
+    db.refresh(gm)
+
+    u_sum = format_user_summary(current_user)
+    payload = {
+        "type": "msg",
+        "id": gm.id,
+        "user_id": current_user.id,
+        "username": u_sum.get("username") or current_user.username,
+        "avatar": u_sum.get("avatar_url") or current_user.avatar_url,
+        "rank": u_sum.get("rank"),
+        "color": u_sum.get("color"),
+        "special_emblem": u_sum.get("special_emblem"),
+        "content": content,
+        "timestamp": now.isoformat(),
+        "can_delete": True,
+    }
+    await manager.broadcast(payload, f"group_{group_id}")
+    return {"status": "ok", "id": gm.id}
 
 # ----------------------------------------------------------------------
 # ENDPOINTS DE COMUNIDADES
