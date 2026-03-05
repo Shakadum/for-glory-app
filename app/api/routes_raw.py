@@ -378,10 +378,14 @@ def format_user_summary(user: User):
     if not user:
         return {"id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "rank": "Recruta", "color": "#888", "special_emblem": ""}
     b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
+    # Nunca retornar avatar_url vazio/None para evitar requests como /undefined no frontend
+    av = getattr(user, 'avatar_url', None) or ''
+    if (not str(av).strip()) or str(av).strip().lower() in ('undefined', 'null'):
+        av = '/static/default-avatar.svg'
     return {
         "id": user.id,
         "username": user.username,
-        "avatar_url": user.avatar_url,
+        "avatar_url": av,
         "rank": b['rank'],
         "color": b['color'],
         "special_emblem": b['special_emblem']

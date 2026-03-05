@@ -340,10 +340,16 @@ function buildDmCallChannel(a, b) {
 }
 
 function safeAvatarUrl(u) {
-    if (!u || typeof u !== 'string') return '/static/default-avatar.svg';
-    if (u.startsWith('http://') || u.startsWith('https://')) return u;
-    if (u.startsWith('/')) return u;
-    return `/${u}`;
+    try {
+        if (!u) return "/static/default-avatar.svg";
+        const s = String(u).trim();
+        if (!s || s === "undefined" || s === "null") return "/static/default-avatar.svg";
+        if (s.startsWith("http://") || s.startsWith("https://")) return s;
+        if (s.startsWith("/")) return s;
+        return "/" + s;
+    } catch(e) {
+        return "/static/default-avatar.svg";
+    }
 }
 
 
@@ -1794,21 +1800,36 @@ async function sendDM(){
     let msg=i.value.trim();
     if(!msg) return;
 
+    const sentChatKey = getExpectedDmChatKey(currentChatId, currentChatType);
+
     // Limpa o input imediatamente (UX). Se falhar, re-coloca.
     i.value='';
     toggleEmoji(true);
 
     try{
-        // Se o WS não for do chat atual (troca rápida), NÃO enviar por WS (evita enviar no chat errado)
+        // Se o WS for do chat atual, envia por WS
         if(wsMatchesCurrentChat()){
             dmWS.send(msg);
             return;
         }
+
         // Fallback HTTP sempre mirando no chat atual
+        let res;
         if(currentChatType === 'group'){
-            await authFetch(`/group/${currentChatId}/send`, {method:'POST', body: JSON.stringify({content: msg})});
+            res = await authFetch(`/group/${currentChatId}/send`, {method:'POST', body: JSON.stringify({content: msg})});
         } else {
-            await authFetch('/dm/send', {method:'POST', body: JSON.stringify({target_id: currentChatId, content: msg})});
+            res = await authFetch('/dm/send', {method:'POST', body: JSON.stringify({target_id: currentChatId, content: msg})});
+        }
+
+        if(!res || !res.ok){
+            i.value = msg;
+            showToast("Erro ao enviar.");
+            return;
+        }
+
+        // Garante que a mensagem apareça mesmo sem WS conectado
+        if(getExpectedDmChatKey(currentChatId, currentChatType) === sentChatKey){
+            fetchChatMessages(currentChatId, currentChatType);
         }
     }catch(e){
         console.error(e);
