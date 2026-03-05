@@ -89,6 +89,21 @@ function pickUploadedUrl(data) {
   }
 }
 
+function safeMediaUrl(u){
+    if(u === undefined || u === null) return '';
+    let s = String(u).trim();
+    if(!s) return '';
+    let low = s.toLowerCase();
+    if(low === 'undefined' || low === 'null') return '';
+    return s;
+}
+function safeAvatarUrl(u, fallbackName){
+    let s = safeMediaUrl(u);
+    if(s) return s;
+    let name = (fallbackName && String(fallbackName).trim()) ? String(fallbackName).trim() : 'U';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=111&color=66fcf1`;
+}
+
 
 function normalizeUserBasic(u, fallbackUid = null) {
     const id = (u && (u.id ?? u.uid)) ?? fallbackUid;
@@ -1565,7 +1580,12 @@ async function fetchChatMessages(id, type, loadToken) {
                         c = `<span class="msg-deleted">${t('deleted_msg')}</span>`;
                     } else {
                         if (c.startsWith('[AUDIO]')) {
-                            c = `<audio controls src="${c.replace('[AUDIO]', '')}" style="max-width:200px;height:40px;outline:none;"></audio>`;
+                            /* AUDIO */
+            {
+                let au = safeMediaUrl(c.replace('[AUDIO]', ''));
+                if(!au){ c = `<span class="msg-deleted">[áudio indisponível]</span>`; }
+                else { c = `<audio controls style="width:220px;"><source src="${au}" type="audio/ogg"></audio>`; }
+            }
                         } else if (c.startsWith('http') && c.includes('cloudinary')) {
                             if (c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
                                 c = `<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;
@@ -1747,7 +1767,12 @@ function connectDmWS(id, name, type, loadToken) {
                 c = `<span class="msg-deleted">${t('deleted_msg')}</span>`;
             } else {
                 if (c.startsWith('[AUDIO]')) {
-                    c = `<audio controls src="${c.replace('[AUDIO]', '')}" style="max-width:200px;height:40px;outline:none;"></audio>`;
+                    /* AUDIO */
+            {
+                let au = safeMediaUrl(c.replace('[AUDIO]', ''));
+                if(!au){ c = `<span class="msg-deleted">[áudio indisponível]</span>`; }
+                else { c = `<audio controls style="width:220px;"><source src="${au}" type="audio/ogg"></audio>`; }
+            }
                 } else if (c.startsWith('http') && c.includes('cloudinary')) {
                     if (c.match(/\.(mp4|webm|mov|ogg|mkv)$/i) || c.includes('/video/upload/')) {
                         c = `<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;
@@ -1964,7 +1989,12 @@ async function fetchCommMessages(chid){
                         c=`<span class="msg-deleted">${t('deleted_msg')}</span>`;
                     }else{
                         if(c.startsWith('[AUDIO]')){
-                            c=`<audio controls src="${c.replace('[AUDIO]','')}" style="max-width:200px;height:40px;outline:none;"></audio>`;
+                            /* AUDIO */
+            {
+                let au = safeMediaUrl(c.replace('[AUDIO]', ''));
+                if(!au){ c = `<span class="msg-deleted">[áudio indisponível]</span>`; }
+                else { c = `<audio controls style="width:220px;"><source src="${au}" type="audio/ogg"></audio>`; }
+            }
                         }else if(c.startsWith('http')&&c.includes('cloudinary')){
                             if(c.match(/\.(mp4|webm|mov|ogg|mkv)$/i)||c.includes('/video/upload/')){
                                 c=`<video src="${c}" style="max-width:100%;border-radius:10px;border:1px solid #444;" controls playsinline></video>`;
