@@ -342,7 +342,7 @@ async function renderCompareView(container){
         const data=await r.json(); const pols=data.politicians||[];
         if(!pols.length)throw new Error();
         const fields=[['Cargo',d=>(d.all_roles&&d.all_roles[0])||d.role||'—'],['Partido',d=>(d.all_parties&&d.all_parties[0])||d.party||'—'],['País',d=>d.country||'—'],['Formação',d=>d.education||'—'],['Profissão ant.',d=>d.occupation||'—'],['Nascimento',d=>_fmt_date(d.birth_date)||'—'],['Subsídio/mês',d=>d.salary_info?_fmt_brl(d.salary_info.subsidio_mensal):'—'],['Total despesas',d=>{const t=(d.expenses||[]).reduce((s,e)=>s+(e.value||0),0);return t?_fmt_brl(t):'—';}],['Votações',d=>d.votes&&d.votes.length?d.votes.length+'':'—']];
-        const headers=pols.map((pol,i)=>{const o=pList[i]||{};return `<th class="trans-cmp-header"><img src="${escapeHtml(o.photo||pol.photo||'')}" class="trans-cmp-photo" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(o.name||'?')}&background=1a2030&color=66fcf1&size=60'"><div class="trans-cmp-name">${escapeHtml(o.name||pol.full_name||pol.id)}</div><div class="trans-cmp-role">${escapeHtml(o.role||pol.role||'')}</div></th>`;}).join('');
+        const headers=pols.map((pol,i)=>{const o=pList[i]||{};const avatar=_safeAvatarUrl(o.name||pol.full_name||'?','66fcf1');return `<th class="trans-cmp-header"><img src="${escapeHtml(o.photo||pol.photo||avatar)}" class="trans-cmp-photo" onerror="this.onerror=null;this.src='${avatar}'"><div class="trans-cmp-name">${escapeHtml(o.name||pol.full_name||pol.id)}</div><div class="trans-cmp-role">${escapeHtml(o.role||pol.role||'')}</div></th>`;}).join('');
         const rows=fields.map(([label,fn])=>`<tr><td class="trans-cmp-label">${label}</td>${pols.map(pol=>`<td class="trans-cmp-cell">${escapeHtml(fn(pol))}</td>`).join('')}</tr>`).join('');
         container.innerHTML=`<div class="trans-profile-wrap"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);font-weight:700;">⚖️ Comparativo</div><button class="trans-back-btn" onclick="renderTransparencyView('search')">← Voltar</button></div><div style="overflow-x:auto;"><table class="trans-compare-table"><thead><tr><th class="trans-cmp-label">Campo</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div><button class="glass-btn" style="margin-top:16px;" onclick="window.__transState.compareList=[];window.__transState.comparePoliticians=[];renderTransparencyView('search');">✕ Limpar comparativo</button></div>`;
     }catch(e){container.innerHTML=`<div class="news-empty">Erro. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;}
@@ -452,13 +452,6 @@ function renderLocalPanelData(data) {
     `;
 }
 
-// ── HOOK ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded',()=>{
-    const _orig=window.goView;
-    if(typeof _orig==='function'){
-        window.goView=function(v,btn){
-            _orig(v,btn);
-            if(v==='news'){const t=document.querySelector('.news-main-tab.active');if(t?.dataset?.main==='transparency')initTransparency();else initNews();}
-        };
-    }
-});
+// ── goView hook gerenciado centralmente em index.html ──
+// (initTransparency é chamado via switchMainTab e goView patch no HTML)
+

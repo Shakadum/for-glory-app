@@ -663,34 +663,39 @@ SELECT DISTINCT ?person ?personLabel ?partyLabel ?countryLabel ?posLabel ?image 
 
 # ── GEO + DADOS LOCAIS ────────────────────────────────────────
 _geo_cache: dict = {}
+
+def _gov(wid, name, role, party, photo=""):
+    return {"id": wid, "name": name, "role": role, "party": party, "photo": photo}
+
+WM = "https://upload.wikimedia.org/wikipedia/commons/thumb"
 GOVERNORS_BY_UF = {
-    "AC":{"id":"wd-Q10282903","name":"Gladson Cameli","role":"Governador do Acre","party":"PP"},
-    "AL":{"id":"wd-Q10285716","name":"Paulo Dantas","role":"Governador de Alagoas","party":"MDB"},
-    "AM":{"id":"wd-Q3730703","name":"Wilson Lima","role":"Governador do Amazonas","party":"União Brasil"},
-    "AP":{"id":"wd-Q107421","name":"Clécio Luís","role":"Governador do Amapá","party":"SD"},
-    "BA":{"id":"wd-Q3891283","name":"Jerônimo Rodrigues","role":"Governador da Bahia","party":"PT"},
-    "CE":{"id":"wd-Q10293629","name":"Elmano de Freitas","role":"Governador do Ceará","party":"PT"},
-    "DF":{"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador do DF","party":"MDB"},
-    "ES":{"id":"wd-Q3730577","name":"Renato Casagrande","role":"Governador do ES","party":"PSB"},
-    "GO":{"id":"wd-Q10306753","name":"Ronaldo Caiado","role":"Governador de Goiás","party":"União Brasil"},
-    "MA":{"id":"wd-Q10306938","name":"Carlos Brandão","role":"Governador do Maranhão","party":"PSB"},
-    "MT":{"id":"wd-Q10308490","name":"Mauro Mendes","role":"Governador do MT","party":"União Brasil"},
-    "MS":{"id":"wd-Q10308503","name":"Eduardo Riedel","role":"Governador do MS","party":"PSDB"},
-    "MG":{"id":"wd-Q3564887","name":"Romeu Zema","role":"Governador de MG","party":"Novo"},
-    "PA":{"id":"wd-Q10309820","name":"Helder Barbalho","role":"Governador do Pará","party":"MDB"},
-    "PB":{"id":"wd-Q10309964","name":"João Azevêdo","role":"Governador da Paraíba","party":"PSB"},
-    "PR":{"id":"wd-Q10310060","name":"Ratinho Junior","role":"Governador do Paraná","party":"PSD"},
-    "PE":{"id":"wd-Q10310080","name":"Raquel Lyra","role":"Governadora de Pernambuco","party":"PSDB"},
-    "PI":{"id":"wd-Q10310123","name":"Rafael Fonteles","role":"Governador do Piauí","party":"PT"},
-    "RJ":{"id":"wd-Q1779090","name":"Cláudio Castro","role":"Governador do RJ","party":"PL"},
-    "RN":{"id":"wd-Q10312022","name":"Fátima Bezerra","role":"Governadora do RN","party":"PT"},
-    "RS":{"id":"wd-Q10312060","name":"Eduardo Leite","role":"Governador do RS","party":"PSDB"},
-    "RO":{"id":"wd-Q10311952","name":"Marcos Rocha","role":"Governador de Rondônia","party":"União Brasil"},
-    "RR":{"id":"wd-Q10312027","name":"Antonio Denarium","role":"Governador de Roraima","party":"PP"},
-    "SC":{"id":"wd-Q10312568","name":"Jorginho Mello","role":"Governador de SC","party":"PL"},
-    "SE":{"id":"wd-Q10314272","name":"Fábio Mitidieri","role":"Governador de Sergipe","party":"PSD"},
-    "SP":{"id":"wd-Q1050742","name":"Tarcísio de Freitas","role":"Governador de SP","party":"Republicanos"},
-    "TO":{"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
+    "AC": _gov("wd-Q10282903","Gladson Cameli","Governador do Acre","PP",          f"{WM}/2/2a/Gladson_Cameli_foto_oficial.jpg/400px-Gladson_Cameli_foto_oficial.jpg"),
+    "AL": _gov("wd-Q10285716","Paulo Dantas","Governador de Alagoas","MDB",         f"{WM}/9/96/Paulo_Dantas_2022.jpg/400px-Paulo_Dantas_2022.jpg"),
+    "AM": _gov("wd-Q3730703", "Wilson Lima","Governador do Amazonas","União Brasil", f"{WM}/0/06/Wilson_Lima_Governador.jpg/400px-Wilson_Lima_Governador.jpg"),
+    "AP": _gov("wd-Q107421",  "Clécio Luís","Governador do Amapá","SD",             ""),
+    "BA": _gov("wd-Q3891283", "Jerônimo Rodrigues","Governador da Bahia","PT",      f"{WM}/f/f3/Jer%C3%B4nimo_Rodrigues_2023.jpg/400px-Jer%C3%B4nimo_Rodrigues_2023.jpg"),
+    "CE": _gov("wd-Q10293629","Elmano de Freitas","Governador do Ceará","PT",        f"{WM}/7/7a/Elmano_de_Freitas_2023.jpg/400px-Elmano_de_Freitas_2023.jpg"),
+    "DF": _gov("wd-Q10303893","Ibaneis Rocha","Governador do DF","MDB",              f"{WM}/b/b0/Ibaneis_Rocha_2023.jpg/400px-Ibaneis_Rocha_2023.jpg"),
+    "ES": _gov("wd-Q3730577", "Renato Casagrande","Governador do ES","PSB",         f"{WM}/e/e1/Renato_Casagrande_2022.jpg/400px-Renato_Casagrande_2022.jpg"),
+    "GO": _gov("wd-Q10306753","Ronaldo Caiado","Governador de Goiás","União Brasil", f"{WM}/8/86/Ronaldo_Caiado_2023.jpg/400px-Ronaldo_Caiado_2023.jpg"),
+    "MA": _gov("wd-Q10306938","Carlos Brandão","Governador do Maranhão","PSB",       f"{WM}/c/c0/Carlos_Brand%C3%A3o_2023.jpg/400px-Carlos_Brand%C3%A3o_2023.jpg"),
+    "MT": _gov("wd-Q10308490","Mauro Mendes","Governador do MT","União Brasil",      f"{WM}/4/4b/Mauro_Mendes_2019.jpg/400px-Mauro_Mendes_2019.jpg"),
+    "MS": _gov("wd-Q10308503","Eduardo Riedel","Governador do MS","PSDB",            f"{WM}/5/5e/Eduardo_Riedel_2022.jpg/400px-Eduardo_Riedel_2022.jpg"),
+    "MG": _gov("wd-Q3564887", "Romeu Zema","Governador de MG","Novo",               f"{WM}/9/99/Romeu_Zema_2023.jpg/400px-Romeu_Zema_2023.jpg"),
+    "PA": _gov("wd-Q10309820","Helder Barbalho","Governador do Pará","MDB",          f"{WM}/0/09/Helder_Barbalho_2023.jpg/400px-Helder_Barbalho_2023.jpg"),
+    "PB": _gov("wd-Q10309964","João Azevêdo","Governador da Paraíba","PSB",          f"{WM}/8/84/Jo%C3%A3o_Azev%C3%AAdo_2023.jpg/400px-Jo%C3%A3o_Azev%C3%AAdo_2023.jpg"),
+    "PR": _gov("wd-Q10310060","Ratinho Junior","Governador do Paraná","PSD",         f"{WM}/3/33/Ratinho_Junior_2023.jpg/400px-Ratinho_Junior_2023.jpg"),
+    "PE": _gov("wd-Q10310080","Raquel Lyra","Governadora de Pernambuco","PSDB",      f"{WM}/6/61/Raquel_Lyra_2023.jpg/400px-Raquel_Lyra_2023.jpg"),
+    "PI": _gov("wd-Q10310123","Rafael Fonteles","Governador do Piauí","PT",          f"{WM}/d/d8/Rafael_Fonteles_2023.jpg/400px-Rafael_Fonteles_2023.jpg"),
+    "RJ": _gov("wd-Q1779090", "Cláudio Castro","Governador do RJ","PL",              f"{WM}/4/49/Claudio_Castro_foto_oficial_2022.jpg/400px-Claudio_Castro_foto_oficial_2022.jpg"),
+    "RN": _gov("wd-Q10312022","Fátima Bezerra","Governadora do RN","PT",             f"{WM}/a/ac/F%C3%A1tima_Bezerra_2023.jpg/400px-F%C3%A1tima_Bezerra_2023.jpg"),
+    "RS": _gov("wd-Q10312060","Eduardo Leite","Governador do RS","PSDB",             f"{WM}/6/61/Eduardo_Leite_2023.jpg/400px-Eduardo_Leite_2023.jpg"),
+    "RO": _gov("wd-Q10311952","Marcos Rocha","Governador de Rondônia","União Brasil", ""),
+    "RR": _gov("wd-Q10312027","Antonio Denarium","Governador de Roraima","PP",       ""),
+    "SC": _gov("wd-Q10312568","Jorginho Mello","Governador de SC","PL",              f"{WM}/8/87/Jorginho_Mello_2023.jpg/400px-Jorginho_Mello_2023.jpg"),
+    "SE": _gov("wd-Q10314272","Fábio Mitidieri","Governador de Sergipe","PSD",       f"{WM}/a/a2/F%C3%A1bio_Mitidieri_2022.jpg/400px-F%C3%A1bio_Mitidieri_2022.jpg"),
+    "SP": _gov("wd-Q1050742", "Tarcísio de Freitas","Governador de SP","Republicanos", f"{WM}/d/d6/Tarc%C3%ADsio_de_Freitas_2023.jpg/400px-Tarc%C3%ADsio_de_Freitas_2023.jpg"),
+    "TO": _gov("wd-Q10314456","Wanderlei Barbosa","Governador do Tocantins","Republicanos", ""),
 }
 UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
 
@@ -700,22 +705,7 @@ COUNTRY_FLAGS = {
     "CL":"🇨🇱","CO":"🇨🇴","VE":"🇻🇪","PE":"🇵🇪","BO":"🇧🇴","PY":"🇵🇾",
 }
 
-# Fotos dos governadores via Wikimedia Commons (verificadas)
-GOVERNORS_BY_UF["AC"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Gladson_Cameli_foto_oficial.jpg/400px-Gladson_Cameli_foto_oficial.jpg"
-GOVERNORS_BY_UF["AL"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Paulo_Dantas_2022.jpg/400px-Paulo_Dantas_2022.jpg"
-GOVERNORS_BY_UF["BA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Jer%C3%B4nimo_Rodrigues_2023.jpg/400px-Jer%C3%B4nimo_Rodrigues_2023.jpg"
-GOVERNORS_BY_UF["CE"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Elmano_de_Freitas_2023.jpg/400px-Elmano_de_Freitas_2023.jpg"
-GOVERNORS_BY_UF["DF"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Ibaneis_Rocha_2023.jpg/400px-Ibaneis_Rocha_2023.jpg"
-GOVERNORS_BY_UF["GO"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Ronaldo_Caiado_2023.jpg/400px-Ronaldo_Caiado_2023.jpg"
-GOVERNORS_BY_UF["MA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Carlos_Brand%C3%A3o_2023.jpg/400px-Carlos_Brand%C3%A3o_2023.jpg"
-GOVERNORS_BY_UF["MG"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Romeu_Zema_2023.jpg/400px-Romeu_Zema_2023.jpg"
-GOVERNORS_BY_UF["PA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Helder_Barbalho_2023.jpg/400px-Helder_Barbalho_2023.jpg"
-GOVERNORS_BY_UF["PR"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Ratinho_Junior_2023.jpg/400px-Ratinho_Junior_2023.jpg"
-GOVERNORS_BY_UF["PE"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Raquel_Lyra_2023.jpg/400px-Raquel_Lyra_2023.jpg"
-GOVERNORS_BY_UF["RJ"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Claudio_Castro_foto_oficial_2022.jpg/400px-Claudio_Castro_foto_oficial_2022.jpg"
-GOVERNORS_BY_UF["RS"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Eduardo_Leite_2023.jpg/400px-Eduardo_Leite_2023.jpg"
-GOVERNORS_BY_UF["SC"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Jorginho_Mello_2023.jpg/400px-Jorginho_Mello_2023.jpg"
-GOVERNORS_BY_UF["SP"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Tarc%C3%ADsio_de_Freitas_2023.jpg/400px-Tarc%C3%ADsio_de_Freitas_2023.jpg"
+
 
 # Prefeitos das principais cidades com fotos via Wikimedia Commons
 MAYORS_BY_CITY = {
