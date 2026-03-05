@@ -86,36 +86,10 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 # ========== FUNÇÃO DE AUTENTICAÇÃO COM LOGS ==========
-def authenticate_user(db: Session, login: str, password: str):
-    """Login can be either username OR email."""
-    if not login:
-        return False
-    login_str = str(login).strip()
-    login_lower = login_str.lower()
-
-    user = (
-        db.query(User)
-        .filter(
-            or_(
-                User.username == login_str,
-                func.lower(User.email) == login_lower,
-            )
-        )
-        .first()
-    )
-
+def authenticate_user(db: Session, username: str, password: str):
+    user = db.query(User).filter(User.username == username).first()
     if not user or not user.password_hash:
-        logger.warning(f"❌ Usuário {login_str} não encontrado (username/email) ou sem hash")
-        return False
-
-    try:
-        if verify_password(password, user.password_hash):
-            logger.info("✅ Senha correta")
-            return user
-        logger.warning("❌ Senha incorreta")
-        return False
-    except Exception:
-        logger.exception("Erro ao verificar senha")
+        logger.warning(f"❌ Usuário {username} não encontrado ou sem hash")
         return False
 
     # Verifica com passlib (bcrypt)
@@ -504,14 +478,10 @@ def format_user_summary(user: User):
     if not user:
         return {"id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "rank": "Recruta", "color": "#888", "special_emblem": ""}
     b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
-    # Nunca retornar avatar_url vazio/None para evitar requests como /undefined no frontend
-    av = getattr(user, 'avatar_url', None) or ''
-    if (not str(av).strip()) or str(av).strip().lower() in ('undefined', 'null'):
-        av = '/static/default-avatar.svg'
     return {
         "id": user.id,
         "username": user.username,
-        "avatar_url": av,
+        "avatar_url": user.avatar_url,
         "rank": b['rank'],
         "color": b['color'],
         "special_emblem": b['special_emblem']
