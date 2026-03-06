@@ -105,7 +105,15 @@ CURATED_POLITICIANS = {
             "beneficios_abdicados_info": "O Presidente pode abrir mão de benefícios adicionais como o uso exclusivo de aeronave em voos particulares. Lula declarou abrir mão do uso do Palácio do Jaburu.",
             "fonte": "https://www.gov.br/planejamento/pt-br/acesso-a-informacao/transparencia-e-prestacao-de-contas",
         },
-        "charges": [],
+        "charges": [
+            "Condenado em 1ª instância (TRF-4) por corrupção e lavagem de dinheiro no caso do tríplex do Guarujá — sentença de 9 anos e 6 meses (jul/2017, Sérgio Moro); confirmada pelo TRF-4 com aumento para 12 anos (jan/2018)",
+            "Condenado em 1ª instância no caso do sítio em Atibaia — sentença de 12 anos e 11 meses (fev/2019); confirmada pelo TRF-4 (abr/2021)",
+            "Preso preventivamente em 07/04/2018 após STF negar HC, cumprindo 580 dias de prisão em Curitiba",
+            "STF anulou as condenações em 08/03/2021 (min. Edson Fachin), por incompetência da Vara Federal de Curitiba — Lula recuperou direitos políticos",
+            "Processos remetidos à Justiça Federal do DF e SP — instrução reiniciada (situação: em andamento, 2024)",
+            "Investigado na Operação Lava Jato em outros casos (Instituto Lula, palestras internacionais) — processos sem condenação transitada em julgado",
+            "NOTA: Plenário do STF confirmou parcialidade do ex-juiz Sérgio Moro nos julgamentos (jun/2021)",
+        ],
         "votes": [],
         "expenses": [],
     },
@@ -146,7 +154,10 @@ CURATED_POLITICIANS = {
             "beneficios_abdicados_info": "Alckmin não reside no Palácio do Jaburu — mora em residência particular em São Paulo.",
             "fonte": "https://www.gov.br/planejamento/pt-br",
         },
-        "charges": [],
+        "charges": [
+            "Investigado na Operação Lava Jato por suposto recebimento de propina da Odebrecht em caixa dois para campanha de 2010",
+            "Denunciado pelo MPF no STJ em 2018 por crime eleitoral — STJ rejeitou a denúncia em 2019",
+        ],
         "votes": [],
         "expenses": [],
     },
@@ -238,7 +249,7 @@ CURATED_POLITICIANS = {
     "wd-Q2948413": {
         "id": "wd-Q2948413", "name": "Cármen Lúcia", "display_name": "Cármen Lúcia",
         "role": "Ministra do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Cármen Lúcia Antunes Rocha",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017.jpg/800px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017.jpg", "full_name": "Cármen Lúcia Antunes Rocha",
         "birth_date": "1954-04-05", "birth_place": "Montes Claros, MG",
         "education": "Direito — PUC Minas; Doutorado — UFMG",
         "occupation": "Jurista / Professora",
@@ -259,7 +270,7 @@ CURATED_POLITICIANS = {
     "wd-Q10314705": {
         "id": "wd-Q10314705", "name": "Dias Toffoli", "display_name": "Dias Toffoli",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "José Antonio Dias Toffoli",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Dias_Toffoli_-_foto_oficial_2023.jpg/800px-Dias_Toffoli_-_foto_oficial_2023.jpg", "full_name": "José Antonio Dias Toffoli",
         "birth_date": "1967-11-15", "birth_place": "Marília, SP",
         "education": "Direito — USP", "occupation": "Advogado / Jurista",
         "wiki_title_pt": "Dias Toffoli",
@@ -289,7 +300,7 @@ CURATED_POLITICIANS = {
     "wd-Q10321893": {
         "id": "wd-Q10321893", "name": "Edson Fachin", "display_name": "Edson Fachin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Luiz Edson Fachin",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Edson_Fachin_-_foto_oficial_2022.jpg/800px-Edson_Fachin_-_foto_oficial_2022.jpg", "full_name": "Luiz Edson Fachin",
         "birth_date": "1958-02-17", "birth_place": "Pinhão, PR",
         "education": "Direito — UFPR; Doutorado — PUC-SP",
         "occupation": "Jurista / Professor",
@@ -303,7 +314,7 @@ CURATED_POLITICIANS = {
     "wd-Q106363617": {
         "id": "wd-Q106363617", "name": "André Mendonça", "display_name": "André Mendonça",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "André Luís de Almeida Mendonça",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Andr%C3%A9_Mendon%C3%A7a_-_foto_oficial_2021.jpg/800px-Andr%C3%A9_Mendon%C3%A7a_-_foto_oficial_2021.jpg", "full_name": "André Luís de Almeida Mendonça",
         "birth_date": "1977-03-24", "birth_place": "Goiânia, GO",
         "education": "Direito — UFG; Doutorado — UnB",
         "occupation": "Advogado / Procurador da República",
@@ -317,7 +328,7 @@ CURATED_POLITICIANS = {
     "wd-Q105748993": {
         "id": "wd-Q105748993", "name": "Kassio Nunes Marques", "display_name": "Nunes Marques",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Kassio Nunes Marques",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Kassio_Nunes_Marques_-_foto_oficial_2020.jpg/800px-Kassio_Nunes_Marques_-_foto_oficial_2020.jpg", "full_name": "Kassio Nunes Marques",
         "birth_date": "1975-10-10", "birth_place": "Timon, MA",
         "education": "Direito — UFPI; Doutorado — USP",
         "occupation": "Jurista / Desembargador",
@@ -331,7 +342,7 @@ CURATED_POLITICIANS = {
     "wd-Q768093": {
         "id": "wd-Q768093", "name": "Flávio Dino", "display_name": "Flávio Dino",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Flávio Dino de Castro e Costa",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Fl%C3%A1vio_Dino_-_foto_oficial_2023.jpg/800px-Fl%C3%A1vio_Dino_-_foto_oficial_2023.jpg", "full_name": "Flávio Dino de Castro e Costa",
         "birth_date": "1968-06-08", "birth_place": "Caxias, MA",
         "education": "Direito — UFMA; Doutorado — USP",
         "occupation": "Jurista / Político",
@@ -345,7 +356,7 @@ CURATED_POLITICIANS = {
     "wd-Q118812476": {
         "id": "wd-Q118812476", "name": "Cristiano Zanin", "display_name": "Cristiano Zanin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Cristiano Zanin Martins",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cristiano_Zanin_-_foto_oficial_2023.jpg/800px-Cristiano_Zanin_-_foto_oficial_2023.jpg", "full_name": "Cristiano Zanin Martins",
         "birth_date": "1977-10-23", "birth_place": "Lins, SP",
         "education": "Direito — Universidade Metodista de Piracicaba; Doutorado — USP",
         "occupation": "Advogado criminalista",
