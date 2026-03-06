@@ -152,7 +152,202 @@
     /* view-news - override .view overflow so inner container scrolls */
     #view-news { overflow: hidden; padding-bottom: 0; display: none; }
     #view-news.active { display: flex; }
-    </style>
+    
+    /* ══════════════════════════════════════════════════
+       MODAL VIP UPGRADE — FULL SCREEN
+    ══════════════════════════════════════════════════ */
+    #modal-vip-upgrade {
+        position: fixed; inset: 0; z-index: 9998;
+        background: rgba(0,0,0,0.92);
+        display: flex; align-items: center; justify-content: center;
+        padding: 12px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+    #modal-vip-upgrade.hidden { display: none !important; }
+    .vup-box {
+        background: #0b0c10;
+        border: 1px solid rgba(102,252,241,0.15);
+        border-radius: 22px;
+        width: 100%; max-width: 540px;
+        max-height: 92vh; overflow-y: auto;
+        position: relative;
+    }
+    /* Shimmer top border */
+    .vup-box::before {
+        content:''; position:absolute; top:0; left:0; right:0; height:2px;
+        background: linear-gradient(90deg, transparent, #66fcf1, #8b5cf6, #f59e0b, transparent);
+        border-radius: 22px 22px 0 0;
+    }
+    .vup-close {
+        position: absolute; top:14px; right:16px;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+        color: #9ca3af; border-radius: 50%; width:32px; height:32px;
+        font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+        transition: all .15s;
+    }
+    .vup-close:hover { background:rgba(239,68,68,0.15); color:#ef4444; border-color:#ef4444; }
+    .vup-header { padding: 28px 24px 0; text-align:center; }
+    .vup-crown { font-size:40px; margin-bottom:10px; display:block;
+        animation: vup-float 3s ease-in-out infinite; }
+    @keyframes vup-float {
+        0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)}
+    }
+    .vup-title {
+        font-family:'Syne'; font-weight:900; font-size:26px; letter-spacing:1px;
+        background: linear-gradient(135deg,#66fcf1,#8b5cf6);
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        background-clip:text; margin:0 0 6px;
+    }
+    .vup-subtitle { font-size:13px; color:#6b7280; margin-bottom:20px; }
+
+    /* ── Billing toggle ── */
+    .vup-billing-toggle {
+        display:inline-flex; background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.08); border-radius:12px;
+        padding:4px; gap:4px; margin-bottom:20px;
+    }
+    .vup-toggle-btn {
+        padding:7px 18px; border-radius:9px; border:none; cursor:pointer;
+        font-family:'Rajdhani'; font-weight:700; font-size:13px; letter-spacing:.5px;
+        transition:all .2s; background:transparent; color:#6b7280;
+    }
+    .vup-toggle-btn.active {
+        background: linear-gradient(135deg,rgba(102,252,241,0.15),rgba(139,92,246,0.15));
+        color: #66fcf1; border:1px solid rgba(102,252,241,0.25);
+    }
+    .vup-save-badge {
+        display:inline-block; background:linear-gradient(135deg,#10b981,#059669);
+        color:#fff; font-size:9px; font-family:'Rajdhani'; font-weight:700;
+        letter-spacing:.5px; padding:2px 7px; border-radius:20px;
+        margin-left:6px; vertical-align:middle;
+    }
+
+    /* ── Plan cards ── */
+    .vup-plans { padding:0 16px 8px; display:flex; flex-direction:column; gap:10px; }
+    .vup-plan {
+        border-radius:16px; border:1px solid rgba(255,255,255,0.07);
+        padding:16px 18px; cursor:pointer; position:relative; overflow:hidden;
+        transition:all .2s; background:rgba(255,255,255,0.02);
+    }
+    .vup-plan:hover { border-color:rgba(102,252,241,0.25); background:rgba(102,252,241,0.03); }
+    .vup-plan.selected {
+        border-color:var(--plan-color,#66fcf1);
+        background:color-mix(in srgb, var(--plan-color,#66fcf1) 5%, #0b0c10);
+        box-shadow:0 0 24px color-mix(in srgb,var(--plan-color,#66fcf1) 12%,transparent);
+    }
+    .vup-plan.popular::before {
+        content:'MAIS POPULAR'; position:absolute; top:0; right:0;
+        background:linear-gradient(135deg,#f59e0b,#d97706);
+        color:#0b0c10; font-size:9px; font-family:'Rajdhani'; font-weight:800;
+        letter-spacing:1px; padding:3px 12px; border-radius:0 16px 0 10px;
+    }
+    .vup-plan-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .vup-plan-left { display:flex; align-items:center; gap:10px; }
+    .vup-plan-icon { font-size:26px; line-height:1; }
+    .vup-plan-name { font-family:'Rajdhani'; font-weight:800; font-size:16px; letter-spacing:.5px; }
+    .vup-plan-sub  { font-size:11px; color:#6b7280; margin-top:1px; }
+    .vup-plan-price { text-align:right; }
+    .vup-price-val  { font-family:'Syne'; font-weight:800; font-size:22px; color:#f3f4f6; }
+    .vup-price-old  { font-size:11px; color:#6b7280; text-decoration:line-through; margin-right:4px; }
+    .vup-price-per  { font-size:10px; color:#6b7280; display:block; margin-top:2px; }
+    .vup-plan-feats {
+        display:flex; flex-wrap:wrap; gap:6px;
+    }
+    .vup-feat-tag {
+        font-size:11px; padding:4px 10px; border-radius:20px;
+        border:1px solid rgba(255,255,255,0.08); color:#9ca3af;
+        background:rgba(255,255,255,0.03); white-space:nowrap;
+    }
+    .vup-feat-tag.highlight {
+        background:color-mix(in srgb,var(--plan-color,#66fcf1) 10%,transparent);
+        border-color:color-mix(in srgb,var(--plan-color,#66fcf1) 30%,transparent);
+        color:var(--plan-color,#66fcf1);
+    }
+
+    /* ── Benefits grid ── */
+    .vup-benefits-section { padding:4px 16px 16px; }
+    .vup-benefits-title {
+        font-family:'Rajdhani'; font-weight:800; font-size:12px; letter-spacing:1px;
+        color:#4b5563; text-transform:uppercase; margin:14px 0 10px;
+        display:flex; align-items:center; gap:8px;
+    }
+    .vup-benefits-title::before,.vup-benefits-title::after {
+        content:''; flex:1; height:1px; background:rgba(255,255,255,0.06);
+    }
+    .vup-benefits-grid {
+        display:grid; grid-template-columns:1fr 1fr; gap:8px;
+    }
+    @media(max-width:400px){ .vup-benefits-grid { grid-template-columns:1fr; } }
+    .vup-benefit {
+        display:flex; align-items:flex-start; gap:10px;
+        background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);
+        border-radius:12px; padding:12px 12px;
+    }
+    .vup-benefit-icon { font-size:20px; flex-shrink:0; margin-top:1px; }
+    .vup-benefit-name { font-size:12px; font-weight:700; color:#e5e7eb; margin-bottom:2px; }
+    .vup-benefit-desc { font-size:11px; color:#6b7280; line-height:1.4; }
+
+    /* ── CTA button ── */
+    .vup-cta { padding:0 16px 24px; }
+    .vup-cta-btn {
+        width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer;
+        font-family:'Rajdhani'; font-weight:800; font-size:15px; letter-spacing:1px;
+        background:linear-gradient(135deg,#66fcf1,#8b5cf6);
+        color:#0b0c10; transition:all .2s; position:relative; overflow:hidden;
+    }
+    .vup-cta-btn:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(102,252,241,0.25); }
+    .vup-cta-btn:active { transform:translateY(0); }
+    .vup-cta-btn::after {
+        content:''; position:absolute; inset:0;
+        background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.15) 50%,transparent 100%);
+        transform:translateX(-100%); transition:transform .5s;
+    }
+    .vup-cta-btn:hover::after { transform:translateX(100%); }
+    .vup-cta-note { text-align:center; font-size:11px; color:#4b5563; margin-top:8px; }
+
+    /* ── Preview demo ── */
+    .vup-preview { padding:4px 16px 4px; }
+    .vup-preview-box {
+        background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07);
+        border-radius:14px; padding:14px 16px; overflow:hidden;
+    }
+    .vup-preview-label { font-size:10px; color:#4b5563; font-family:'Rajdhani'; letter-spacing:.5px;
+        text-transform:uppercase; margin-bottom:10px; }
+    .vup-preview-name-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .vup-preview-avatar {
+        width:40px; height:40px; border-radius:50%; object-fit:cover; flex-shrink:0;
+        border: 3px solid #66fcf1;
+        box-shadow: 0 0 12px rgba(102,252,241,0.4);
+    }
+    .vup-preview-username {
+        font-family:'Rajdhani'; font-weight:800; font-size:16px;
+        background:linear-gradient(135deg,#66fcf1,#8b5cf6);
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        background-clip:text;
+    }
+    .vup-preview-faceplate {
+        display:inline-block; font-size:9px; font-family:'Rajdhani'; font-weight:700;
+        letter-spacing:.5px; padding:2px 8px; border-radius:4px;
+        background:linear-gradient(135deg,rgba(102,252,241,0.15),rgba(139,92,246,0.15));
+        border:1px solid rgba(102,252,241,0.3); color:#66fcf1; margin-left:6px;
+    }
+    .vup-preview-bio {
+        font-size:12px; color:#9ca3af;
+        background:rgba(102,252,241,0.04); border-left:2px solid #66fcf1;
+        padding:6px 10px; border-radius:0 8px 8px 0; font-style:italic;
+        margin-bottom:10px;
+    }
+    .vup-preview-msg {
+        display:flex; justify-content:flex-end; margin-bottom:6px;
+    }
+    .vup-preview-bubble {
+        background:linear-gradient(135deg,rgba(102,252,241,0.12),rgba(139,92,246,0.12));
+        border:1px solid rgba(102,252,241,0.2);
+        padding:8px 12px; border-radius:14px 14px 4px 14px;
+        font-size:12px; color:#e5e7eb; max-width:75%;
+    }
+</style>
 <style>
     /* ── Location banner ── */
     .trans-location-banner {
@@ -341,6 +536,8 @@
     .trans-cmp-label { padding:10px 12px; color:#6b7280; font-size:11px; border-bottom:1px solid rgba(255,255,255,.05); white-space:nowrap; background:rgba(255,255,255,.02); }
     .trans-cmp-cell { padding:10px 12px; color:#c5c6c7; font-size:12px; border-bottom:1px solid rgba(255,255,255,.05); text-align:center; }
     
+</style>
+
 <style>
     /* ── view-news layout ── */
     #view-news { overflow: hidden; padding-bottom: 0; display: none; flex-direction: column; }
@@ -416,6 +613,98 @@
 
     /* ── Profile hero info ── */
     .trans-profile-hero-info { flex: 1; min-width: 0; }
+
+    /* ═══ VIP UPGRADE MODAL ═══════════════════════════════ */
+    #modal-vip { position:fixed; inset:0; z-index:9990; background:rgba(0,0,0,0.88);
+        display:flex; align-items:flex-end; justify-content:center;
+        opacity:0; pointer-events:none; transition:opacity .25s; }
+    #modal-vip.open { opacity:1; pointer-events:all; }
+    .vip-sheet { background:linear-gradient(180deg,#111827 0%,#0b0c10 100%);
+        border-radius:24px 24px 0 0; border-top:1px solid rgba(102,252,241,0.15);
+        width:100%; max-width:560px; max-height:92vh; overflow-y:auto;
+        padding:0 0 48px 0; transform:translateY(60px);
+        transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+    #modal-vip.open .vip-sheet { transform:translateY(0); }
+    .vip-handle { width:40px; height:4px; background:rgba(255,255,255,0.12);
+        border-radius:2px; margin:12px auto 0; }
+    .vip-hdr { text-align:center; padding:18px 24px 4px; position:relative; }
+    .vip-hdr-close { position:absolute; top:14px; right:18px; background:rgba(255,255,255,0.06);
+        border:none; color:#6b7280; width:32px; height:32px; border-radius:50%;
+        cursor:pointer; font-size:17px; display:flex; align-items:center; justify-content:center; }
+    .vip-hdr-title { font-family:'Syne',sans-serif; font-weight:800; font-size:20px;
+        background:linear-gradient(135deg,#66fcf1,#a78bfa); -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent; background-clip:text; letter-spacing:1px; }
+    .vip-hdr-sub { font-size:12px; color:#6b7280; margin-top:4px; }
+    .vip-toggle { display:flex; margin:14px 20px; background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:3px; }
+    .vip-toggle-btn { flex:1; padding:8px; border:none; background:transparent;
+        color:#6b7280; font-family:'Rajdhani',sans-serif; font-weight:700;
+        font-size:12px; letter-spacing:.5px; cursor:pointer; border-radius:8px;
+        display:flex; align-items:center; justify-content:center; gap:6px; transition:all .2s; }
+    .vip-toggle-btn.on { background:rgba(102,252,241,0.1); color:#66fcf1;
+        border:1px solid rgba(102,252,241,0.2); }
+    .vip-save-pill { background:linear-gradient(135deg,#10b981,#059669); color:#fff;
+        font-size:9px; font-weight:800; padding:2px 7px; border-radius:20px; letter-spacing:.5px; }
+    .vip-cards { display:flex; gap:10px; padding:0 16px; overflow-x:auto;
+        scrollbar-width:none; padding-bottom:6px; }
+    .vip-cards::-webkit-scrollbar { display:none; }
+    .vip-pcard { flex-shrink:0; width:148px; background:rgba(255,255,255,0.03);
+        border:2px solid rgba(255,255,255,0.07); border-radius:18px; padding:14px 12px;
+        cursor:pointer; transition:all .2s; position:relative; overflow:hidden; }
+    .vip-pcard.sel { border-color:var(--vc,#66fcf1);
+        box-shadow:0 0 22px rgba(var(--vcr,102,252,241),.15);
+        background:color-mix(in srgb,var(--vc,#66fcf1) 7%,rgba(255,255,255,.03)); }
+    .vip-pcard-curr::after { content:'ATUAL'; position:absolute; top:8px; right:8px;
+        font-size:8px; font-family:'Rajdhani',sans-serif; font-weight:800;
+        color:var(--vc,#66fcf1); background:rgba(var(--vcr,102,252,241),.12);
+        padding:2px 5px; border-radius:4px; letter-spacing:.8px; }
+    .vip-pcard-icon { font-size:24px; margin-bottom:6px; }
+    .vip-pcard-name { font-family:'Syne',sans-serif; font-weight:800; font-size:13px;
+        color:var(--vc,#e5e7eb); margin-bottom:5px; }
+    .vip-pcard-price { font-family:'Rajdhani',sans-serif; font-weight:800; font-size:20px; color:#f3f4f6; }
+    .vip-pcard-price small { font-size:11px; color:#6b7280; font-weight:400; }
+    .vip-pcard-mult { font-size:10px; color:var(--vc,#66fcf1); font-family:'Rajdhani',sans-serif;
+        font-weight:700; margin-top:3px; letter-spacing:.4px; }
+    .vip-section { padding:18px 20px 0; }
+    .vip-section-title { font-family:'Rajdhani',sans-serif; font-weight:800; font-size:11px;
+        color:#4b5563; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:10px;
+        padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.05); }
+    .vip-benefit { display:flex; align-items:center; gap:10px; padding:9px 0;
+        border-bottom:1px solid rgba(255,255,255,0.03); }
+    .vip-benefit:last-child { border-bottom:none; }
+    .vip-benefit-ico { width:34px; height:34px; border-radius:9px; display:flex;
+        align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+    .vip-benefit-body { flex:1; min-width:0; }
+    .vip-benefit-name { font-size:13px; font-weight:600; color:#e5e7eb; }
+    .vip-benefit-desc { font-size:11px; color:#6b7280; line-height:1.4; margin-top:1px; }
+    .vip-benefit-tag { font-size:9px; font-family:'Rajdhani',sans-serif; font-weight:800;
+        padding:2px 7px; border-radius:4px; flex-shrink:0; letter-spacing:.5px; }
+    .vip-preview { margin:16px 20px 0; background:rgba(0,0,0,0.35);
+        border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:14px; }
+    .vip-preview-lbl { font-size:10px; color:#4b5563; font-weight:700;
+        letter-spacing:1px; text-transform:uppercase; margin-bottom:10px; }
+    .vip-preview-row { display:flex; align-items:center; gap:12px; }
+    .vip-preview-av { width:46px; height:46px; border-radius:50%;
+        background:linear-gradient(135deg,#1f2937,#374151);
+        display:flex; align-items:center; justify-content:center;
+        font-size:20px; flex-shrink:0; box-shadow:0 0 0 3px var(--vc-preview,transparent); }
+    .vip-preview-name { font-family:var(--vip-font,'Rajdhani'),sans-serif; font-weight:800;
+        font-size:16px; color:var(--vip-name-color,#e5e7eb); }
+    .vip-preview-bio { font-size:11px; color:#6b7280; margin-top:3px; }
+    .vip-preview-bubble { margin-top:10px; display:flex; justify-content:flex-end; }
+    .vip-bubble { padding:8px 12px; border-radius:var(--vip-bubble-r,12px);
+        background:var(--vip-bubble-bg,rgba(102,252,241,0.12));
+        border:1px solid var(--vip-bubble-border,rgba(102,252,241,0.2));
+        font-size:12px; color:#e5e7eb; max-width:75%; }
+    .vip-cta { padding:18px 20px 0; }
+    .vip-cta-btn { width:100%; padding:14px; border:none; border-radius:12px;
+        background:linear-gradient(135deg,var(--vc,#66fcf1),var(--vc2,#8b5cf6));
+        color:#0b0c10; font-family:'Rajdhani',sans-serif; font-weight:800;
+        font-size:15px; letter-spacing:1px; cursor:pointer; transition:opacity .2s,transform .1s; }
+    .vip-cta-btn:hover { opacity:.92; transform:scale(.99); }
+    .vip-cta-btn:disabled { background:rgba(255,255,255,.08); color:#4b5563;
+        cursor:default; transform:none; }
+    .vip-cta-note { text-align:center; font-size:11px; color:#4b5563; margin-top:9px; }
 </style>
 
 </head>
@@ -788,6 +1077,20 @@
                 <p id="p-bio" style="color:#888;margin:10px 0 20px 0;font-style:italic;">...</p>
             </div>
             <div id="p-progression-box"></div>
+
+            <!-- ── VIP Upgrade Banner ── -->
+            <div id="vip-profile-banner" style="width:90%;max-width:420px;margin:0 auto 16px auto;cursor:pointer;" onclick="openVipModal()">
+                <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border:1px solid rgba(102,252,241,0.25);border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden;">
+                    <div style="position:absolute;top:-20px;right:-20px;width:100px;height:100px;background:radial-gradient(circle,rgba(102,252,241,0.12) 0%,transparent 70%);pointer-events:none;"></div>
+                    <div style="font-size:28px;flex-shrink:0;">⭐</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#66fcf1;letter-spacing:1px;">FAÇA UPGRADE PARA VIP</div>
+                        <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Bordas, cores, fontes, faceplates e muito mais</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#66fcf1,#8b5cf6);border-radius:8px;padding:6px 12px;font-family:'Rajdhani';font-weight:800;font-size:12px;color:#0b0c10;letter-spacing:0.5px;flex-shrink:0;">VER PLANOS</div>
+                </div>
+            </div>
+
             <div id="p-medals-box" style="text-align:center;"></div>
             <div style="width:90%; max-width:400px; margin:0 auto; text-align:center; border-top:1px solid #333; padding-top:20px;">
                 <button id="btn-stealth" onclick="toggleStealth()" class="glass-btn" style="width:100%; margin-bottom:20px;" data-i18n="stealth_on">MODO FURTIVO</button>
@@ -1168,5 +1471,243 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+
+<!-- ══ MODAL VIP UPGRADE ══ -->
+<div id="modal-vip-upgrade" class="hidden">
+    <div class="vup-box">
+        <button class="vup-close" onclick="closeVipUpgrade()">✕</button>
+
+        <div class="vup-header">
+            <span class="vup-crown">👑</span>
+            <div class="vup-title">FOR GLORY VIP</div>
+            <div class="vup-subtitle">Personalize tudo. Mostre quem você é.</div>
+
+            <!-- Billing toggle -->
+            <div class="vup-billing-toggle">
+                <button class="vup-toggle-btn active" id="vup-btn-monthly" onclick="setVupBilling('monthly')">MENSAL</button>
+                <button class="vup-toggle-btn" id="vup-btn-yearly" onclick="setVupBilling('yearly')">
+                    ANUAL <span class="vup-save-badge">-17%</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Preview de como fica com VIP -->
+        <div class="vup-preview">
+            <div class="vup-preview-box">
+                <div class="vup-preview-label">✨ Visualização VIP</div>
+                <div class="vup-preview-name-row">
+                    <img class="vup-preview-avatar" src="https://ui-avatars.com/api/?name=VIP&background=66fcf1&color=0b0c10">
+                    <div>
+                        <div>
+                            <span class="vup-preview-username" id="vup-prev-username">SeuNome</span>
+                            <span class="vup-preview-faceplate" id="vup-prev-faceplate">⚔️ SENTINELA</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="vup-preview-bio" id="vup-prev-bio">Sua bio com estilo exclusivo VIP ✦</div>
+                <div class="vup-preview-msg">
+                    <div class="vup-preview-bubble">Mensagem com balão exclusivo 💬</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planos -->
+        <div class="vup-plans" id="vup-plans-container">
+            <!-- preenchido por JS -->
+        </div>
+
+        <!-- Benefícios detalhados -->
+        <div class="vup-benefits-section">
+            <div class="vup-benefits-title">O que você desbloqueia</div>
+            <div class="vup-benefits-grid">
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🎨</div>
+                    <div>
+                        <div class="vup-benefit-name">Cor do nome</div>
+                        <div class="vup-benefit-desc">Escolha qualquer cor para seu nome em chats e perfil</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">✍️</div>
+                    <div>
+                        <div class="vup-benefit-name">Fonte exclusiva</div>
+                        <div class="vup-benefit-desc">Fontes únicas para nome, bio e nome da sua base</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🖼️</div>
+                    <div>
+                        <div class="vup-benefit-name">Borda de perfil</div>
+                        <div class="vup-benefit-desc">Bordas animadas e gradientes na foto de perfil</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">💬</div>
+                    <div>
+                        <div class="vup-benefit-name">Balões exclusivos</div>
+                        <div class="vup-benefit-desc">Estilo personalizado nos seus balões de mensagem</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🏷️</div>
+                    <div>
+                        <div class="vup-benefit-name">Faceplate no nome</div>
+                        <div class="vup-benefit-desc">Tag decorativa exclusiva ao lado do seu nome</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🏰</div>
+                    <div>
+                        <div class="vup-benefit-name">Faceplate da base</div>
+                        <div class="vup-benefit-desc">Destaque no nome da comunidade que você criou</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">📝</div>
+                    <div>
+                        <div class="vup-benefit-name">Bio estilizada</div>
+                        <div class="vup-benefit-desc">Moldura e cor diferenciada na sua bio</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">⭐</div>
+                    <div>
+                        <div class="vup-benefit-name">Glory multiplicado</div>
+                        <div class="vup-benefit-desc">Até 10x mais pontos em quizzes e interações</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="vup-cta">
+            <button class="vup-cta-btn" id="vup-cta-btn" onclick="confirmVipSubscription()">
+                ASSINAR AGORA
+            </button>
+            <div class="vup-cta-note">Cancele quando quiser · Sem taxas ocultas</div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══ MODAL VIP UPGRADE ══ -->
+<div id="modal-vip" onclick="if(event.target===this)closeVipModal()">
+    <div class="vip-sheet">
+        <div class="vip-handle"></div>
+        <div class="vip-hdr">
+            <div class="vip-hdr-title">FOR GLORY VIP</div>
+            <div class="vip-hdr-sub">Desbloqueie personalização total e multiplique seus pontos</div>
+            <button class="vip-hdr-close" onclick="closeVipModal()">✕</button>
+        </div>
+
+        <!-- Toggle mensal/anual -->
+        <div class="vip-toggle">
+            <button class="vip-toggle-btn on" id="vip-btn-monthly" onclick="setVipBilling('monthly')">MENSAL</button>
+            <button class="vip-toggle-btn" id="vip-btn-yearly" onclick="setVipBilling('yearly')">
+                ANUAL <span class="vip-save-pill">-17%</span>
+            </button>
+        </div>
+
+        <!-- Plan cards -->
+        <div class="vip-cards" id="vip-modal-cards"></div>
+
+        <!-- Preview section -->
+        <div class="vip-preview" id="vip-modal-preview">
+            <div class="vip-preview-lbl">PRÉVIA DO SEU PERFIL</div>
+            <div class="vip-preview-row">
+                <div class="vip-preview-av" id="vmp-av">👤</div>
+                <div>
+                    <div class="vip-preview-name" id="vmp-name">Seu Nome</div>
+                    <div class="vip-preview-bio" id="vmp-bio">✨ Membro VIP For Glory</div>
+                </div>
+            </div>
+            <div class="vip-preview-bubble">
+                <div class="vip-bubble" id="vmp-bubble">Olá! Mensagem com estilo VIP 🎯</div>
+            </div>
+        </div>
+
+        <!-- Benefits -->
+        <div class="vip-section">
+            <div class="vip-section-title">🎨 Personalização Visual</div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(139,92,246,0.15);">🔤</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Fonte do nome personalizada</div>
+                    <div class="vip-benefit-desc">Escolha entre 6 fontes exclusivas para seu nome, bio e nome da base</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(139,92,246,0.15);color:#a78bfa;">VIP+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(251,191,36,0.15);">🎨</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Cor do nome e bio</div>
+                    <div class="vip-benefit-desc">Pinte seu nome, bio e nome da sua base com qualquer cor</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(251,191,36,0.12);color:#fbbf24;">PRATA+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(102,252,241,0.12);">🖼️</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Borda de foto de perfil</div>
+                    <div class="vip-benefit-desc">Bordas animadas, gradientes e efeitos exclusivos na sua foto</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(102,252,241,0.1);color:#66fcf1;">PRATA+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(245,158,11,0.15);">🏷️</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Faceplate no nome</div>
+                    <div class="vip-benefit-desc">Plaquinha decorativa ao lado do seu nome e do nome da sua base</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(245,158,11,0.12);color:#f59e0b;">OURO+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(239,68,68,0.12);">💬</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Balões de mensagem personalizados</div>
+                    <div class="vip-benefit-desc">Formato, cor e estilo do seu balão de chat exclusivos</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(245,158,11,0.12);color:#f59e0b;">OURO+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(16,185,129,0.12);">📝</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Balão de bio estilizado</div>
+                    <div class="vip-benefit-desc">Bio com moldura especial no perfil público — destaque entre todos</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(16,185,129,0.12);color:#10b981;">SENTINELA</span>
+            </div>
+        </div>
+
+        <div class="vip-section">
+            <div class="vip-section-title">⚡ Glory & Quizzes</div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(102,252,241,0.1);">✨</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Multiplicador de Glory Points</div>
+                    <div class="vip-benefit-desc">Ganhe 2x, 5x ou 10x mais pontos em quizzes e interações</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(102,252,241,0.1);color:#66fcf1;">TODOS</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(139,92,246,0.15);">🧠</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Quizzes ilimitados por dia</div>
+                    <div class="vip-benefit-desc">Sem limite diário — estude política o quanto quiser</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(139,92,246,0.15);color:#a78bfa;">SENTINELA</span>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="vip-cta">
+            <button class="vip-cta-btn" id="vip-modal-cta" onclick="vipModalSubscribe()">
+                ASSINAR PLANO
+            </button>
+            <div class="vip-cta-note" id="vip-modal-note">Pagamento seguro · Cancele quando quiser</div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
