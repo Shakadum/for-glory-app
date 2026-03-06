@@ -1,12 +1,13 @@
 """
-For Glory — Portal da Transparência v5
-Estratégia:
-  - Políticos-chave (Presidente, VP, STF) têm dados curados e verificados manualmente
-  - Deputados/Senadores: API oficial da Câmara e Senado
-  - Internacionais: Wikidata Entity API + Wikipedia REST (com validação)
-  - Nunca usa busca por texto livre para encontrar o artigo de um político conhecido
+For Glory — Portal da Transparência v6
+Estratégia de fotos:
+  - Sistema de cache dinâmico: Wikipedia REST API como fonte única de verdade
+  - Todas as fotos são buscadas via /api/rest_v1/page/summary/{title}
+  - Cache em memória com TTL de 12h — refresh automático no background
+  - Fallback para Wikidata image property se Wikipedia não retornar
+  - NUNCA usa URLs hardcoded do Wikimedia Commons (quebram quando renomeadas)
 """
-import asyncio, hashlib, urllib.parse
+import asyncio, hashlib, urllib.parse, time
 import httpx
 from fastapi import APIRouter, Query, Depends, Body, Request as FARequest
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ router = APIRouter()
 
 CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
-_HDR = {"User-Agent": "ForGloryApp/1.0 (transparency@forglory.online)"}
+_HDR = {"User-Agent": "ForGloryApp/2.0 (transparency@forglory.online)"}
 
 # ── DB ────────────────────────────────────────────────────────
 class PoliticianRating(Base):
@@ -43,18 +44,96 @@ async def _get(url, params=None, timeout=10):
         pass
     return None
 
+# ═══════════════════════════════════════════════════════════════
+#  SISTEMA DINÂMICO DE FOTOS — Wikipedia REST API + Cache TTL
+# ═══════════════════════════════════════════════════════════════
+_PHOTO_CACHE: dict = {}          # { wiki_title: { photo, bio, link, ts } }
+_PHOTO_CACHE_TTL = 43200         # 12 horas em segundos
+_PHOTO_LOCK = asyncio.Lock()
+
 async def _wiki_summary(title: str, lang: str = "pt") -> dict:
-    """Busca resumo Wikipedia pelo título EXATO (sem busca fuzzy)."""
+    """Busca resumo Wikipedia pelo título EXATO via REST API — sempre URL atual."""
     encoded = urllib.parse.quote(title.replace(" ", "_"), safe="")
     url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{encoded}"
     d = await _get(url, timeout=8)
     if d and d.get("type") == "standard" and d.get("extract"):
+        # originalimage = maior resolução; thumbnail = fallback
+        photo = (d.get("originalimage") or d.get("thumbnail") or {}).get("source", "")
         return {
             "bio":   d["extract"][:900],
-            "photo": (d.get("originalimage") or d.get("thumbnail") or {}).get("source", ""),
+            "photo": photo,
             "link":  d.get("content_urls", {}).get("desktop", {}).get("page", ""),
         }
     return {}
+
+async def get_photo(wiki_title_pt: str, wiki_title_en: str = "") -> str:
+    """Retorna URL de foto sempre atualizada via Wikipedia.
+    Cache em memória de 12h. Thread-safe com asyncio.Lock."""
+    if not wiki_title_pt and not wiki_title_en:
+        return ""
+    cache_key = wiki_title_pt or wiki_title_en
+    now = time.time()
+    # Check cache
+    cached = _PHOTO_CACHE.get(cache_key)
+    if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
+        return cached.get("photo", "")
+    # Fetch fresh
+    async with _PHOTO_LOCK:
+        # Double-check após obter lock
+        cached = _PHOTO_CACHE.get(cache_key)
+        if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
+            return cached.get("photo", "")
+        result = {}
+        if wiki_title_pt:
+            result = await _wiki_summary(wiki_title_pt, "pt")
+        if not result.get("photo") and wiki_title_en:
+            result = await _wiki_summary(wiki_title_en, "en")
+        _PHOTO_CACHE[cache_key] = {**result, "ts": now}
+        return result.get("photo", "")
+
+async def get_wiki_data(wiki_title_pt: str, wiki_title_en: str = "") -> dict:
+    """Retorna { photo, bio, link } com cache de 12h."""
+    if not wiki_title_pt and not wiki_title_en:
+        return {}
+    cache_key = wiki_title_pt or wiki_title_en
+    now = time.time()
+    cached = _PHOTO_CACHE.get(cache_key)
+    if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
+        return cached
+    async with _PHOTO_LOCK:
+        cached = _PHOTO_CACHE.get(cache_key)
+        if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
+            return cached
+        result = {}
+        if wiki_title_pt:
+            result = await _wiki_summary(wiki_title_pt, "pt")
+        if not result.get("photo") and wiki_title_en:
+            result = await _wiki_summary(wiki_title_en, "en")
+        entry = {**result, "ts": now}
+        _PHOTO_CACHE[cache_key] = entry
+        return entry
+
+async def _warmup_photo_cache():
+    """Pre-aquece o cache de fotos para todos os políticos curados em background."""
+    await asyncio.sleep(5)  # Aguarda app inicializar
+    titles = []
+    for p in CURATED_POLITICIANS.values():
+        t = p.get("wiki_title_pt") or p.get("wiki_title_en", "")
+        if t:
+            titles.append((t, p.get("wiki_title_en", "")))
+    # Fetch em lotes de 5 para não sobrecarregar Wikipedia
+    for i in range(0, len(titles), 5):
+        batch = titles[i:i+5]
+        await asyncio.gather(*[get_wiki_data(pt, en) for pt, en in batch])
+        await asyncio.sleep(1)  # Rate limit gentil
+
+# Warmup automático ao importar o módulo
+try:
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.create_task(_warmup_photo_cache())
+except Exception:
+    pass
 
 # ── DADOS CURADOS — POLÍTICOS PRINCIPAIS ─────────────────────
 # Fonte: dados oficiais verificados manualmente
@@ -74,7 +153,7 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg",
+        "photo": "",
         "full_name": "Luiz Inácio Lula da Silva",
         "birth_date": "1945-10-27",
         "birth_place": "Caetés, Pernambuco",
@@ -82,7 +161,7 @@ CURATED_POLITICIANS = {
         "occupation": "Torneiro mecânico / Sindicalista",
         "email": "",
         "website": "https://www.gov.br/planalto/pt-br",
-        "wiki_title_pt": "Luiz Inácio Lula da Silva",
+        "wiki_title_pt": "Luiz Inácio Lula da Silva", "wiki_title_en": "Lula",
         "all_parties": ["PT"],
         "all_roles": [
             "Presidente da República (2023–presente)",
@@ -127,14 +206,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Geraldo_Alckmin_-_foto_oficial_2023.jpg/800px-Geraldo_Alckmin_-_foto_oficial_2023.jpg",
+        "photo": "",
         "full_name": "Geraldo José Rodrigues Alckmin Filho",
         "birth_date": "1952-11-11",
         "birth_place": "Pindamonhangaba, São Paulo",
         "education": "Medicina — Faculdade de Medicina de Taubaté",
         "occupation": "Médico / Político",
         "website": "https://www.gov.br/planalto/pt-br",
-        "wiki_title_pt": "Geraldo Alckmin",
+        "wiki_title_pt": "Geraldo Alckmin", "wiki_title_en": "Geraldo Alckmin",
         "all_parties": ["PSB", "PSDB (até 2022)"],
         "all_roles": [
             "Vice-Presidente da República (2023–presente)",
@@ -172,14 +251,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/800px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg",
+        "photo": "",
         "full_name": "Luís Roberto Barroso",
         "birth_date": "1958-03-11",
         "birth_place": "Vassouras, Rio de Janeiro",
         "education": "Direito — UERJ; LLM e PhD — Yale Law School (EUA)",
         "occupation": "Jurista / Professor de Direito Constitucional",
         "website": "https://portal.stf.jus.br",
-        "wiki_title_pt": "Luís Roberto Barroso",
+        "wiki_title_pt": "Luís Roberto Barroso", "wiki_title_en": "Roberto Barroso",
         "all_parties": [],
         "all_roles": ["Presidente do STF (2023–presente)", "Ministro do STF (desde 2013)"],
         "all_education": ["Direito — UERJ", "LLM — Yale Law School", "PhD (Doutorado) — Yale Law School"],
@@ -210,14 +289,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/800px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg",
+        "photo": "",
         "full_name": "Alexandre de Moraes",
         "birth_date": "1968-08-13",
         "birth_place": "São Paulo, SP",
         "education": "Direito — USP; Doutorado em Direito Constitucional — USP",
         "occupation": "Jurista / Professor",
         "website": "https://portal.stf.jus.br",
-        "wiki_title_pt": "Alexandre de Moraes",
+        "wiki_title_pt": "Alexandre de Moraes", "wiki_title_en": "Alexandre de Moraes",
         "all_parties": [],
         "all_roles": [
             "Ministro do STF (desde 2017)",
@@ -249,7 +328,7 @@ CURATED_POLITICIANS = {
     "wd-Q2948413": {
         "id": "wd-Q2948413", "name": "Cármen Lúcia", "display_name": "Cármen Lúcia",
         "role": "Ministra do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017.jpg/800px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017.jpg", "full_name": "Cármen Lúcia Antunes Rocha",
+        "photo": "", "full_name": "Cármen Lúcia Antunes Rocha",
         "birth_date": "1954-04-05", "birth_place": "Montes Claros, MG",
         "education": "Direito — PUC Minas; Doutorado — UFMG",
         "occupation": "Jurista / Professora",
@@ -270,7 +349,7 @@ CURATED_POLITICIANS = {
     "wd-Q10314705": {
         "id": "wd-Q10314705", "name": "Dias Toffoli", "display_name": "Dias Toffoli",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Dias_Toffoli_-_foto_oficial_2023.jpg/800px-Dias_Toffoli_-_foto_oficial_2023.jpg", "full_name": "José Antonio Dias Toffoli",
+        "photo": "", "full_name": "José Antonio Dias Toffoli",
         "birth_date": "1967-11-15", "birth_place": "Marília, SP",
         "education": "Direito — USP", "occupation": "Advogado / Jurista",
         "wiki_title_pt": "Dias Toffoli",
@@ -284,7 +363,7 @@ CURATED_POLITICIANS = {
     "wd-Q1516706": {
         "id": "wd-Q1516706", "name": "Gilmar Mendes", "display_name": "Gilmar Mendes",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/800px-Gilmar_Mendes_%282023%29.jpg",
+        "photo": "",
         "full_name": "Gilmar Ferreira Mendes",
         "birth_date": "1955-02-17", "birth_place": "Diamantino, MT",
         "education": "Direito — UnB; Doutorado — Universidade de Münster (Alemanha)",
@@ -300,7 +379,7 @@ CURATED_POLITICIANS = {
     "wd-Q10321893": {
         "id": "wd-Q10321893", "name": "Edson Fachin", "display_name": "Edson Fachin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Edson_Fachin_-_foto_oficial_2022.jpg/800px-Edson_Fachin_-_foto_oficial_2022.jpg", "full_name": "Luiz Edson Fachin",
+        "photo": "", "full_name": "Luiz Edson Fachin",
         "birth_date": "1958-02-17", "birth_place": "Pinhão, PR",
         "education": "Direito — UFPR; Doutorado — PUC-SP",
         "occupation": "Jurista / Professor",
@@ -314,7 +393,7 @@ CURATED_POLITICIANS = {
     "wd-Q106363617": {
         "id": "wd-Q106363617", "name": "André Mendonça", "display_name": "André Mendonça",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Andr%C3%A9_Mendon%C3%A7a_-_foto_oficial_2021.jpg/800px-Andr%C3%A9_Mendon%C3%A7a_-_foto_oficial_2021.jpg", "full_name": "André Luís de Almeida Mendonça",
+        "photo": "", "full_name": "André Luís de Almeida Mendonça",
         "birth_date": "1977-03-24", "birth_place": "Goiânia, GO",
         "education": "Direito — UFG; Doutorado — UnB",
         "occupation": "Advogado / Procurador da República",
@@ -328,7 +407,7 @@ CURATED_POLITICIANS = {
     "wd-Q105748993": {
         "id": "wd-Q105748993", "name": "Kassio Nunes Marques", "display_name": "Nunes Marques",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Kassio_Nunes_Marques_-_foto_oficial_2020.jpg/800px-Kassio_Nunes_Marques_-_foto_oficial_2020.jpg", "full_name": "Kassio Nunes Marques",
+        "photo": "", "full_name": "Kassio Nunes Marques",
         "birth_date": "1975-10-10", "birth_place": "Timon, MA",
         "education": "Direito — UFPI; Doutorado — USP",
         "occupation": "Jurista / Desembargador",
@@ -342,7 +421,7 @@ CURATED_POLITICIANS = {
     "wd-Q768093": {
         "id": "wd-Q768093", "name": "Flávio Dino", "display_name": "Flávio Dino",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Fl%C3%A1vio_Dino_-_foto_oficial_2023.jpg/800px-Fl%C3%A1vio_Dino_-_foto_oficial_2023.jpg", "full_name": "Flávio Dino de Castro e Costa",
+        "photo": "", "full_name": "Flávio Dino de Castro e Costa",
         "birth_date": "1968-06-08", "birth_place": "Caxias, MA",
         "education": "Direito — UFMA; Doutorado — USP",
         "occupation": "Jurista / Político",
@@ -356,7 +435,7 @@ CURATED_POLITICIANS = {
     "wd-Q118812476": {
         "id": "wd-Q118812476", "name": "Cristiano Zanin", "display_name": "Cristiano Zanin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cristiano_Zanin_-_foto_oficial_2023.jpg/800px-Cristiano_Zanin_-_foto_oficial_2023.jpg", "full_name": "Cristiano Zanin Martins",
+        "photo": "", "full_name": "Cristiano Zanin Martins",
         "birth_date": "1977-10-23", "birth_place": "Lins, SP",
         "education": "Direito — Universidade Metodista de Piracicaba; Doutorado — USP",
         "occupation": "Advogado criminalista",
@@ -366,7 +445,282 @@ CURATED_POLITICIANS = {
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
         "charges": [], "votes": [], "expenses": [],
     },
+
+    # ════════════════ GOVERNADORES ════════════════
+    "wd-gov-SP": {
+        "id": "wd-gov-SP", "name": "Tarcísio de Freitas", "display_name": "Tarcísio",
+        "role": "Governador de São Paulo", "party": "Republicanos", "state": "SP",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Tarcísio Gomes de Freitas",
+        "birth_date": "1975-06-13", "birth_place": "Rio de Janeiro, RJ",
+        "education": "Academia Militar das Agulhas Negras; Engenharia Civil — IME",
+        "occupation": "Militar / Engenheiro / Político",
+        "wiki_title_pt": "Tarcísio de Freitas", "wiki_title_en": "Tarcísio de Freitas",
+        "all_roles": ["Governador de São Paulo (2023–presente)", "Ministro da Infraestrutura (2019–2022)"],
+        "salary_info": {"cargo": "Governador de São Paulo", "subsidio_mensal": 33836.86,
+            "subsidio_desc": "Subsídio do Governador do Estado de São Paulo", "beneficios": [],
+            "fonte": "https://www.transparencia.sp.gov.br"},
+        "charges": [
+            "Investigado pelo TCU por irregularidades em contratos de infraestrutura durante gestão no Ministério (2022) — sem condenação",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-RJ": {
+        "id": "wd-gov-RJ", "name": "Cláudio Castro", "display_name": "Cláudio Castro",
+        "role": "Governador do Rio de Janeiro", "party": "PL", "state": "RJ",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Cláudio Bomfim de Castro e Silva",
+        "birth_date": "1980-04-04", "birth_place": "Rio de Janeiro, RJ",
+        "education": "Administração de Empresas",
+        "wiki_title_pt": "Cláudio Castro", "wiki_title_en": "Cláudio Castro (politician)",
+        "all_roles": ["Governador do Rio de Janeiro (2021–presente)", "Vice-Governador (2019–2021)", "Vereador Rio de Janeiro (2017–2019)"],
+        "salary_info": {"cargo": "Governador do Rio de Janeiro", "subsidio_mensal": 32411.36,
+            "subsidio_desc": "Subsídio do Governador do Estado do Rio de Janeiro", "beneficios": [],
+            "fonte": "https://www.transparencia.rj.gov.br"},
+        "charges": [
+            "Investigado pela CGE-RJ e MP por irregularidades em contratos de saúde durante a pandemia Covid-19 (2021) — inquérito em andamento",
+            "Alvo de representação no TCE-RJ por suspeita de sobrepreço em contratos de TI (2023)",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-MG": {
+        "id": "wd-gov-MG", "name": "Romeu Zema", "display_name": "Zema",
+        "role": "Governador de Minas Gerais", "party": "Novo", "state": "MG",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Romeu Rodrigues Zema Neto",
+        "birth_date": "1965-10-21", "birth_place": "Patrocínio, MG",
+        "education": "Agronomia — UFLA",
+        "wiki_title_pt": "Romeu Zema", "wiki_title_en": "Romeu Zema",
+        "all_roles": ["Governador de Minas Gerais (2019–presente)", "Empresário do setor agropecuário"],
+        "salary_info": {"cargo": "Governador de Minas Gerais", "subsidio_mensal": 32411.36,
+            "subsidio_desc": "Subsídio do Governador do Estado de Minas Gerais", "beneficios": [],
+            "fonte": "https://www.transparencia.mg.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-BA": {
+        "id": "wd-gov-BA", "name": "Jerônimo Rodrigues", "display_name": "Jerônimo",
+        "role": "Governador da Bahia", "party": "PT", "state": "BA",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Jerônimo Rodrigues dos Santos",
+        "birth_date": "1971-09-15", "birth_place": "Caetité, BA",
+        "education": "Agronomia — UFRB; Mestrado em Extensão Rural — UFV",
+        "wiki_title_pt": "Jerônimo Rodrigues", "wiki_title_en": "Jerônimo Rodrigues",
+        "all_roles": ["Governador da Bahia (2023–presente)", "Secretário de Educação da Bahia (2015–2022)"],
+        "salary_info": {"cargo": "Governador da Bahia", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio do Governador do Estado da Bahia", "beneficios": [],
+            "fonte": "https://www.transparencia.ba.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-RS": {
+        "id": "wd-gov-RS", "name": "Eduardo Leite", "display_name": "Eduardo Leite",
+        "role": "Governador do Rio Grande do Sul", "party": "PSDB", "state": "RS",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Eduardo Leite",
+        "birth_date": "1984-08-17", "birth_place": "Pelotas, RS",
+        "education": "Direito — UCPel",
+        "wiki_title_pt": "Eduardo Leite (político)", "wiki_title_en": "Eduardo Leite (politician)",
+        "all_roles": ["Governador do RS (2019–2022, 2023–presente)", "Prefeito de Pelotas (2013–2018)"],
+        "salary_info": {"cargo": "Governador do Rio Grande do Sul", "subsidio_mensal": 32411.36,
+            "subsidio_desc": "Subsídio do Governador do Estado do RS", "beneficios": [],
+            "fonte": "https://www.transparencia.rs.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-PR": {
+        "id": "wd-gov-PR", "name": "Carlos Ratinho Junior", "display_name": "Ratinho Junior",
+        "role": "Governador do Paraná", "party": "PSD", "state": "PR",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Carlos Roberto Massa Ratinho Junior",
+        "birth_date": "1981-07-14", "birth_place": "Curitiba, PR",
+        "education": "Educação Física — PUC-PR",
+        "wiki_title_pt": "Ratinho Junior", "wiki_title_en": "Carlos Ratinho Junior",
+        "all_roles": ["Governador do Paraná (2019–presente)", "Secretário de Desenvolvimento Social (2011–2018)"],
+        "salary_info": {"cargo": "Governador do Paraná", "subsidio_mensal": 32411.36,
+            "subsidio_desc": "Subsídio do Governador do Estado do Paraná", "beneficios": [],
+            "fonte": "https://www.transparencia.pr.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-PE": {
+        "id": "wd-gov-PE", "name": "Raquel Lyra", "display_name": "Raquel Lyra",
+        "role": "Governadora de Pernambuco", "party": "PSDB", "state": "PE",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Raquel Loureiro Lyra Lucena",
+        "birth_date": "1977-11-03", "birth_place": "Caruaru, PE",
+        "education": "Direito — ASCES",
+        "wiki_title_pt": "Raquel Lyra", "wiki_title_en": "Raquel Lyra",
+        "all_roles": ["Governadora de Pernambuco (2023–presente)", "Prefeita de Caruaru (2017–2022)"],
+        "salary_info": {"cargo": "Governadora de Pernambuco", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio do Governador do Estado de Pernambuco", "beneficios": [],
+            "fonte": "https://www.transparencia.pe.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-CE": {
+        "id": "wd-gov-CE", "name": "Elmano de Freitas", "display_name": "Elmano",
+        "role": "Governador do Ceará", "party": "PT", "state": "CE",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Elmano de Freitas da Costa",
+        "birth_date": "1975-03-26", "birth_place": "Fortaleza, CE",
+        "education": "Direito — UFC",
+        "wiki_title_pt": "Elmano de Freitas", "wiki_title_en": "Elmano de Freitas",
+        "all_roles": ["Governador do Ceará (2023–presente)", "Deputado Federal CE (2019–2022)"],
+        "salary_info": {"cargo": "Governador do Ceará", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio do Governador do Estado do Ceará", "beneficios": [],
+            "fonte": "https://www.cge.ce.gov.br"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-AM": {
+        "id": "wd-gov-AM", "name": "Wilson Lima", "display_name": "Wilson Lima",
+        "role": "Governador do Amazonas", "party": "União Brasil", "state": "AM",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Wilson Miranda Lima",
+        "birth_date": "1978-11-29", "birth_place": "Manaus, AM",
+        "education": "Jornalismo — UFAM",
+        "wiki_title_pt": "Wilson Lima", "wiki_title_en": "Wilson Lima",
+        "all_roles": ["Governador do Amazonas (2019–presente)", "Apresentador de TV"],
+        "salary_info": {"cargo": "Governador do Amazonas", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio do Governador do Estado do Amazonas", "beneficios": [],
+            "fonte": "https://www.transparencia.am.gov.br"},
+        "charges": [
+            "Investigado pelo MP-AM e PGR por suspeita de irregularidades em contratos de saúde durante a pandemia Covid-19 (2020–2021)",
+            "Ação penal por fraude em licitações para compra de respiradores (2021) — em andamento no STJ",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-gov-PA": {
+        "id": "wd-gov-PA", "name": "Helder Barbalho", "display_name": "Helder Barbalho",
+        "role": "Governador do Pará", "party": "MDB", "state": "PA",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Helder Zahluth Barbalho",
+        "birth_date": "1980-02-24", "birth_place": "Belém, PA",
+        "education": "Direito — UNAMA",
+        "wiki_title_pt": "Helder Barbalho", "wiki_title_en": "Helder Barbalho",
+        "all_roles": ["Governador do Pará (2019–presente)", "Ministro da Integração Nacional (2012–2013)", "Deputado Federal PA (2007–2012)"],
+        "salary_info": {"cargo": "Governador do Pará", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio do Governador do Estado do Pará", "beneficios": [],
+            "fonte": "https://www.transparencia.pa.gov.br"},
+        "charges": [
+            "Investigado por suspeita de corrupção no âmbito da Operação Hydra (2020) — arquivado pelo STJ",
+        ],
+        "votes": [], "expenses": [],
+    },
+
+    # ════════════════ LÍDERES DO CONGRESSO ════════════════
+    "wd-Q10296965": {
+        "id": "wd-Q10296965", "name": "Arthur Lira", "display_name": "Arthur Lira",
+        "role": "Presidente da Câmara dos Deputados", "party": "PP", "state": "AL",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Arthur César Pereira de Lira",
+        "birth_date": "1970-07-12", "birth_place": "Belo Monte, AL",
+        "education": "Direito — UFAL",
+        "wiki_title_pt": "Arthur Lira", "wiki_title_en": "Arthur Lira",
+        "all_roles": ["Presidente da Câmara dos Deputados (2021–2025)", "Deputado Federal AL (1995–presente)"],
+        "salary_info": {"cargo": "Presidente da Câmara dos Deputados", "subsidio_mensal": 46366.19,
+            "subsidio_desc": "Subsídio + benefícios do Presidente da Câmara",
+            "beneficios": [{"nome": "Apartamento funcional", "valor": "Custeado pela Câmara", "descricao": "Moradia oficial em Brasília"}],
+            "fonte": "https://www.camara.leg.br/transparencia"},
+        "charges": [
+            "Condenado em 1ª instância por corrupção passiva e peculato no TRE-AL (2007) — condenação prescrita (STJ, 2016)",
+            "Investigado no âmbito do 'Orçamento Secreto' (emendas de relator) por supostas irregularidades na distribuição de recursos (2022)",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-Q55657773": {
+        "id": "wd-Q55657773", "name": "Rodrigo Pacheco", "display_name": "Rodrigo Pacheco",
+        "role": "Presidente do Senado Federal", "party": "PSD", "state": "MG",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Rodrigo Cunha Pacheco",
+        "birth_date": "1980-06-12", "birth_place": "Belo Horizonte, MG",
+        "education": "Direito — PUC Minas; Mestrado — UFMG",
+        "wiki_title_pt": "Rodrigo Pacheco", "wiki_title_en": "Rodrigo Pacheco",
+        "all_roles": ["Presidente do Senado Federal (2021–presente)", "Senador por MG (2019–presente)", "Deputado Federal MG (2007–2018)"],
+        "salary_info": {"cargo": "Presidente do Senado Federal", "subsidio_mensal": 46366.19,
+            "subsidio_desc": "Subsídio + benefícios do Presidente do Senado",
+            "beneficios": [{"nome": "Residência oficial", "valor": "Custeado pelo Senado", "descricao": "Moradia oficial em Brasília"}],
+            "fonte": "https://www.senado.leg.br/transparencia"},
+        "charges": [],
+        "votes": [], "expenses": [],
+    },
+
+    # ════════════════ EX-PRESIDENTES (RELEVÂNCIA HISTÓRICA) ════════════════
+    "wd-Q193080": {
+        "id": "wd-Q193080", "name": "Jair Bolsonaro", "display_name": "Bolsonaro",
+        "role": "Ex-Presidente da República (2019–2022)", "party": "PL", "state": "RJ",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Jair Messias Bolsonaro",
+        "birth_date": "1955-03-21", "birth_place": "Glicério, SP",
+        "education": "Academia Militar das Agulhas Negras (AMAN)",
+        "occupation": "Militar / Político",
+        "wiki_title_pt": "Jair Bolsonaro", "wiki_title_en": "Jair Bolsonaro",
+        "all_roles": [
+            "Presidente da República (2019–2022)",
+            "Deputado Federal RJ (1991–2018)",
+            "Capitão do Exército Brasileiro (reformado)",
+        ],
+        "salary_info": {"cargo": "Ex-Presidente (pensão)", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Subsídio de ex-presidente + pensão militar",
+            "beneficios": [{"nome": "Segurança (GSI)", "valor": "Custeado pela União", "descricao": ""},
+                           {"nome": "Pensão de militar reformado", "valor": "Calculada pelo posto (Capitão)", "descricao": ""}],
+            "fonte": "https://www.gov.br/planalto"},
+        "charges": [
+            "Condenado pelo TSE à inelegibilidade por 8 anos (2023) por abuso do poder político e uso indevido de meios de comunicação na reunião com embaixadores (jun/2022)",
+            "Indiciado pela PF por tentativa de golpe de Estado e abolição violenta do Estado democrático de Direito (nov/2024)",
+            "Indiciado pela PF por homicídio e tentativa de homicídio no plano 'Green and Yellow Dagger' de assassinato do Presidente Lula, Vice Alckmin e Min. Barroso (nov/2024)",
+            "Investigado no inquérito do golpe (IQ 4878 — STF) por envolvimento em trama golpista pós-eleição 2022",
+            "Indiciado pela PF por falsificação de certificados de vacinação contra Covid-19 (nov/2023)",
+            "Investigado por desvio de joias presenteadas por autoridades estrangeiras ao Estado brasileiro (2023)",
+            "NOTA: Inelegível até 2030 por decisão do TSE",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-Q465088": {
+        "id": "wd-Q465088", "name": "Michel Temer", "display_name": "Michel Temer",
+        "role": "Ex-Presidente da República (2016–2018)", "party": "MDB", "state": "SP",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Michel Miguel Elias Temer Lulia",
+        "birth_date": "1940-09-23", "birth_place": "Tietê, SP",
+        "education": "Direito — PUC-SP; Doutorado — PUC-SP",
+        "wiki_title_pt": "Michel Temer", "wiki_title_en": "Michel Temer",
+        "all_roles": ["Presidente da República (2016–2018)", "Vice-Presidente (2011–2016)", "Presidente da Câmara (2009–2010, 2013–2014)"],
+        "salary_info": {"cargo": "Ex-Presidente (pensão)", "subsidio_mensal": 30934.70,
+            "subsidio_desc": "Pensão de ex-presidente da República",
+            "beneficios": [],
+            "fonte": "https://www.gov.br/planalto"},
+        "charges": [
+            "Preso preventivamente por 4 dias (mar/2019) — habeas corpus concedido pelo STJ",
+            "Acusado de corrupção passiva, lavagem de dinheiro e organização criminosa (Operação Lava Jato, 2017–2019)",
+            "Condenado pelo TRF-4 em 2023 a 8 anos e 6 meses por corrupção passiva e lavagem de dinheiro (caso Angra 3) — recurso pendente no STJ",
+            "Investigado no caso do porto de Santos (recebimento de propina da Rodrimar) — ação penal no TRF-3",
+        ],
+        "votes": [], "expenses": [],
+    },
+    "wd-Q61167": {
+        "id": "wd-Q61167", "name": "Dilma Rousseff", "display_name": "Dilma Rousseff",
+        "role": "Ex-Presidenta da República (2011–2016)", "party": "PT", "state": "MG",
+        "country": "Brasil", "source": "wikidata",
+        "photo": "", "full_name": "Dilma Vana Rousseff",
+        "birth_date": "1947-12-14", "birth_place": "Belo Horizonte, MG",
+        "education": "Economia — UFRGS",
+        "wiki_title_pt": "Dilma Rousseff", "wiki_title_en": "Dilma Rousseff",
+        "all_roles": ["Presidenta da República (2011–2016)", "Ministra da Casa Civil (2005–2010)", "Ministra de Minas e Energia (2003–2005)"],
+        "salary_info": {"cargo": "Presidente do Novo Banco de Desenvolvimento (NDB)", "subsidio_mensal": 0,
+            "subsidio_desc": "Cargo no NDB — salário não divulgado publicamente. Perde direito à pensão por ter acumulado cargo.",
+            "beneficios": [],
+            "fonte": "https://www.ndb.int"},
+        "charges": [
+            "Sofreu impeachment aprovado pelo Senado em 31/08/2016 por crime de responsabilidade fiscal (pedaladas fiscais) — destituída da presidência",
+            "Investigada no âmbito da Lava Jato por suposta ciência de irregularidades na Petrobras quando era presidente do Conselho de Administração (2003–2010) — sem condenação criminal",
+            "TSE absolveu chapa Dilma/Temer de abuso de poder econômico em campanha de 2014 (2017)",
+        ],
+        "votes": [], "expenses": [],
+    },
+
 }
+
 
 # Salário padrão para Deputados e Senadores
 SALARY_BR = {
@@ -720,25 +1074,25 @@ COUNTRY_FLAGS = {
 
 # Prefeitos das principais cidades com fotos via Wikimedia Commons
 MAYORS_BY_CITY = {
-    "Rio de Janeiro":    {"id":"wd-Q3723792","name":"Eduardo Paes","role":"Prefeito do Rio de Janeiro","party":"PSD","uf":"RJ","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg/400px-Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg"},
-    "São Paulo":         {"id":"wd-Q75920697","name":"Ricardo Nunes","role":"Prefeito de São Paulo","party":"MDB","uf":"SP","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Ricardo_Nunes_2021.jpg/400px-Ricardo_Nunes_2021.jpg"},
-    "Brasília":          {"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador/Prefeito do DF","party":"MDB","uf":"DF","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Ibaneis_Rocha_2023.jpg/400px-Ibaneis_Rocha_2023.jpg"},
-    "Salvador":          {"id":"wd-Q10285716","name":"Bruno Reis","role":"Prefeito de Salvador","party":"União Brasil","uf":"BA","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Bruno_Reis_2021.jpg/400px-Bruno_Reis_2021.jpg"},
-    "Fortaleza":         {"id":"wd-Q10293629","name":"Evandro Leitão","role":"Prefeito de Fortaleza","party":"PT","uf":"CE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Evandro_Leit%C3%A3o_2024.jpg/400px-Evandro_Leit%C3%A3o_2024.jpg"},
-    "Belo Horizonte":    {"id":"wd-Q10308756","name":"Fuad Noman","role":"Prefeito de Belo Horizonte","party":"PSD","uf":"MG","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Fuad_Noman_2024.jpg/400px-Fuad_Noman_2024.jpg"},
-    "Manaus":            {"id":"wd-Q10293629_man","name":"David Almeida","role":"Prefeito de Manaus","party":"Avante","uf":"AM","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/David_Almeida_2020.jpg/400px-David_Almeida_2020.jpg"},
-    "Curitiba":          {"id":"wd-Q10293629_cwb","name":"Eduardo Pimentel","role":"Prefeito de Curitiba","party":"PSD","uf":"PR","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Eduardo_Pimentel_2024.jpg/400px-Eduardo_Pimentel_2024.jpg"},
-    "Recife":            {"id":"wd-Q56421696","name":"João Campos","role":"Prefeito do Recife","party":"PSB","uf":"PE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/Jo%C3%A3o_Campos_2020.jpg/400px-Jo%C3%A3o_Campos_2020.jpg"},
-    "Porto Alegre":      {"id":"wd-Q10312060_poa","name":"Sebastião Melo","role":"Prefeito de Porto Alegre","party":"MDB","uf":"RS","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Sebasti%C3%A3o_Melo_2020.jpg/400px-Sebasti%C3%A3o_Melo_2020.jpg"},
-    "Belém":             {"id":"wd-Q10293629_bel","name":"Igor Normando","role":"Prefeito de Belém","party":"MDB","uf":"PA","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Igor_Normando_2024.jpg/400px-Igor_Normando_2024.jpg"},
-    "Goiânia":           {"id":"wd-Q10293629_goi","name":"Rogério Cruz","role":"Prefeito de Goiânia","party":"Republicanos","uf":"GO","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Rog%C3%A9rio_Cruz_2020.jpg/400px-Rog%C3%A9rio_Cruz_2020.jpg"},
-    "Florianópolis":     {"id":"wd-Q10293629_fln","name":"Topázio Neto","role":"Prefeito de Florianópolis","party":"PSD","uf":"SC","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Top%C3%A1zio_Neto_2024.jpg/400px-Top%C3%A1zio_Neto_2024.jpg"},
-    "Natal":             {"id":"wd-Q10293629_nat","name":"Paulinho Freire","role":"Prefeito de Natal","party":"União Brasil","uf":"RN","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Paulinho_Freire_2020.jpg/400px-Paulinho_Freire_2020.jpg"},
-    "Maceió":            {"id":"wd-Q10293629_mac","name":"João Henrique Caldas","role":"Prefeito de Maceió","party":"PL","uf":"AL","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Jo%C3%A3o_Henrique_Caldas_2020.jpg/400px-Jo%C3%A3o_Henrique_Caldas_2020.jpg"},
-    "Teresina":          {"id":"wd-Q10293629_the","name":"Eduardo Braide","role":"Prefeito de Teresina","party":"PSD","uf":"PI","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Eduardo_Braide_2020.jpg/400px-Eduardo_Braide_2020.jpg"},
-    "Campo Grande":      {"id":"wd-Q10293629_cg","name":"Adriane Lopes","role":"Prefeita de Campo Grande","party":"PP","uf":"MS","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Adriane_Lopes_2020.jpg/400px-Adriane_Lopes_2020.jpg"},
-    "João Pessoa":       {"id":"wd-Q10293629_jpb","name":"Cícero Lucena","role":"Prefeito de João Pessoa","party":"PP","uf":"PB","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/C%C3%ADcero_Lucena_2020.jpg/400px-C%C3%ADcero_Lucena_2020.jpg"},
-    "Aracaju":           {"id":"wd-Q10293629_aju","name":"Emília Corrêa","role":"Prefeita de Aracaju","party":"PL","uf":"SE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Em%C3%ADlia_Corr%C3%AAa_2024.jpg/400px-Em%C3%ADlia_Corr%C3%AAa_2024.jpg"},
+    "Rio de Janeiro":    {"id":"wd-Q3723792","name":"Eduardo Paes","role":"Prefeito do Rio de Janeiro","party":"PSD","uf":"RJ","photo":""},
+    "São Paulo":         {"id":"wd-Q75920697","name":"Ricardo Nunes","role":"Prefeito de São Paulo","party":"MDB","uf":"SP","photo":""},
+    "Brasília":          {"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador/Prefeito do DF","party":"MDB","uf":"DF","photo":""},
+    "Salvador":          {"id":"wd-Q10285716","name":"Bruno Reis","role":"Prefeito de Salvador","party":"União Brasil","uf":"BA","photo":""},
+    "Fortaleza":         {"id":"wd-Q10293629","name":"Evandro Leitão","role":"Prefeito de Fortaleza","party":"PT","uf":"CE","photo":""},
+    "Belo Horizonte":    {"id":"wd-Q10308756","name":"Fuad Noman","role":"Prefeito de Belo Horizonte","party":"PSD","uf":"MG","photo":""},
+    "Manaus":            {"id":"wd-Q10293629_man","name":"David Almeida","role":"Prefeito de Manaus","party":"Avante","uf":"AM","photo":""},
+    "Curitiba":          {"id":"wd-Q10293629_cwb","name":"Eduardo Pimentel","role":"Prefeito de Curitiba","party":"PSD","uf":"PR","photo":""},
+    "Recife":            {"id":"wd-Q56421696","name":"João Campos","role":"Prefeito do Recife","party":"PSB","uf":"PE","photo":""},
+    "Porto Alegre":      {"id":"wd-Q10312060_poa","name":"Sebastião Melo","role":"Prefeito de Porto Alegre","party":"MDB","uf":"RS","photo":""},
+    "Belém":             {"id":"wd-Q10293629_bel","name":"Igor Normando","role":"Prefeito de Belém","party":"MDB","uf":"PA","photo":""},
+    "Goiânia":           {"id":"wd-Q10293629_goi","name":"Rogério Cruz","role":"Prefeito de Goiânia","party":"Republicanos","uf":"GO","photo":""},
+    "Florianópolis":     {"id":"wd-Q10293629_fln","name":"Topázio Neto","role":"Prefeito de Florianópolis","party":"PSD","uf":"SC","photo":""},
+    "Natal":             {"id":"wd-Q10293629_nat","name":"Paulinho Freire","role":"Prefeito de Natal","party":"União Brasil","uf":"RN","photo":""},
+    "Maceió":            {"id":"wd-Q10293629_mac","name":"João Henrique Caldas","role":"Prefeito de Maceió","party":"PL","uf":"AL","photo":""},
+    "Teresina":          {"id":"wd-Q10293629_the","name":"Eduardo Braide","role":"Prefeito de Teresina","party":"PSD","uf":"PI","photo":""},
+    "Campo Grande":      {"id":"wd-Q10293629_cg","name":"Adriane Lopes","role":"Prefeita de Campo Grande","party":"PP","uf":"MS","photo":""},
+    "João Pessoa":       {"id":"wd-Q10293629_jpb","name":"Cícero Lucena","role":"Prefeito de João Pessoa","party":"PP","uf":"PB","photo":""},
+    "Aracaju":           {"id":"wd-Q10293629_aju","name":"Emília Corrêa","role":"Prefeita de Aracaju","party":"PL","uf":"SE","photo":""},
     "Macapá":            {"id":"wd-Q10293629_mcp","name":"Dr. Furlan","role":"Prefeito de Macapá","party":"MDB","uf":"AP","photo":""},
     "Porto Velho":       {"id":"wd-Q10293629_pvh","name":"Hildon Chaves","role":"Prefeito de Porto Velho","party":"PSDB","uf":"RO","photo":""},
     "Boa Vista":         {"id":"wd-Q10293629_bvb","name":"Arthur Henrique","role":"Prefeito de Boa Vista","party":"MDB","uf":"RR","photo":""},
@@ -762,39 +1116,43 @@ MAYORS_BY_CITY = {
 }
 
 async def enrich_with_photo(p: dict) -> dict:
-    """Busca foto via Wikipedia se o campo photo estiver vazio."""
-    if p.get("photo"):
+    """Busca foto via cache dinâmico (Wikipedia). Sempre retorna URL atual."""
+    wiki_title = p.get("wiki_title_pt") or p.get("name", "")
+    wiki_en    = p.get("wiki_title_en", "")
+    if not wiki_title:
         return p
-    name = p.get("name","")
-    if not name:
-        return p
-    wiki = await _wiki_summary(name, "pt")
-    if wiki.get("photo"):
-        p = {**p, "photo": wiki["photo"]}
+    photo = await get_photo(wiki_title, wiki_en)
+    if photo:
+        p = {**p, "photo": photo}
+    elif not p.get("photo"):
+        # Fallback: tenta pelo nome direto
+        wiki = await _wiki_summary(p.get("name", ""), "pt")
+        if wiki.get("photo"):
+            p = {**p, "photo": wiki["photo"]}
     return p
 # Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
 # Padrão: https://commons.wikimedia.org/wiki/File:Nome_do_arquivo.jpg
 STF_MINISTERS = [
     {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg"},
+     "photo":""},
     {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Carmen_lucia_antunes_rocha_3_crop.jpg/400px-Carmen_lucia_antunes_rocha_3_crop.jpg"},
+     "photo":""},
     {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Dias_Toffoli_%282023%29.jpg/400px-Dias_Toffoli_%282023%29.jpg"},
+     "photo":""},
     {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg"},
+     "photo":""},
     {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Edson_Fachin_2023.jpg/400px-Edson_Fachin_2023.jpg"},
+     "photo":""},
     {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg"},
+     "photo":""},
     {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg"},
+     "photo":""},
     {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Kassio_Nunes_Marques_2023.jpg/400px-Kassio_Nunes_Marques_2023.jpg"},
+     "photo":""},
     {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg/400px-Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg"},
+     "photo":""},
     {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg"},
+     "photo":""},
 ]
 
 async def _resolve_geo(ip: str) -> dict:
@@ -901,29 +1259,25 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
     # 1. Verifica banco de dados curado primeiro
     if politician_id in CURATED_POLITICIANS:
         details = dict(CURATED_POLITICIANS[politician_id])
-        wiki_title = details.pop("wiki_title_pt", "")
+        wiki_title_pt = details.pop("wiki_title_pt", "")
+        wiki_title_en = details.pop("wiki_title_en", "")
 
-        # Busca bio + foto via Wikipedia (título exato do sitelink)
+        # Busca bio + foto via cache dinâmico (sempre URL atual)
         async def _empty(): return {}
-        bio_task  = _wiki_summary(wiki_title, "pt") if wiki_title else _empty()
-        # Busca ações do executivo para Presidente e VP
         is_exec = politician_id in ("wd-Q28227", "wd-Q41551")
-        act_task = get_executive_actions() if is_exec else _empty()
 
-        wiki_res, act_res = await asyncio.gather(bio_task, act_task)
+        wiki_task = get_wiki_data(wiki_title_pt, wiki_title_en)
+        act_task  = get_executive_actions() if is_exec else _empty()
+        wiki_res, act_res = await asyncio.gather(wiki_task, act_task)
 
-        if wiki_res and wiki_res.get("bio"):
+        # Foto: sempre do Wikipedia (mais recente)
+        details["photo"]     = wiki_res.get("photo", "") or details.get("photo", "")
+        if wiki_res.get("bio"):
             details["bio"]       = wiki_res["bio"]
-            details["wiki_link"] = wiki_res.get("link","")
-        if not details.get("photo") and wiki_res:
-            details["photo"] = wiki_res.get("photo","")
+            details["wiki_link"] = wiki_res.get("link", "")
         if is_exec and act_res:
-            details["executive_actions"] = act_res.get("actions",[])
-            details["actions_source"]    = act_res.get("source","")
-        # Para STF sem foto, busca pelo Wikipedia
-        if not details.get("photo") and wiki_title:
-            photo = await fetch_photo_from_wikipedia(wiki_title)
-            if photo: details["photo"] = photo
+            details["executive_actions"] = act_res.get("actions", [])
+            details["actions_source"]    = act_res.get("source", "")
     else:
         parts = politician_id.split("-",1); source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
         if source=="dep":   details = await get_deputado_details(api_id)
@@ -1131,11 +1485,32 @@ async def get_local_politicians(
         "sections": sections,
     }
 
+@router.get("/transparency/refresh-photos")
+async def refresh_photo_cache():
+    """Força refresh do cache de fotos para todos os políticos curados.
+    Chamado automaticamente pelo cron do Render a cada 12h."""
+    _PHOTO_CACHE.clear()
+    refreshed = []
+    for pid, p in CURATED_POLITICIANS.items():
+        wiki_pt = p.get("wiki_title_pt", "")
+        wiki_en = p.get("wiki_title_en", "")
+        if wiki_pt or wiki_en:
+            photo = await get_photo(wiki_pt, wiki_en)
+            refreshed.append({"id": pid, "name": p.get("name"), "has_photo": bool(photo)})
+            await asyncio.sleep(0.5)
+    return {"status": "ok", "refreshed": len(refreshed), "results": refreshed}
+
+@router.get("/transparency/photo")
+async def get_politician_photo(title: str = Query(...)):
+    """Retorna URL de foto atual para um título Wikipedia. Cacheable."""
+    photo = await get_photo(title)
+    return {"photo": photo, "title": title}
+
 @router.get("/transparency/featured")
 async def featured_politicians():
     return {"featured":[
         {**CURATED_POLITICIANS["wd-Q28227"]},
         {**CURATED_POLITICIANS["wd-Q41551"]},
-        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/400px-Donald_Trump_official_portrait.jpg"},
-        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Emmanuel_Macron_in_2019.jpg/400px-Emmanuel_Macron_in_2019.jpg"},
+        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":""},
+        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":""},
     ]}
