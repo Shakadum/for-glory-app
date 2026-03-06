@@ -414,36 +414,69 @@ function renderLocalPanelData(data) {
 
     el.innerHTML = `
         <!-- LOCATION BANNER -->
-        <div class="trans-location-banner">
-            <div class="trans-location-icon">📍</div>
-            <div style="flex:1;min-width:0;">
-                <div class="trans-location-title">Seus Representantes</div>
-                <div class="trans-location-sub">
-                    <span style="font-size:18px;vertical-align:middle;">${flag}</span>
-                    <strong style="color:#c5c6c7;margin-left:4px;">${escapeHtml(curCity || loc.state_full || curUF)}</strong>
-                    ${curCity ? `<span style="color:#4b5563;font-size:10px;margin-left:6px;">· ${escapeHtml(loc.state_full||curUF)} · ${escapeHtml(loc.country||'Brasil')}</span>` : ''}
+        <div class="loc-banner" id="loc-banner-main">
+            <div class="loc-banner-top">
+                <div class="loc-banner-left">
+                    <div class="loc-pin-icon">📍</div>
+                    <div class="loc-banner-info">
+                        <div class="loc-banner-label">SEUS REPRESENTANTES</div>
+                        <div class="loc-banner-city">
+                            <span class="loc-flag">${flag}</span>
+                            <span class="loc-cityname">${escapeHtml(curCity || loc.state_full || curUF)}</span>
+                            ${curCity ? `<span class="loc-state-tag">${escapeHtml(loc.state_full||curUF)}</span>` : ''}
+                        </div>
+                    </div>
                 </div>
-                <!-- Override row -->
-                <div class="trans-loc-override" id="trans-loc-override" style="display:none;margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center;">
-                    <span style="color:#9ca3af;font-size:11px;">Estado:</span>
-                    <select id="trans-uf-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;"
-                        onchange="loadCitiesForUF(this.value)">
-                        ${allUFs.map(u=>`<option value="${u}" ${u===curUF?'selected':''}>${u} — ${ufNames[u]||u}</option>`).join('')}
-                    </select>
-                    <span style="color:#9ca3af;font-size:11px;">Cidade:</span>
-                    <select id="trans-city-select" class="gs-input" style="padding:4px 8px;font-size:12px;width:auto;flex:0;">
-                        <option value="${escapeHtml(curCity)}">${escapeHtml(curCity || 'Selecione...')}</option>
-                    </select>
-                    <button class="btn-main" style="margin:0;padding:5px 14px;font-size:12px;" onclick="applyUFOverride()">Aplicar</button>
-                    <button class="glass-btn" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('trans-loc-override').style.display='none'">✕</button>
+                <div class="loc-banner-actions">
+                    <button class="loc-edit-btn" id="loc-edit-toggle"
+                        onclick="toggleLocOverride();if(document.getElementById('trans-loc-override').style.display!=='none')loadCitiesForUF('${escapeHtml(curUF)}','${escapeHtml(curCity)}')"
+                        title="Alterar localização">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Corrigir
+                    </button>
+                    <button class="loc-refresh-btn" onclick="loadLocalPanel()" title="Atualizar dados">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </button>
                 </div>
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
-                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
-                    onclick="toggleLocOverride();if(document.getElementById('trans-loc-override').style.display!=='none')loadCitiesForUF('${escapeHtml(curUF)}','${escapeHtml(curCity)}')"
-                    title="Selecionar cidade/estado">✏️ Corrigir</button>
-                <button class="glass-btn" style="padding:5px 10px;font-size:11px;"
-                    onclick="loadLocalPanel()" title="Atualizar">↺</button>
+
+            <!-- Selector expandível -->
+            <div class="loc-selector-panel" id="trans-loc-override" style="display:none;">
+                <div class="loc-selector-inner">
+                    <div class="loc-field-group">
+                        <label class="loc-field-label">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Estado
+                        </label>
+                        <div class="loc-select-wrap">
+                            <select id="trans-uf-select" class="loc-select" onchange="loadCitiesForUF(this.value)">
+                                ${allUFs.map(u=>`<option value="${u}" ${u===curUF?'selected':''}>${u} — ${ufNames[u]||u}</option>`).join('')}
+                            </select>
+                            <svg class="loc-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                    <div class="loc-field-group">
+                        <label class="loc-field-label">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>
+                            Cidade
+                        </label>
+                        <div class="loc-select-wrap">
+                            <select id="trans-city-select" class="loc-select">
+                                <option value="${escapeHtml(curCity)}">${escapeHtml(curCity || 'Selecione...')}</option>
+                            </select>
+                            <svg class="loc-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                    <div class="loc-selector-btns">
+                        <button class="loc-apply-btn" onclick="applyUFOverride()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            APLICAR
+                        </button>
+                        <button class="loc-cancel-btn" onclick="document.getElementById('trans-loc-override').style.display='none'">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
