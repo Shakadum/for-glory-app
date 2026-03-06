@@ -66,8 +66,7 @@ class Politician(Base):
     terms    = relationship('PoliticianTerm',    back_populates='politician', cascade='all, delete-orphan')
     expenses = relationship('PoliticianExpense', back_populates='politician', cascade='all, delete-orphan')
     votes    = relationship('PoliticianVote',    back_populates='politician', cascade='all, delete-orphan')
-    ratings  = relationship('PoliticianRating',  back_populates='politician', cascade='all, delete-orphan',
-                            foreign_keys='PoliticianRating.politician_id')
+    # ratings relationship defined in PoliticianRating (models.py) via back_populates
 
     @property
     def salary_info(self):
