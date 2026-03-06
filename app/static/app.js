@@ -1296,7 +1296,7 @@ function renderMedals(boxId, medalsData, isPublic = false) {
         let statusText = m.earned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
         return `<div style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${m.earned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}"><div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div><div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>${statusText}</div>`;
     }).join('');
-    box.innerHTML = `<h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
+    box.innerHTML = `<h3 style="color:var(--primary); font-family:"Rajdhani"; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
 }
 
 function updateUI(){
@@ -1307,7 +1307,7 @@ function updateUI(){
     document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     let missingXP = user.next_xp - user.xp;
-    document.getElementById('p-progression-box').innerHTML = `<div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:'Rajdhani'; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
+    document.getElementById('p-progression-box').innerHTML = `<div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:"Rajdhani"; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
@@ -1719,8 +1719,17 @@ function connectDmWS(id, name, type, loadToken) {
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
     dmWS.onopen = () => {
         try {
+            // Flush legacy in-memory queue
             while (window.dmSendQueue && window.dmSendQueue.length && dmWS.readyState === WebSocket.OPEN) {
                 dmWS.send(window.dmSendQueue.shift());
+            }
+            // Flush IndexedDB offline queue via FGOffline
+            if (window.FGOffline) {
+                window.FGOffline.flushOutboundQueue((content, channel) => {
+                    if (channel === ch && dmWS.readyState === WebSocket.OPEN) {
+                        dmWS.send(content);
+                    }
+                });
             }
         } catch (e) { console.error('flush dmSendQueue failed', e); }
     };
@@ -1732,7 +1741,7 @@ function connectDmWS(id, name, type, loadToken) {
                 // no fetchChatMessages on close; avoid races/badges
                 connectDmWS(id, name, type, loadToken);
             }
-        }, 1200);
+        }, Math.min(1200 * Math.pow(1.5, window._dmWsRetry = (window._dmWsRetry||0) + 1), 16000));
     };
     dmWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
@@ -1755,6 +1764,8 @@ function connectDmWS(id, name, type, loadToken) {
         // Esses eventos não são mensagens de chat e não devem ser renderizados na lista.
         if (d.type && d.type !== 'msg' && d.type !== 'new_dm' && d.type !== 'message_deleted') {
             if (d.type === 'error') { console.warn('WS error:', d.detail || d); }
+            if (d.type === 'typing_start') { if (typeof showTypingIndicator === 'function') showTypingIndicator(d.username || 'Alguém'); }
+            if (d.type === 'typing_stop') { const ti = document.getElementById('typing-indicator'); if(ti) ti.remove(); }
             return;
         }
         if (d.type === 'message_deleted' && (d.msg_id || d.id)) {
@@ -1828,8 +1839,16 @@ function sendDM(){
   if(dmWS && dmWS.readyState === WebSocket.OPEN){
     dmWS.send(msg);
   } else {
-    window.dmSendQueue = window.dmSendQueue || [];
-    window.dmSendQueue.push(msg);
+    // Queue in IndexedDB for offline persistence
+    if (window.FGOffline) {
+      const ch = currentChatType === 'group'
+        ? `group_${currentChatId}`
+        : `dm_${Math.min(user.id, currentChatId)}_${Math.max(user.id, currentChatId)}`;
+      window.FGOffline.enqueueOutbound(ch, msg);
+    } else {
+      window.dmSendQueue = window.dmSendQueue || [];
+      window.dmSendQueue.push(msg);
+    }
     try { dmWS && dmWS.close(); } catch(e) {}
     if (window.currentChatId && window.currentChatType) {
       connectDmWS(currentChatId, window.currentChatName || '', currentChatType, window.currentChatLoadToken);
@@ -1862,10 +1881,10 @@ async function uploadDMImage(){
     showToast("Erro no upload da imagem.");
   }
 }
-async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
-async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:"Rajdhani";letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
+async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:"Rajdhani";letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
-async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:"Rajdhani";letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 async function joinCommunity(cid){try{let r=await authFetch('/community/join', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
 async function requestCommJoin(cid){try{let r=await authFetch('/community/request/send', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
 async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await authFetch(`/community/${cid}/leave`, {method:'POST'}); let res=await r.json(); if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
@@ -2356,3 +2375,440 @@ async function changeGroupAvatar(){
         gsError('Não foi possível trocar a foto do grupo.');
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  QUIZ & GLORY PANEL
+// ═══════════════════════════════════════════════════════════════
+
+async function loadQuizPanel() {
+    await loadGloryHeader();
+    await loadQuizzes();
+    await loadQuizRanking();
+}
+
+async function loadGloryHeader() {
+    try {
+        const r = await authFetch('/my/plan');
+        if (!r.ok) return;
+        const d = await r.json();
+
+        const pts = d.glory?.points || 0;
+        const rankName  = d.glory?.rank_name  || 'Cidadão Comum';
+        const rankIcon  = d.glory?.rank_icon  || '👤';
+        const planName  = d.plan?.name || 'Gratuito';
+        const multiplier = d.plan?.glory_multiplier || 1;
+
+        const el = (id) => document.getElementById(id);
+        if (el('glory-rank-name'))   el('glory-rank-name').innerText   = rankName;
+        if (el('glory-points-total')) el('glory-points-total').innerText = pts.toLocaleString('pt-BR');
+        if (el('glory-rank-icon'))   el('glory-rank-icon').innerText   = rankIcon;
+        if (el('glory-plan-name'))   el('glory-plan-name').innerText   = `${planName}${multiplier > 1 ? ` · ${multiplier}x Glory` : ''}`;
+
+        // Progress bar placeholder (next rank requires points data)
+        const bar = el('glory-progress-bar');
+        if (bar) bar.style.width = Math.min(((pts % 1000) / 10), 100) + '%';
+
+        // Store for use in other places
+        window.__gloryData = d;
+    } catch(e) { console.warn('loadGloryHeader:', e); }
+}
+
+async function loadQuizzes() {
+    const container = document.getElementById('quiz-list');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;color:#4b5563;padding:30px;font-family:DM Sans,sans-serif;font-size:13px;">⏳ Carregando...</div>';
+    try {
+        const r = await authFetch('/quizzes?limit=20');
+        if (!r.ok) { container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Sem quizzes disponíveis.</div>'; return; }
+        const quizzes = await r.json();
+        if (!quizzes.length) {
+            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:"DM Sans";font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
+            return;
+        }
+        const catColors = {news:'#ef4444',politicians:'#3b82f6',constitution:'#8b5cf6',community:'#10b981',general:'#6b7280'};
+        container.innerHTML = quizzes.map(q => {
+            const col = catColors[q.category] || '#6b7280';
+            const done = q.attempted;
+            return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,${done?'0.04':'0.08'});border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;opacity:${done?'0.5':'1'};">
+                <div style="width:42px;height:42px;border-radius:10px;background:${col}22;border:1px solid ${col}44;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+                    ${q.category==='news'?'📰':q.category==='politicians'?'🏛️':q.category==='constitution'?'📜':q.category==='community'?'👥':'🧠'}
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-family:"DM Sans";font-weight:600;font-size:13px;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(q.title)}</div>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:5px;">
+                        <span style="font-size:10px;color:${col};font-family:"Rajdhani";font-weight:700;letter-spacing:0.5px;">${(q.category||'').toUpperCase()}</span>
+                        <span style="font-size:10px;color:#4b5563;">·</span>
+                        <span style="font-size:10px;color:#4b5563;">${q.question_count} perguntas</span>
+                        <span style="font-size:10px;color:#4b5563;">·</span>
+                        <span style="font-size:10px;color:#4b5563;">${q.difficulty==='easy'?'Fácil':q.difficulty==='hard'?'Difícil':'Médio'}</span>
+                    </div>
+                </div>
+                <div style="flex-shrink:0;">
+                    ${done
+                        ? '<span style="font-size:11px;color:#10b981;">✓ Feito</span>'
+                        : `<button onclick="startQuiz(${q.id},'${escapeHtml(q.title)}')" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:8px 14px;font-family:"Rajdhani";font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">JOGAR</button>`
+                    }
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error('loadQuizzes:', e); container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Erro ao carregar quizzes.</div>'; }
+}
+
+async function loadQuizRanking() {
+    const el = document.getElementById('quiz-ranking');
+    if (!el) return;
+    try {
+        const r = await fetch('/quizzes/ranking/weekly');
+        if (!r.ok) return;
+        const ranking = await r.json();
+        if (!ranking.length) { el.innerHTML = '<div style="color:#4b5563;text-align:center;padding:20px;font-size:13px;">Nenhuma participação esta semana.</div>'; return; }
+        el.innerHTML = ranking.slice(0, 10).map((entry, i) => {
+            const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+            return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">
+                <span style="font-size:${i<3?'18':'13'}px;width:24px;text-align:center;flex-shrink:0;">${medal}</span>
+                <img src="${safeAvatarUrl(entry.avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" onerror="this.src='/static/default-avatar.svg'">
+                <span style="flex:1;font-family:"DM Sans";font-size:13px;color:#e5e7eb;">${escapeHtml(entry.username)}</span>
+                <span style="font-family:"Rajdhani";font-weight:700;font-size:14px;color:#66fcf1;">${(entry.score_week||0).toLocaleString('pt-BR')} pts</span>
+            </div>`;
+        }).join('');
+    } catch(e) { console.warn('loadQuizRanking:', e); }
+}
+
+// Quiz modal
+let __quizData = null;
+let __quizStartTime = null;
+
+async function startQuiz(quizId, title) {
+    try {
+        const r = await authFetch(`/quizzes/${quizId}`);
+        if (!r.ok) {
+            const err = await r.json().catch(()=>({}));
+            return showToast(err.detail || 'Erro ao carregar quiz');
+        }
+        __quizData = await r.json();
+        __quizStartTime = Date.now();
+        renderQuizModal(__quizData);
+    } catch(e) { console.error('startQuiz:', e); showToast('Erro ao iniciar quiz.'); }
+}
+
+function renderQuizModal(quiz) {
+    const existing = document.getElementById('modal-quiz');
+    if (existing) existing.remove();
+
+    let currentQ = 0;
+    const answers = new Array(quiz.questions.length).fill(-1);
+
+    function buildHTML() {
+        const q = quiz.questions[currentQ];
+        const total = quiz.questions.length;
+        const progress = ((currentQ + 1) / total * 100).toFixed(0);
+        return `
+        <div id="modal-quiz" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#111827;border:1px solid rgba(102,252,241,0.2);border-radius:18px;padding:24px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                    <div style="font-family:"Rajdhani";font-weight:800;font-size:14px;color:#66fcf1;letter-spacing:1px;">QUIZ · ${currentQ+1}/${total}</div>
+                    <button onclick="document.getElementById('modal-quiz').remove()" style="background:transparent;border:none;color:#6b7280;cursor:pointer;font-size:18px;">✕</button>
+                </div>
+                <div style="background:rgba(102,252,241,0.05);border-radius:20px;height:4px;margin-bottom:20px;overflow:hidden;">
+                    <div style="height:100%;background:#66fcf1;border-radius:20px;width:${progress}%;transition:width 0.3s;"></div>
+                </div>
+                <div style="font-family:"DM Sans";font-weight:600;font-size:15px;color:#f3f4f6;line-height:1.5;margin-bottom:20px;">${escapeHtml(q.question)}</div>
+                <div id="quiz-options" style="display:flex;flex-direction:column;gap:10px;">
+                    ${q.options.map((opt, i) => `
+                    <button onclick="selectAnswer(${i})" id="quiz-opt-${i}" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 16px;text-align:left;color:#e5e7eb;font-family:"DM Sans";font-size:13px;cursor:pointer;transition:all 0.15s;width:100%;"
+                        onmouseover="if(!this.dataset.locked)this.style.borderColor='rgba(102,252,241,0.4)'"
+                        onmouseout="if(!this.dataset.locked)this.style.borderColor='rgba(255,255,255,0.1)'">
+                        <span style="color:#66fcf1;margin-right:10px;font-weight:700;">${['A','B','C','D'][i]}.</span>${escapeHtml(opt)}
+                    </button>`).join('')}
+                </div>
+                <div id="quiz-explanation" style="display:none;margin-top:16px;padding:14px;background:rgba(102,252,241,0.05);border:1px solid rgba(102,252,241,0.15);border-radius:10px;font-size:12px;color:#9ca3af;line-height:1.5;"></div>
+                <div id="quiz-nav" style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px;display:none;">
+                    <button id="quiz-next-btn" onclick="nextQuizQuestion()" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:10px 20px;font-family:"Rajdhani";font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
+                        ${currentQ < total-1 ? 'PRÓXIMA →' : 'FINALIZAR ✓'}
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    document.body.insertAdjacentHTML('beforeend', buildHTML());
+
+    window.selectAnswer = function(idx) {
+        const q = quiz.questions[currentQ];
+        answers[currentQ] = idx;
+        // Lock buttons
+        document.querySelectorAll('#quiz-options button').forEach((btn, i) => {
+            btn.dataset.locked = '1';
+            btn.style.cursor = 'default';
+            if (i === q.correct_index) {
+                btn.style.background = 'rgba(16,185,129,0.15)';
+                btn.style.borderColor = '#10b981';
+                btn.style.color = '#10b981';
+            } else if (i === idx && idx !== q.correct_index) {
+                btn.style.background = 'rgba(239,68,68,0.15)';
+                btn.style.borderColor = '#ef4444';
+                btn.style.color = '#ef4444';
+            }
+        });
+        // Show explanation
+        if (q.explanation) {
+            const expl = document.getElementById('quiz-explanation');
+            if (expl) { expl.style.display = 'block'; expl.innerHTML = `💡 ${escapeHtml(q.explanation)}`; }
+        }
+        document.getElementById('quiz-nav').style.display = 'flex';
+    };
+
+    window.nextQuizQuestion = function() {
+        const modal = document.getElementById('modal-quiz');
+        if (!modal) return;
+        if (currentQ < quiz.questions.length - 1) {
+            currentQ++;
+            modal.remove();
+            document.body.insertAdjacentHTML('beforeend', buildHTML());
+            // Re-register handlers after rebuild
+            window.selectAnswer = selectAnswer;
+            window.nextQuizQuestion = nextQuizQuestion;
+        } else {
+            // Submit
+            submitQuizAnswers(quiz.id, answers);
+        }
+    };
+}
+
+async function submitQuizAnswers(quizId, answers) {
+    const timeSec = Math.floor((Date.now() - __quizStartTime) / 1000);
+    try {
+        const r = await authFetch(`/quizzes/${quizId}/submit`, {
+            method: 'POST',
+            body: JSON.stringify({ answers, time_sec: timeSec })
+        });
+        const d = await r.json();
+        const modal = document.getElementById('modal-quiz');
+        if (modal) modal.remove();
+
+        if (!r.ok) return showToast(d.detail || 'Erro ao enviar respostas.');
+
+        // Show result modal
+        document.body.insertAdjacentHTML('beforeend', `
+            <div id="modal-quiz-result" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
+                <div style="background:#111827;border:1px solid rgba(102,252,241,0.2);border-radius:18px;padding:28px;max-width:380px;width:100%;text-align:center;">
+                    <div style="font-size:48px;margin-bottom:12px;">${d.correct === d.total ? '🏆' : d.correct >= d.total/2 ? '⭐' : '📚'}</div>
+                    <div style="font-family:"Syne";font-weight:800;font-size:20px;color:#f3f4f6;margin-bottom:8px;">
+                        ${d.correct}/${d.total} corretas
+                    </div>
+                    <div style="font-family:"DM Sans";font-size:13px;color:#6b7280;margin-bottom:20px;">${timeSec}s · ${d.multiplier > 1 ? `${d.multiplier}x multiplicador VIP` : 'sem multiplicador'}</div>
+                    <div style="background:rgba(102,252,241,0.08);border:1px solid rgba(102,252,241,0.2);border-radius:12px;padding:16px;margin-bottom:20px;">
+                        <div style="font-family:"Rajdhani";font-weight:800;font-size:28px;color:#66fcf1;">+${d.glory_earned}</div>
+                        <div style="font-size:12px;color:#6b7280;">pontos de glória</div>
+                        <div style="font-size:11px;color:#4b5563;margin-top:4px;">Total: ${(d.glory_total||0).toLocaleString('pt-BR')} pts</div>
+                    </div>
+                    <button onclick="document.getElementById('modal-quiz-result').remove(); loadQuizPanel();" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:12px 24px;font-family:"Rajdhani";font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px;width:100%;">
+                        CONTINUAR
+                    </button>
+                </div>
+            </div>
+        `);
+        // Refresh glory header
+        loadGloryHeader();
+    } catch(e) { console.error('submitQuizAnswers:', e); showToast('Erro ao enviar respostas.'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VIP PANEL
+// ═══════════════════════════════════════════════════════════════
+
+async function loadVipPanel() {
+    await loadGloryHeader(); // shares glory data
+    await loadVipPlans();
+}
+
+async function loadVipPlans() {
+    const container = document.getElementById('vip-plans');
+    const currentPlanEl = document.getElementById('vip-current-plan');
+    if (!container) return;
+
+    try {
+        const [plansR, myR] = await Promise.all([
+            fetch('/plans'),
+            authFetch('/my/plan'),
+        ]);
+        const plans  = plansR.ok ? await plansR.json() : [];
+        const myData = myR.ok   ? await myR.json() : {};
+        const currentSlug = myData?.plan?.slug || 'free';
+
+        if (currentPlanEl) {
+            const cp = myData?.plan || {};
+            const sub = myData?.subscription;
+            currentPlanEl.innerHTML = `
+                <div style="background:rgba(102,252,241,0.06);border:1px solid rgba(102,252,241,0.15);border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;">
+                    <div style="font-size:24px;">${currentSlug==='free'?'👤':currentSlug==='vip1'?'🥈':currentSlug==='vip2'?'🥇':'💎'}</div>
+                    <div style="flex:1;">
+                        <div style="font-family:"Rajdhani";font-weight:800;font-size:15px;color:#66fcf1;">Plano atual: ${cp.name || 'Gratuito'}</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:3px;">Multiplicador de Glory: ${(cp.glory_multiplier||1)}x
+                        ${sub?.expires ? ` · Renova em ${new Date(sub.expires).toLocaleDateString('pt-BR')}` : ''}
+                        </div>
+                    </div>
+                    ${currentSlug !== 'free' ? '<button onclick="cancelSubscription()" style="background:transparent;border:1px solid #ef4444;color:#ef4444;border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;">Cancelar</button>' : ''}
+                </div>`;
+        }
+
+        const planColors  = {free:'#6b7280', vip1:'#9ca3af', vip2:'#f59e0b', vip3:'#66fcf1'};
+        const planIcons   = {free:'👤', vip1:'🥈', vip2:'🥇', vip3:'💎'};
+        const planFeats   = {
+            free:  ['10 quizzes/dia','Rank básico','Acesso completo ao Portal'],
+            vip1:  ['30 quizzes/dia','2x Glory points','Badge prata','Borda personalizada'],
+            vip2:  ['100 quizzes/dia','5x Glory points','Badge ouro','Temas exclusivos','Quizzes premium'],
+            vip3:  ['Quizzes ilimitados','10x Glory points','Badge diamante','Temas exclusivos','Suporte prioritário','Acesso antecipado'],
+        };
+
+        container.innerHTML = plans.map(p => {
+            const isCurrent = p.slug === currentSlug;
+            const color     = planColors[p.slug] || '#6b7280';
+            const icon      = planIcons[p.slug]  || '👤';
+            const feats     = planFeats[p.slug]  || [];
+            return `
+            <div style="background:rgba(255,255,255,0.03);border:1px solid ${isCurrent ? color : 'rgba(255,255,255,0.08)'};border-radius:14px;padding:20px;${isCurrent?`box-shadow:0 0 20px ${color}22;`:''}">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:22px;">${icon}</span>
+                        <div>
+                            <div style="font-family:"Rajdhani";font-weight:800;font-size:16px;color:${color};letter-spacing:0.5px;">${p.name}</div>
+                            <div style="font-size:12px;color:#6b7280;">${p.glory_multiplier}x Glory</div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-family:"Syne";font-weight:800;font-size:18px;color:#f3f4f6;">
+                            ${p.price_monthly > 0 ? `R$ ${p.price_monthly.toFixed(2).replace('.',',')}` : 'Grátis'}
+                        </div>
+                        ${p.price_monthly > 0 ? '<div style="font-size:10px;color:#4b5563;">/mês</div>' : ''}
+                    </div>
+                </div>
+                <ul style="list-style:none;padding:0;margin:0 0 16px 0;display:flex;flex-direction:column;gap:7px;">
+                    ${feats.map(f => `<li style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:8px;"><span style="color:${color};">✓</span>${f}</li>`).join('')}
+                </ul>
+                ${isCurrent
+                    ? `<div style="text-align:center;padding:10px;background:${color}22;border-radius:8px;font-family:"Rajdhani";font-weight:700;font-size:12px;color:${color};letter-spacing:1px;">PLANO ATUAL</div>`
+                    : p.slug === 'free' ? '' : `<button onclick="subscribePlan('${p.slug}')" style="width:100%;background:${color};color:#0b0c10;border:none;border-radius:8px;padding:12px;font-family:"Rajdhani";font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
+                        ASSINAR${p.price_monthly > 0 ? ` · R$ ${p.price_monthly.toFixed(2).replace('.',',')}` : ''}
+                    </button>`
+                }
+            </div>`;
+        }).join('');
+    } catch(e) { console.error('loadVipPlans:', e); }
+}
+
+async function subscribePlan(slug) {
+    if (!confirm(`Assinar plano ${slug}? (Modo demonstração — sem cobrança real)`)) return;
+    try {
+        const r = await authFetch('/subscription/create', {
+            method: 'POST',
+            body: JSON.stringify({ plan_slug: slug, provider: 'manual' })
+        });
+        const d = await r.json();
+        if (r.ok) {
+            showToast(`✅ Plano ${slug} ativado!`);
+            loadVipPanel();
+            loadGloryHeader();
+        } else {
+            showToast(d.detail || 'Erro ao assinar plano');
+        }
+    } catch(e) { showToast('Erro ao assinar plano.'); }
+}
+
+async function cancelSubscription() {
+    if (!confirm('Cancelar assinatura? Você voltará ao plano gratuito.')) return;
+    try {
+        const r = await authFetch('/subscription/cancel', { method: 'POST' });
+        if (r.ok) { showToast('Assinatura cancelada.'); loadVipPanel(); }
+    } catch(e) { showToast('Erro ao cancelar.'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DIAGNOSTICS (Admin)
+// ═══════════════════════════════════════════════════════════════
+
+async function loadDiagnostics() {
+    const panel = document.getElementById('diagnostics-panel');
+    const mini  = document.getElementById('diag-mini');
+    if (!panel) return;
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="color:#4b5563;font-size:12px;text-align:center;padding:16px;">⏳ Executando diagnóstico...</div>';
+    try {
+        const r = await authFetch('/admin/diagnostics');
+        if (r.status === 403) {
+            panel.innerHTML = '<div style="color:#6b7280;font-size:12px;text-align:center;padding:16px;">Diagnóstico disponível apenas para administradores.</div>';
+            return;
+        }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+
+        const overallColor = d.overall==='ok'?'#10b981':d.overall==='warning'?'#f59e0b':'#ef4444';
+        const overallIcon  = d.overall==='ok'?'✅':d.overall==='warning'?'⚠️':'❌';
+
+        if (mini) mini.innerHTML = `${overallIcon} ${d.errors} erros · ${d.warnings} avisos · <span style="cursor:pointer;color:#66fcf1;text-decoration:underline;" onclick="loadDiagnostics()">Atualizar →</span>`;
+
+        panel.innerHTML = `
+            <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <div style="font-family:"Rajdhani";font-weight:800;font-size:14px;color:${overallColor};">
+                        ${overallIcon} Sistema: ${d.overall.toUpperCase()}
+                    </div>
+                    <div style="font-size:11px;color:#4b5563;">${new Date(d.generated_at).toLocaleTimeString('pt-BR')}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    ${(d.checks||[]).map(c => {
+                        const color = c.status==='ok'?'#10b981':c.status==='warning'?'#f59e0b':'#ef4444';
+                        const icon  = c.status==='ok'?'✅':c.status==='warning'?'⚠️':'❌';
+                        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.04);">
+                            <span style="font-size:13px;">${icon}</span>
+                            <div style="flex:1;">
+                                <div style="font-size:12px;color:#e5e7eb;font-weight:600;">${escapeHtml(c.name)}</div>
+                                <div style="font-size:11px;color:#6b7280;margin-top:2px;">${escapeHtml(c.message)}</div>
+                            </div>
+                            ${c.count > 0 ? `<span style="font-family:"Rajdhani";font-weight:700;font-size:13px;color:${color};">${c.count}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+    } catch(e) {
+        console.error('loadDiagnostics:', e);
+        panel.innerHTML = '<div style="color:#ef4444;font-size:12px;text-align:center;padding:16px;">Erro ao executar diagnóstico.</div>';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TYPING INDICATORS
+// ═══════════════════════════════════════════════════════════════
+
+let __typingTimer = null;
+
+function onDmInputTyping() {
+    if (!dmWS || dmWS.readyState !== WebSocket.OPEN) return;
+    clearTimeout(__typingTimer);
+    dmWS.send(JSON.stringify({type:'typing_start', username: user?.username||''}));
+    __typingTimer = setTimeout(() => {
+        if (dmWS && dmWS.readyState === WebSocket.OPEN) {
+            dmWS.send(JSON.stringify({type:'typing_stop', username: user?.username||''}));
+        }
+    }, 2000);
+}
+window.onDmInputTyping = onDmInputTyping;
+
+function showTypingIndicator(username) {
+    const list = document.getElementById('dm-list');
+    if (!list) return;
+    let ind = document.getElementById('typing-indicator');
+    if (!ind) {
+        list.insertAdjacentHTML('beforeend', `<div id="typing-indicator" style="padding:8px 12px;color:#6b7280;font-size:12px;font-style:italic;">${escapeHtml(username)} está digitando...</div>`);
+    } else {
+        ind.textContent = `${username} está digitando...`;
+    }
+    list.scrollTop = list.scrollHeight;
+    clearTimeout(window.__typingHideTimer);
+    window.__typingHideTimer = setTimeout(() => {
+        const el = document.getElementById('typing-indicator');
+        if (el) el.remove();
+    }, 3000);
+}
+window.showTypingIndicator = showTypingIndicator;

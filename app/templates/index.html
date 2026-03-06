@@ -897,7 +897,7 @@
                     <input type="file" id="dm-file" class="hidden" onchange="uploadDMImage()" accept="image/*,video/*,audio/*">
                     <button type="button" class="icon-btn" onclick="document.getElementById('dm-file').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
                     <button type="button" class="icon-btn" id="btn-mic-dm" onclick="toggleRecord('dm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
-                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" autocomplete="off">
+                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" oninput="onDmInputTyping()" autocomplete="off">
                     <button type="button" class="icon-btn" onclick="openEmoji('dm-msg')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                     <button type="submit" class="btn-send-msg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                 </form>
@@ -974,9 +974,7 @@
     
         <div id="view-news" class="view">
             <!-- MAIN TAB BAR: Notícias | Portal da Transparência -->
-            <div class="news-main-tabs">
-                <button class="news-main-tab active" data-main="news" onclick="switchMainTab('news')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>
+<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>
                     Notícias
                 </button>
                 <button class="news-main-tab" data-main="transparency" onclick="switchMainTab('transparency')">
@@ -1029,6 +1027,72 @@
                 <!-- Conteúdo dinâmico -->
                 <div id="trans-content" style="flex:1; overflow-y:auto; padding:16px;"></div>
             </div>
+
+            <!-- ══ PAINEL QUIZ & GLORY ══ -->
+            <div id="panel-quiz" class="news-panel" style="display:none; flex-direction:column; flex:1; overflow-y:auto;">
+                <div style="padding:16px; max-width:700px; margin:0 auto; width:100%;">
+                    <!-- Glory header -->
+                    <div id="glory-header" style="background:linear-gradient(135deg,rgba(102,252,241,0.08) 0%,rgba(139,92,246,0.08) 100%); border:1px solid rgba(102,252,241,0.15); border-radius:16px; padding:20px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                            <div>
+                                <div style="font-family:'Rajdhani'; font-weight:800; font-size:22px; color:#66fcf1; letter-spacing:1px;" id="glory-rank-name">Cidadão Comum</div>
+                                <div style="font-size:13px; color:#6b7280; margin-top:4px;"><span id="glory-points-total">0</span> pontos de glória</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div id="glory-rank-icon" style="font-size:32px;">👤</div>
+                                <div style="font-size:11px; color:#66fcf1; opacity:0.7; margin-top:4px;" id="glory-plan-name">Gratuito</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:14px; background:rgba(0,0,0,0.3); border-radius:20px; height:6px; overflow:hidden;">
+                            <div id="glory-progress-bar" style="height:100%; background:linear-gradient(90deg,#66fcf1,#8b5cf6); border-radius:20px; width:0%; transition:width 0.6s;"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:11px; color:#4b5563; margin-top:6px;">
+                            <span>Rank atual</span>
+                            <span id="glory-next-rank">Próximo rank</span>
+                        </div>
+                    </div>
+
+                    <!-- Quiz list -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                        <div style="font-family:'Rajdhani'; font-weight:800; font-size:16px; color:#c5c6c7; letter-spacing:0.5px;">QUIZZES DISPONÍVEIS</div>
+                        <button onclick="loadQuizzes()" class="glass-btn" style="padding:6px 12px; margin:0; font-size:11px;">🔄 Atualizar</button>
+                    </div>
+                    <div id="quiz-list" style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="text-align:center; color:#4b5563; padding:40px; font-size:13px; font-family:'DM Sans';">Carregando quizzes...</div>
+                    </div>
+
+                    <!-- Weekly ranking -->
+                    <div style="margin-top:28px;">
+                        <div style="font-family:'Rajdhani'; font-weight:800; font-size:16px; color:#c5c6c7; letter-spacing:0.5px; margin-bottom:14px;">🏆 RANKING SEMANAL</div>
+                        <div id="quiz-ranking" style="display:flex; flex-direction:column; gap:8px;">
+                            <div style="text-align:center; color:#4b5563; padding:20px; font-size:13px;">Carregando ranking...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ PAINEL VIP ══ -->
+            <div id="panel-vip" class="news-panel" style="display:none; flex-direction:column; flex:1; overflow-y:auto;">
+                <div style="padding:16px; max-width:600px; margin:0 auto; width:100%;">
+                    <div style="text-align:center; margin-bottom:24px;">
+                        <div style="font-size:36px; margin-bottom:8px;">⭐</div>
+                        <div style="font-family:'Syne'; font-weight:800; font-size:22px; color:#66fcf1; letter-spacing:1px;">FOR GLORY VIP</div>
+                        <div style="font-size:13px; color:#6b7280; margin-top:6px;">Multiplique seus pontos de glória e desbloqueie benefícios exclusivos</div>
+                    </div>
+                    <div id="vip-current-plan" style="margin-bottom:24px;"></div>
+                    <div id="vip-plans" style="display:flex; flex-direction:column; gap:14px;">
+                        <div style="text-align:center; color:#4b5563; padding:40px;">Carregando planos...</div>
+                    </div>
+                    <div style="margin-top:28px; background:rgba(102,252,241,0.04); border:1px solid rgba(102,252,241,0.1); border-radius:14px; padding:18px;">
+                        <div style="font-family:'Rajdhani'; font-weight:800; font-size:14px; color:#66fcf1; margin-bottom:12px; letter-spacing:0.5px;">📊 DIAGNÓSTICO DO SISTEMA</div>
+                        <div id="diag-mini" style="font-size:12px; color:#6b7280;">
+                            <span style="cursor:pointer; color:#66fcf1; text-decoration:underline;" onclick="loadDiagnostics()">Ver relatório completo →</span>
+                        </div>
+                    </div>
+                    <div id="diagnostics-panel" style="display:none; margin-top:16px;"></div>
+                </div>
+            </div>
+
         </div>
 
         <!-- Modal: viajar para outra cidade -->
@@ -1086,7 +1150,7 @@
                     <input type="file" id="dm-file" class="hidden" onchange="uploadDMImage()" accept="image/*,video/*,audio/*">
                     <button type="button" class="icon-btn" onclick="document.getElementById('dm-file').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
                     <button type="button" class="icon-btn" id="btn-mic-dm" onclick="toggleRecord('dm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
-                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" autocomplete="off">
+                    <input id="dm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="msg_placeholder" oninput="onDmInputTyping()" autocomplete="off">
                     <button type="button" class="icon-btn" onclick="openEmoji('dm-msg')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                     <button type="submit" class="btn-send-msg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                 </form>
@@ -1166,6 +1230,7 @@
 </div>
 </div>
 
+<script src="/static/offline.js" defer></script>
 <script src="/static/app.js" defer></script>
 <script src="/static/news.js" defer></script>
 <script src="/static/transparency.js" defer></script>
@@ -1174,12 +1239,24 @@
 function switchMainTab(tab) {
     document.querySelectorAll('.news-main-tab').forEach(b =>
         b.classList.toggle('active', b.dataset.main === tab));
-    const pNews = document.getElementById('panel-news');
-    const pTrans = document.getElementById('panel-transparency');
-    if (pNews)  pNews.style.display  = tab === 'news'         ? ''     : 'none';
-    if (pTrans) pTrans.style.display = tab === 'transparency'  ? 'flex' : 'none';
+    const panels = {
+        news:         document.getElementById('panel-news'),
+        transparency: document.getElementById('panel-transparency'),
+        quiz:         document.getElementById('panel-quiz'),
+        vip:          document.getElementById('panel-vip'),
+    };
+    Object.entries(panels).forEach(([key, el]) => {
+        if (!el) return;
+        if (key === tab) {
+            el.style.display = 'flex';
+        } else {
+            el.style.display = 'none';
+        }
+    });
     if (tab === 'news')         { if (typeof initNews         === 'function') initNews(); }
     if (tab === 'transparency') { if (typeof initTransparency === 'function') initTransparency(); }
+    if (tab === 'quiz')         { if (typeof loadQuizPanel    === 'function') loadQuizPanel(); }
+    if (tab === 'vip')          { if (typeof loadVipPanel     === 'function') loadVipPanel(); }
 }
 
 // ── goView unificado: garante que news e transparency iniciam ao abrir a view ──
@@ -1196,6 +1273,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     if (typeof initNews === 'function') initNews();
                 }
+                if (main === 'quiz') { if (typeof loadQuizPanel === 'function') loadQuizPanel(); }
+                if (main === 'vip')  { if (typeof loadVipPanel  === 'function') loadVipPanel(); }
             }
         };
     }
