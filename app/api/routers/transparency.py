@@ -1080,33 +1080,33 @@ def _gov(wid, name, role, party, photo="", wiki_pt="", wiki_en=""):
 
 WM = "https://upload.wikimedia.org/wikipedia/commons/thumb"
 GOVERNORS_BY_UF = {
-    "AC": _gov("wd-Q10282903","Gladson Cameli",   "Governador do Acre",             "PP",           wiki_pt="Gladson Cameli",     wiki_en="Gladson Cameli"),
-    "AL": _gov("wd-Q10285716","Paulo Dantas",      "Governador de Alagoas",          "MDB",          wiki_pt="Paulo Dantas",       wiki_en="Paulo Dantas"),
-    "AM": _gov("wd-Q3730703", "Wilson Lima",       "Governador do Amazonas",         "União Brasil", wiki_pt="Wilson Lima (político)", wiki_en="Wilson Lima"),
-    "AP": _gov("wd-Q107421",  "Clécio Luís",       "Governador do Amapá",            "SD",           wiki_pt="Clécio Luís",        wiki_en="Clécio Luís"),
-    "BA": _gov("wd-Q3891283", "Jerônimo Rodrigues","Governador da Bahia",            "PT",           wiki_pt="Jerônimo Rodrigues", wiki_en="Jerônimo Rodrigues"),
-    "CE": _gov("wd-Q10293629","Elmano de Freitas", "Governador do Ceará",            "PT",           wiki_pt="Elmano de Freitas",  wiki_en="Elmano de Freitas"),
-    "DF": _gov("wd-Q10303893","Ibaneis Rocha",     "Governador do Distrito Federal", "MDB",          wiki_pt="Ibaneis Rocha",      wiki_en="Ibaneis Rocha"),
-    "ES": _gov("wd-Q3730577", "Renato Casagrande", "Governador do Espírito Santo",   "PSB",          wiki_pt="Renato Casagrande",  wiki_en="Renato Casagrande"),
-    "GO": _gov("wd-Q10306753","Ronaldo Caiado",    "Governador de Goiás",            "União Brasil", wiki_pt="Ronaldo Caiado",     wiki_en="Ronaldo Caiado"),
-    "MA": _gov("wd-Q10306938","Carlos Brandão",    "Governador do Maranhão",         "PSB",          wiki_pt="Carlos Brandão (político)", wiki_en="Carlos Brandão"),
-    "MT": _gov("wd-Q10308490","Mauro Mendes",      "Governador do Mato Grosso",      "União Brasil", wiki_pt="Mauro Mendes",       wiki_en="Mauro Mendes"),
-    "MS": _gov("wd-Q10308503","Eduardo Riedel",    "Governador do Mato Grosso do Sul","PSDB",        wiki_pt="Eduardo Riedel",     wiki_en="Eduardo Riedel"),
-    "MG": _gov("wd-Q3564887", "Romeu Zema",        "Governador de Minas Gerais",     "Novo",         wiki_pt="Romeu Zema",         wiki_en="Romeu Zema"),
-    "PA": _gov("wd-Q10309820","Helder Barbalho",   "Governador do Pará",             "MDB",          wiki_pt="Helder Barbalho",    wiki_en="Helder Barbalho"),
-    "PB": _gov("wd-Q10309964","João Azevêdo",      "Governador da Paraíba",          "PSB",          wiki_pt="João Azevêdo",       wiki_en="João Azevêdo"),
-    "PR": _gov("wd-Q10310060","Ratinho Junior",    "Governador do Paraná",           "PSD",          wiki_pt="Ratinho Junior",     wiki_en="Carlos Ratinho Junior"),
-    "PE": _gov("wd-Q10310080","Raquel Lyra",       "Governadora de Pernambuco",      "PSDB",         wiki_pt="Raquel Lyra",        wiki_en="Raquel Lyra"),
-    "PI": _gov("wd-Q10310123","Rafael Fonteles",   "Governador do Piauí",            "PT",           wiki_pt="Rafael Fonteles",    wiki_en="Rafael Fonteles"),
-    "RJ": _gov("wd-Q1779090", "Cláudio Castro",    "Governador do Rio de Janeiro",   "PL",           wiki_pt="Cláudio Castro (político)", wiki_en="Cláudio Castro"),
-    "RN": _gov("wd-Q10312022","Fátima Bezerra",    "Governadora do Rio Grande do Norte","PT",        wiki_pt="Fátima Bezerra",     wiki_en="Fátima Bezerra"),
-    "RS": _gov("wd-Q10312060","Eduardo Leite",     "Governador do Rio Grande do Sul","PSDB",         wiki_pt="Eduardo Leite (político)", wiki_en="Eduardo Leite"),
-    "RO": _gov("wd-Q10311952","Marcos Rocha",      "Governador de Rondônia",         "União Brasil", wiki_pt="Marcos Rocha",       wiki_en="Marcos Rocha"),
-    "RR": _gov("wd-Q10312027","Arthur Henrique",   "Governador de Roraima",          "MDB",          wiki_pt="Arthur Henrique",    wiki_en="Arthur Henrique"),
-    "SC": _gov("wd-Q10312568","Jorginho Mello",    "Governador de Santa Catarina",   "PL",           wiki_pt="Jorginho Mello",     wiki_en="Jorginho Mello"),
-    "SE": _gov("wd-Q10314272","Fábio Mitidieri",   "Governador de Sergipe",          "PSD",          wiki_pt="Fábio Mitidieri",    wiki_en="Fábio Mitidieri"),
-    "SP": _gov("wd-Q1050742", "Tarcísio de Freitas","Governador de São Paulo",       "Republicanos", wiki_pt="Tarcísio de Freitas", wiki_en="Tarcísio de Freitas"),
-    "TO": _gov("wd-Q10314456","Wanderlei Barbosa", "Governador do Tocantins",        "Republicanos", wiki_pt="Wanderlei Barbosa",  wiki_en="Wanderlei Barbosa"),
+    "AC":  _gov("wd-Q10282903","Gladson Cameli","Governador do Acre","PP", wiki_pt="Gladson Cameli", wiki_en="Gladson Cameli"),
+    "AL":  _gov("wd-Q10285716","Paulo Dantas","Governador de Alagoas","MDB", wiki_pt="Paulo Dantas", wiki_en="Paulo Dantas"),
+    "AM":  _gov("wd-gov-AM","Wilson Lima","Governador do Amazonas","União Brasil", wiki_pt="Wilson Lima (político)", wiki_en="Wilson Lima"),
+    "AP":  _gov("wd-gov-AP","Clécio Luís","Governador do Amapá","SD", wiki_pt="Clécio Luís", wiki_en="Clécio Luís"),
+    "BA":  _gov("wd-gov-BA","Jerônimo Rodrigues","Governador da Bahia","PT", wiki_pt="Jerônimo Rodrigues", wiki_en="Jerônimo Rodrigues"),
+    "CE":  _gov("wd-gov-CE","Elmano de Freitas","Governador do Ceará","PT", wiki_pt="Elmano de Freitas", wiki_en="Elmano de Freitas"),
+    "DF":  _gov("wd-Q10303893","Ibaneis Rocha","Governador do Distrito Federal","MDB", wiki_pt="Ibaneis Rocha", wiki_en="Ibaneis Rocha"),
+    "ES":  _gov("wd-Q3730577","Renato Casagrande","Governador do Espírito Santo","PSB", wiki_pt="Renato Casagrande", wiki_en="Renato Casagrande"),
+    "GO":  _gov("wd-Q10306753","Ronaldo Caiado","Governador de Goiás","União Brasil", wiki_pt="Ronaldo Caiado", wiki_en="Ronaldo Caiado"),
+    "MA":  _gov("wd-Q10306938","Carlos Brandão","Governador do Maranhão","PSB", wiki_pt="Carlos Brandão (político)", wiki_en="Carlos Brandão"),
+    "MT":  _gov("wd-Q10308490","Mauro Mendes","Governador do Mato Grosso","União Brasil", wiki_pt="Mauro Mendes", wiki_en="Mauro Mendes"),
+    "MS":  _gov("wd-Q10308503","Eduardo Riedel","Governador do Mato Grosso do Sul","PSDB", wiki_pt="Eduardo Riedel", wiki_en="Eduardo Riedel"),
+    "MG":  _gov("wd-gov-MG","Romeu Zema","Governador de Minas Gerais","Novo", wiki_pt="Romeu Zema", wiki_en="Romeu Zema"),
+    "PA":  _gov("wd-gov-PA","Helder Barbalho","Governador do Pará","MDB", wiki_pt="Helder Barbalho", wiki_en="Helder Barbalho"),
+    "PB":  _gov("wd-Q10309964","João Azevêdo","Governador da Paraíba","PSB", wiki_pt="João Azevêdo", wiki_en="João Azevêdo"),
+    "PR":  _gov("wd-gov-PR","Ratinho Junior","Governador do Paraná","PSD", wiki_pt="Ratinho Junior", wiki_en="Carlos Ratinho Junior"),
+    "PE":  _gov("wd-gov-PE","Raquel Lyra","Governadora de Pernambuco","PSDB", wiki_pt="Raquel Lyra", wiki_en="Raquel Lyra"),
+    "PI":  _gov("wd-Q10310123","Rafael Fonteles","Governador do Piauí","PT", wiki_pt="Rafael Fonteles", wiki_en="Rafael Fonteles"),
+    "RJ":  _gov("wd-gov-RJ","Cláudio Castro","Governador do Rio de Janeiro","PL", wiki_pt="Cláudio Castro (político)", wiki_en="Cláudio Castro"),
+    "RN":  _gov("wd-Q10312022","Fátima Bezerra","Governadora do Rio Grande do Norte","PT", wiki_pt="Fátima Bezerra", wiki_en="Fátima Bezerra"),
+    "RS":  _gov("wd-gov-RS","Eduardo Leite","Governador do Rio Grande do Sul","PSDB", wiki_pt="Eduardo Leite (político)", wiki_en="Eduardo Leite"),
+    "RO":  _gov("wd-Q10311952","Marcos Rocha","Governador de Rondônia","União Brasil", wiki_pt="Marcos Rocha", wiki_en="Marcos Rocha"),
+    "RR":  _gov("wd-Q10312027","Arthur Henrique","Governador de Roraima","MDB", wiki_pt="Arthur Henrique", wiki_en="Arthur Henrique"),
+    "SC":  _gov("wd-Q10312568","Jorginho Mello","Governador de Santa Catarina","PL", wiki_pt="Jorginho Mello", wiki_en="Jorginho Mello"),
+    "SE":  _gov("wd-Q10314272","Fábio Mitidieri","Governador de Sergipe","PSD", wiki_pt="Fábio Mitidieri", wiki_en="Fábio Mitidieri"),
+    "SP":  _gov("wd-gov-SP","Tarcísio de Freitas","Governador de São Paulo","Republicanos", wiki_pt="Tarcísio de Freitas", wiki_en="Tarcísio de Freitas"),
+    "TO":  _gov("wd-Q10314456","Wanderlei Barbosa","Governador do Tocantins","Republicanos", wiki_pt="Wanderlei Barbosa", wiki_en="Wanderlei Barbosa"),
 }
 UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
 
@@ -1118,89 +1118,91 @@ COUNTRY_FLAGS = {
 
 
 
-# Prefeitos curados — eleições 2024 + wiki_title_pt para foto automática
+# Prefeitos curados — eleições 2024
+# IDs: QIDs verificados para políticos conhecidos; "mayor-{slug}" para os demais
+# wiki_title_pt garante foto via Wikipedia REST API
 MAYORS_BY_CITY = {
-    # RJ
-    "Rio de Janeiro":        {"id":"wd-Q3723792",   "name":"Eduardo Paes",          "role":"Prefeito do Rio de Janeiro",          "party":"PSD",          "uf":"RJ","photo":"","wiki_title_pt":"Eduardo Paes",               "wiki_title_en":"Eduardo Paes"},
-    "Niterói":               {"id":"wd-Q16580680",  "name":"Rodrigo Neves",          "role":"Prefeito de Niterói",                 "party":"PDT",          "uf":"RJ","photo":"","wiki_title_pt":"Rodrigo Neves",              "wiki_title_en":"Rodrigo Neves"},
-    "Nova Iguaçu":           {"id":"wd-Q10309629",  "name":"Duarte Júnior",          "role":"Prefeito de Nova Iguaçu",             "party":"PSD",          "uf":"RJ","photo":"","wiki_title_pt":"Duarte Júnior",              "wiki_title_en":"Duarte Júnior"},
-    "Duque de Caxias":       {"id":"wd-Q10303830",  "name":"Wilson Reis",            "role":"Prefeito de Duque de Caxias",         "party":"MDB",          "uf":"RJ","photo":"","wiki_title_pt":"Wilson Reis",                "wiki_title_en":"Wilson Reis"},
-    "São Gonçalo":           {"id":"wd-Q10312550",  "name":"Capitão Nelson",         "role":"Prefeito de São Gonçalo",             "party":"PL",           "uf":"RJ","photo":"","wiki_title_pt":"Capitão Nelson",             "wiki_title_en":"Capitão Nelson"},
-    "Petrópolis":            {"id":"wd-Q188892",    "name":"Rubens Bomtempo",        "role":"Prefeito de Petrópolis",              "party":"PSB",          "uf":"RJ","photo":"","wiki_title_pt":"Rubens Bomtempo",            "wiki_title_en":"Rubens Bomtempo"},
-    "Teresópolis":           {"id":"wd-Q1021855",   "name":"Vinicius Claussen",      "role":"Prefeito de Teresópolis",             "party":"PSD",          "uf":"RJ","photo":"","wiki_title_pt":"Vinicius Claussen",          "wiki_title_en":"Vinicius Claussen"},
-    "Volta Redonda":         {"id":"wd-Q1780",      "name":"Neto",                   "role":"Prefeito de Volta Redonda",           "party":"MDB",          "uf":"RJ","photo":"","wiki_title_pt":"Neto (Volta Redonda)",       "wiki_title_en":"Neto"},
-    "Resende":               {"id":"wd-Q319",       "name":"Alexandre Fonseca",      "role":"Prefeito de Resende",                 "party":"PRD",          "uf":"RJ","photo":"","wiki_title_pt":"Alexandre Fonseca",          "wiki_title_en":"Alexandre Fonseca"},
-    "Macaé":                 {"id":"wd-Q607",       "name":"Dr. Welberth Rezende",   "role":"Prefeito de Macaé",                   "party":"Podemos",      "uf":"RJ","photo":"","wiki_title_pt":"Welberth Rezende",           "wiki_title_en":"Welberth Rezende"},
-    "Campos dos Goytacazes": {"id":"wd-Q183219",    "name":"Wladimir Garotinho",     "role":"Prefeito de Campos dos Goytacazes",   "party":"PRD",          "uf":"RJ","photo":"","wiki_title_pt":"Wladimir Garotinho",         "wiki_title_en":"Wladimir Garotinho"},
-    "Angra dos Reis":        {"id":"wd-Q610",       "name":"Fábio do Pastel",        "role":"Prefeito de Angra dos Reis",          "party":"Solidariedade","uf":"RJ","photo":"","wiki_title_pt":"Fábio do Pastel",            "wiki_title_en":"Fábio do Pastel"},
-    "Cabo Frio":             {"id":"wd-Q618",       "name":"Renatinho Vianna",       "role":"Prefeito de Cabo Frio",               "party":"MDB",          "uf":"RJ","photo":"","wiki_title_pt":"Renatinho Vianna",           "wiki_title_en":"Renatinho Vianna"},
-    "Barra Mansa":           {"id":"wd-Q623",       "name":"Rodrigo Drable",         "role":"Prefeito de Barra Mansa",             "party":"AVANTE",       "uf":"RJ","photo":"","wiki_title_pt":"Rodrigo Drable",             "wiki_title_en":"Rodrigo Drable"},
-    "Itaperuna":             {"id":"wd-Q629",       "name":"Ontiveiro Júnior",       "role":"Prefeito de Itaperuna",               "party":"MDB",          "uf":"RJ","photo":"","wiki_title_pt":"Ontiveiro Júnior",           "wiki_title_en":"Ontiveiro Júnior"},
-    # SP
-    "São Paulo":             {"id":"wd-Q75920697",  "name":"Ricardo Nunes",          "role":"Prefeito de São Paulo",               "party":"MDB",          "uf":"SP","photo":"","wiki_title_pt":"Ricardo Nunes",              "wiki_title_en":"Ricardo Nunes"},
-    "Campinas":              {"id":"wd-Q181637",    "name":"Dario Saadi",            "role":"Prefeito de Campinas",                "party":"Republicanos", "uf":"SP","photo":"","wiki_title_pt":"Dario Saadi",               "wiki_title_en":"Dario Saadi"},
-    "Guarulhos":             {"id":"wd-Q175",       "name":"Guti",                   "role":"Prefeito de Guarulhos",               "party":"PSD",          "uf":"SP","photo":"","wiki_title_pt":"Gustavo Henrique Gomes",     "wiki_title_en":"Guti"},
-    "Santo André":           {"id":"wd-Q43498",     "name":"Gilvan Junior",          "role":"Prefeito de Santo André",             "party":"PL",           "uf":"SP","photo":"","wiki_title_pt":"Gilvan Junior",              "wiki_title_en":"Gilvan Junior"},
-    "São Bernardo do Campo": {"id":"wd-Q174",       "name":"Orlando Morando",        "role":"Prefeito de São Bernardo do Campo",   "party":"PSDB",         "uf":"SP","photo":"","wiki_title_pt":"Orlando Morando",            "wiki_title_en":"Orlando Morando"},
-    "Osasco":                {"id":"wd-Q180",       "name":"Rogério Lins",           "role":"Prefeito de Osasco",                  "party":"Podemos",      "uf":"SP","photo":"","wiki_title_pt":"Rogério Lins",               "wiki_title_en":"Rogério Lins"},
-    "Ribeirão Preto":        {"id":"wd-Q185",       "name":"Marcos Antonio",         "role":"Prefeito de Ribeirão Preto",          "party":"PSD",          "uf":"SP","photo":"","wiki_title_pt":"Marcos Vieira",              "wiki_title_en":"Marcos Antonio"},
-    "Sorocaba":              {"id":"wd-Q189",       "name":"Rodrigo Manga",          "role":"Prefeito de Sorocaba",                "party":"Republicanos", "uf":"SP","photo":"","wiki_title_pt":"Rodrigo Manga",              "wiki_title_en":"Rodrigo Manga"},
-    # MG
-    "Belo Horizonte":        {"id":"wd-Q10308756",  "name":"Fuad Noman",             "role":"Prefeito de Belo Horizonte",          "party":"PSD",          "uf":"MG","photo":"","wiki_title_pt":"Fuad Noman",                "wiki_title_en":"Fuad Noman"},
-    "Contagem":              {"id":"wd-Q181836",    "name":"Marília Campos",         "role":"Prefeita de Contagem",                "party":"PT",           "uf":"MG","photo":"","wiki_title_pt":"Marília Campos",             "wiki_title_en":"Marília Campos"},
-    "Uberlândia":            {"id":"wd-Q182479",    "name":"Sérgio Rezende",         "role":"Prefeito de Uberlândia",              "party":"PSD",          "uf":"MG","photo":"","wiki_title_pt":"Sérgio Rezende",             "wiki_title_en":"Sérgio Rezende"},
-    # BA
-    "Salvador":              {"id":"wd-Q10285716",  "name":"Bruno Reis",             "role":"Prefeito de Salvador",                "party":"União Brasil", "uf":"BA","photo":"","wiki_title_pt":"Bruno Reis (político)",       "wiki_title_en":"Bruno Reis"},
-    "Feira de Santana":      {"id":"wd-Q183400",    "name":"Zé Ronaldo",             "role":"Prefeito de Feira de Santana",        "party":"União Brasil", "uf":"BA","photo":"","wiki_title_pt":"José Ronaldo (Feira de Santana)", "wiki_title_en":"José Ronaldo"},
-    # RS
-    "Porto Alegre":          {"id":"wd-Q10312060",  "name":"Sebastião Melo",         "role":"Prefeito de Porto Alegre",            "party":"MDB",          "uf":"RS","photo":"","wiki_title_pt":"Sebastião Melo",             "wiki_title_en":"Sebastião Melo"},
-    "Caxias do Sul":         {"id":"wd-Q178905",    "name":"Adiló Didomenico",       "role":"Prefeito de Caxias do Sul",           "party":"PSDB",         "uf":"RS","photo":"","wiki_title_pt":"Adiló Didomenico",           "wiki_title_en":"Adiló Didomenico"},
-    # PR
-    "Curitiba":              {"id":"wd-Q10293629_cwb","name":"Eduardo Pimentel",     "role":"Prefeito de Curitiba",                "party":"PSD",          "uf":"PR","photo":"","wiki_title_pt":"Eduardo Pimentel (político)","wiki_title_en":"Eduardo Pimentel"},
-    "Londrina":              {"id":"wd-Q181764",    "name":"Marcelo Belinati",       "role":"Prefeito de Londrina",                "party":"PP",           "uf":"PR","photo":"","wiki_title_pt":"Marcelo Belinati",           "wiki_title_en":"Marcelo Belinati"},
-    # SC
-    "Florianópolis":         {"id":"wd-Q181317",    "name":"Topázio Neto",           "role":"Prefeito de Florianópolis",           "party":"PSD",          "uf":"SC","photo":"","wiki_title_pt":"Topázio Neto",               "wiki_title_en":"Topázio Neto"},
-    "Joinville":             {"id":"wd-Q182095",    "name":"Adriano Silva",          "role":"Prefeito de Joinville",               "party":"PSD",          "uf":"SC","photo":"","wiki_title_pt":"Adriano Silva (político)",    "wiki_title_en":"Adriano Silva"},
-    # PE
-    "Recife":                {"id":"wd-Q56421696",  "name":"João Campos",            "role":"Prefeito do Recife",                  "party":"PSB",          "uf":"PE","photo":"","wiki_title_pt":"João Campos (político)",      "wiki_title_en":"João Campos"},
-    # CE
-    "Fortaleza":             {"id":"wd-Q81898",     "name":"Evandro Leitão",         "role":"Prefeito de Fortaleza",               "party":"PT",           "uf":"CE","photo":"","wiki_title_pt":"Evandro Leitão",             "wiki_title_en":"Evandro Leitão"},
-    # AM
-    "Manaus":                {"id":"wd-Q181617",    "name":"David Almeida",          "role":"Prefeito de Manaus",                  "party":"Avante",       "uf":"AM","photo":"","wiki_title_pt":"David Almeida (político)",    "wiki_title_en":"David Almeida"},
-    # PA
-    "Belém":                 {"id":"wd-Q81922",     "name":"Igor Normando",          "role":"Prefeito de Belém",                   "party":"MDB",          "uf":"PA","photo":"","wiki_title_pt":"Igor Normando",              "wiki_title_en":"Igor Normando"},
-    # GO
-    "Goiânia":               {"id":"wd-Q82155",     "name":"Sandro Mabel",           "role":"Prefeito de Goiânia",                 "party":"União Brasil", "uf":"GO","photo":"","wiki_title_pt":"Sandro Mabel",              "wiki_title_en":"Sandro Mabel"},
-    # MA
-    "São Luís":              {"id":"wd-Q81960",     "name":"Eduardo Braide",         "role":"Prefeito de São Luís",                "party":"PSD",          "uf":"MA","photo":"","wiki_title_pt":"Eduardo Braide",             "wiki_title_en":"Eduardo Braide"},
-    # MS
-    "Campo Grande":          {"id":"wd-Q182033",    "name":"Adriane Lopes",          "role":"Prefeita de Campo Grande",            "party":"PP",           "uf":"MS","photo":"","wiki_title_pt":"Adriane Lopes",              "wiki_title_en":"Adriane Lopes"},
-    # AL
-    "Maceió":                {"id":"wd-Q82010",     "name":"João Henrique Caldas",   "role":"Prefeito de Maceió",                  "party":"PL",           "uf":"AL","photo":"","wiki_title_pt":"João Henrique Caldas",       "wiki_title_en":"João Henrique Caldas"},
-    # PI
-    "Teresina":              {"id":"wd-Q82004",     "name":"Dr. Silvio Mendes",      "role":"Prefeito de Teresina",                "party":"União Brasil", "uf":"PI","photo":"","wiki_title_pt":"Silvio Mendes",              "wiki_title_en":"Silvio Mendes"},
-    # PB
-    "João Pessoa":           {"id":"wd-Q82001",     "name":"Cícero Lucena",          "role":"Prefeito de João Pessoa",             "party":"PP",           "uf":"PB","photo":"","wiki_title_pt":"Cícero Lucena",              "wiki_title_en":"Cícero Lucena"},
-    # RN
-    "Natal":                 {"id":"wd-Q82032",     "name":"Paulinho Freire",        "role":"Prefeito de Natal",                   "party":"União Brasil", "uf":"RN","photo":"","wiki_title_pt":"Paulinho Freire",            "wiki_title_en":"Paulinho Freire"},
-    # SE
-    "Aracaju":               {"id":"wd-Q82000",     "name":"Emília Corrêa",          "role":"Prefeita de Aracaju",                 "party":"PL",           "uf":"SE","photo":"","wiki_title_pt":"Emília Corrêa",              "wiki_title_en":"Emília Corrêa"},
-    # DF
-    "Brasília":              {"id":"wd-Q10303893",  "name":"Ibaneis Rocha",          "role":"Governador do DF",                    "party":"MDB",          "uf":"DF","photo":"","wiki_title_pt":"Ibaneis Rocha",              "wiki_title_en":"Ibaneis Rocha"},
-    # ES
-    "Vitória":               {"id":"wd-Q82022",     "name":"Lorenzo Pazolini",       "role":"Prefeito de Vitória",                 "party":"Republicanos", "uf":"ES","photo":"","wiki_title_pt":"Lorenzo Pazolini",          "wiki_title_en":"Lorenzo Pazolini"},
-    # MT
-    "Cuiabá":                {"id":"wd-Q183341",    "name":"Abilio Brunini",         "role":"Prefeito de Cuiabá",                  "party":"PL",           "uf":"MT","photo":"","wiki_title_pt":"Abilio Brunini",             "wiki_title_en":"Abilio Brunini"},
-    # AP
-    "Macapá":                {"id":"wd-Q181989",    "name":"Dr. Furlan",             "role":"Prefeito de Macapá",                  "party":"MDB",          "uf":"AP","photo":"","wiki_title_pt":"Furlan (político)",          "wiki_title_en":"Furlan"},
-    # RO
-    "Porto Velho":           {"id":"wd-Q182028",    "name":"Hildon Chaves",          "role":"Prefeito de Porto Velho",             "party":"PSDB",         "uf":"RO","photo":"","wiki_title_pt":"Hildon Chaves",              "wiki_title_en":"Hildon Chaves"},
-    # RR
-    "Boa Vista":             {"id":"wd-Q181836_bvb","name":"Arthur Henrique",        "role":"Prefeito de Boa Vista",               "party":"MDB",          "uf":"RR","photo":"","wiki_title_pt":"Arthur Henrique",            "wiki_title_en":"Arthur Henrique"},
-    # TO
-    "Palmas":                {"id":"wd-Q182080",    "name":"Eduardo Siqueira Campos","role":"Prefeito de Palmas",                  "party":"Podemos",      "uf":"TO","photo":"","wiki_title_pt":"Eduardo Siqueira Campos",    "wiki_title_en":"Eduardo Siqueira Campos"},
-    # AC
-    "Rio Branco":            {"id":"wd-Q82039",     "name":"Tião Bocalom",           "role":"Prefeito de Rio Branco",              "party":"PP",           "uf":"AC","photo":"","wiki_title_pt":"Tião Bocalom",               "wiki_title_en":"Tião Bocalom"},
+    # ── RIO DE JANEIRO ──────────────────────────────────────────
+    "Rio de Janeiro":           {"id":"wd-Q3723792", "name":"Eduardo Paes", "role":"Prefeito do Rio de Janeiro", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Eduardo Paes", "wiki_title_en":"Eduardo Paes"},
+    "Niterói":                  {"id":"wd-Q16580680", "name":"Rodrigo Neves", "role":"Prefeito de Niterói", "party":"PDT", "uf":"RJ", "photo":"", "wiki_title_pt":"Rodrigo Neves", "wiki_title_en":"Rodrigo Neves"},
+    "Nova Iguaçu":              {"id":"mayor-nova-iguacu", "name":"Duarte Júnior", "role":"Prefeito de Nova Iguaçu", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Duarte Júnior", "wiki_title_en":"Duarte Júnior"},
+    "Duque de Caxias":          {"id":"mayor-duque-de-caxias", "name":"Wilson Reis", "role":"Prefeito de Duque de Caxias", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Wilson Reis", "wiki_title_en":"Wilson Reis"},
+    "São Gonçalo":              {"id":"mayor-sao-goncalo", "name":"Capitão Nelson", "role":"Prefeito de São Gonçalo", "party":"PL", "uf":"RJ", "photo":"", "wiki_title_pt":"Capitão Nelson", "wiki_title_en":"Capitão Nelson"},
+    "Petrópolis":               {"id":"mayor-petropolis", "name":"Rubens Bomtempo", "role":"Prefeito de Petrópolis", "party":"PSB", "uf":"RJ", "photo":"", "wiki_title_pt":"Rubens Bomtempo", "wiki_title_en":"Rubens Bomtempo"},
+    "Teresópolis":              {"id":"mayor-teresopolis", "name":"Vinicius Claussen", "role":"Prefeito de Teresópolis", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Vinicius Claussen", "wiki_title_en":"Vinicius Claussen"},
+    "Volta Redonda":            {"id":"mayor-volta-redonda", "name":"Neto", "role":"Prefeito de Volta Redonda", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Neto (Volta Redonda)", "wiki_title_en":"Neto"},
+    "Resende":                  {"id":"mayor-resende", "name":"Alexandre Fonseca", "role":"Prefeito de Resende", "party":"PRD", "uf":"RJ", "photo":"", "wiki_title_pt":"Alexandre Fonseca", "wiki_title_en":"Alexandre Fonseca"},
+    "Macaé":                    {"id":"mayor-macae", "name":"Dr. Welberth Rezende", "role":"Prefeito de Macaé", "party":"Podemos", "uf":"RJ", "photo":"", "wiki_title_pt":"Welberth Rezende", "wiki_title_en":"Welberth Rezende"},
+    "Campos dos Goytacazes":    {"id":"mayor-campos-dos-goytacazes", "name":"Wladimir Garotinho", "role":"Prefeito de Campos dos Goytacazes", "party":"PRD", "uf":"RJ", "photo":"", "wiki_title_pt":"Wladimir Garotinho", "wiki_title_en":"Wladimir Garotinho"},
+    "Angra dos Reis":           {"id":"mayor-angra-dos-reis", "name":"Fábio do Pastel", "role":"Prefeito de Angra dos Reis", "party":"Solidariedade", "uf":"RJ", "photo":"", "wiki_title_pt":"Fábio do Pastel", "wiki_title_en":"Fábio do Pastel"},
+    "Cabo Frio":                {"id":"mayor-cabo-frio", "name":"Renatinho Vianna", "role":"Prefeito de Cabo Frio", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Renatinho Vianna", "wiki_title_en":"Renatinho Vianna"},
+    "Barra Mansa":              {"id":"mayor-barra-mansa", "name":"Rodrigo Drable", "role":"Prefeito de Barra Mansa", "party":"AVANTE", "uf":"RJ", "photo":"", "wiki_title_pt":"Rodrigo Drable", "wiki_title_en":"Rodrigo Drable"},
+    "Itaperuna":                {"id":"mayor-itaperuna", "name":"Ontiveiro Júnior", "role":"Prefeito de Itaperuna", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Ontiveiro Júnior", "wiki_title_en":"Ontiveiro Júnior"},
+    # ── SÃO PAULO ────────────────────────────────────────────────
+    "São Paulo":                {"id":"wd-Q75920697", "name":"Ricardo Nunes", "role":"Prefeito de São Paulo", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Ricardo Nunes", "wiki_title_en":"Ricardo Nunes"},
+    "Campinas":                 {"id":"mayor-campinas", "name":"Dario Saadi", "role":"Prefeito de Campinas", "party":"Republicanos", "uf":"SP", "photo":"", "wiki_title_pt":"Dario Saadi", "wiki_title_en":"Dario Saadi"},
+    "Guarulhos":                {"id":"mayor-guarulhos", "name":"Guti", "role":"Prefeito de Guarulhos", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Gustavo Henrique Gomes", "wiki_title_en":"Guti"},
+    "Santo André":              {"id":"mayor-santo-andre", "name":"Gilvan Junior", "role":"Prefeito de Santo André", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Gilvan Junior", "wiki_title_en":"Gilvan Junior"},
+    "São Bernardo do Campo":    {"id":"mayor-sao-bernardo-do-campo", "name":"Orlando Morando", "role":"Prefeito de São Bernardo do Campo", "party":"PSDB", "uf":"SP", "photo":"", "wiki_title_pt":"Orlando Morando", "wiki_title_en":"Orlando Morando"},
+    "Osasco":                   {"id":"mayor-osasco", "name":"Rogério Lins", "role":"Prefeito de Osasco", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Rogério Lins", "wiki_title_en":"Rogério Lins"},
+    "Ribeirão Preto":           {"id":"mayor-ribeirao-preto", "name":"Marcos Antonio", "role":"Prefeito de Ribeirão Preto", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Marcos Vieira", "wiki_title_en":"Marcos Antonio"},
+    "Sorocaba":                 {"id":"mayor-sorocaba", "name":"Rodrigo Manga", "role":"Prefeito de Sorocaba", "party":"Republicanos", "uf":"SP", "photo":"", "wiki_title_pt":"Rodrigo Manga", "wiki_title_en":"Rodrigo Manga"},
+    # ── MINAS GERAIS ─────────────────────────────────────────────
+    "Belo Horizonte":           {"id":"wd-Q10308756", "name":"Fuad Noman", "role":"Prefeito de Belo Horizonte", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Fuad Noman", "wiki_title_en":"Fuad Noman"},
+    "Contagem":                 {"id":"mayor-contagem", "name":"Marília Campos", "role":"Prefeita de Contagem", "party":"PT", "uf":"MG", "photo":"", "wiki_title_pt":"Marília Campos", "wiki_title_en":"Marília Campos"},
+    "Uberlândia":               {"id":"mayor-uberlandia", "name":"Sérgio Rezende", "role":"Prefeito de Uberlândia", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Sérgio Rezende", "wiki_title_en":"Sérgio Rezende"},
+    # ── BAHIA ────────────────────────────────────────────────────
+    "Salvador":                 {"id":"wd-Q10285716", "name":"Bruno Reis", "role":"Prefeito de Salvador", "party":"União Brasil", "uf":"BA", "photo":"", "wiki_title_pt":"Bruno Reis (político)", "wiki_title_en":"Bruno Reis"},
+    "Feira de Santana":         {"id":"mayor-feira-de-santana", "name":"Zé Ronaldo", "role":"Prefeito de Feira de Santana", "party":"União Brasil", "uf":"BA", "photo":"", "wiki_title_pt":"José Ronaldo (Feira de Santana)", "wiki_title_en":"José Ronaldo"},
+    # ── RIO GRANDE DO SUL ────────────────────────────────────────
+    "Porto Alegre":             {"id":"wd-Q10312060", "name":"Sebastião Melo", "role":"Prefeito de Porto Alegre", "party":"MDB", "uf":"RS", "photo":"", "wiki_title_pt":"Sebastião Melo", "wiki_title_en":"Sebastião Melo"},
+    "Caxias do Sul":            {"id":"mayor-caxias-do-sul", "name":"Adiló Didomenico", "role":"Prefeito de Caxias do Sul", "party":"PSDB", "uf":"RS", "photo":"", "wiki_title_pt":"Adiló Didomenico", "wiki_title_en":"Adiló Didomenico"},
+    # ── PARANÁ ───────────────────────────────────────────────────
+    "Curitiba":                 {"id":"mayor-curitiba", "name":"Eduardo Pimentel", "role":"Prefeito de Curitiba", "party":"PSD", "uf":"PR", "photo":"", "wiki_title_pt":"Eduardo Pimentel (político)", "wiki_title_en":"Eduardo Pimentel"},
+    "Londrina":                 {"id":"mayor-londrina", "name":"Marcelo Belinati", "role":"Prefeito de Londrina", "party":"PP", "uf":"PR", "photo":"", "wiki_title_pt":"Marcelo Belinati", "wiki_title_en":"Marcelo Belinati"},
+    # ── SANTA CATARINA ───────────────────────────────────────────
+    "Florianópolis":            {"id":"mayor-florianopolis", "name":"Topázio Neto", "role":"Prefeito de Florianópolis", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Topázio Neto", "wiki_title_en":"Topázio Neto"},
+    "Joinville":                {"id":"mayor-joinville", "name":"Adriano Silva", "role":"Prefeito de Joinville", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Adriano Silva (político)", "wiki_title_en":"Adriano Silva"},
+    # ── PERNAMBUCO ───────────────────────────────────────────────
+    "Recife":                   {"id":"wd-Q56421696", "name":"João Campos", "role":"Prefeito do Recife", "party":"PSB", "uf":"PE", "photo":"", "wiki_title_pt":"João Campos (político)", "wiki_title_en":"João Campos"},
+    # ── CEARÁ ────────────────────────────────────────────────────
+    "Fortaleza":                {"id":"mayor-fortaleza", "name":"Evandro Leitão", "role":"Prefeito de Fortaleza", "party":"PT", "uf":"CE", "photo":"", "wiki_title_pt":"Evandro Leitão", "wiki_title_en":"Evandro Leitão"},
+    # ── AMAZONAS ─────────────────────────────────────────────────
+    "Manaus":                   {"id":"mayor-manaus", "name":"David Almeida", "role":"Prefeito de Manaus", "party":"Avante", "uf":"AM", "photo":"", "wiki_title_pt":"David Almeida (político)", "wiki_title_en":"David Almeida"},
+    # ── PARÁ ─────────────────────────────────────────────────────
+    "Belém":                    {"id":"mayor-belem", "name":"Igor Normando", "role":"Prefeito de Belém", "party":"MDB", "uf":"PA", "photo":"", "wiki_title_pt":"Igor Normando", "wiki_title_en":"Igor Normando"},
+    # ── GOIÁS ────────────────────────────────────────────────────
+    "Goiânia":                  {"id":"mayor-goiania", "name":"Sandro Mabel", "role":"Prefeito de Goiânia", "party":"União Brasil", "uf":"GO", "photo":"", "wiki_title_pt":"Sandro Mabel", "wiki_title_en":"Sandro Mabel"},
+    # ── MARANHÃO ─────────────────────────────────────────────────
+    "São Luís":                 {"id":"mayor-sao-luis", "name":"Eduardo Braide", "role":"Prefeito de São Luís", "party":"PSD", "uf":"MA", "photo":"", "wiki_title_pt":"Eduardo Braide", "wiki_title_en":"Eduardo Braide"},
+    # ── MATO GROSSO DO SUL ───────────────────────────────────────
+    "Campo Grande":             {"id":"mayor-campo-grande", "name":"Adriane Lopes", "role":"Prefeita de Campo Grande", "party":"PP", "uf":"MS", "photo":"", "wiki_title_pt":"Adriane Lopes", "wiki_title_en":"Adriane Lopes"},
+    # ── ALAGOAS ──────────────────────────────────────────────────
+    "Maceió":                   {"id":"mayor-maceio", "name":"João Henrique Caldas", "role":"Prefeito de Maceió", "party":"PL", "uf":"AL", "photo":"", "wiki_title_pt":"João Henrique Caldas", "wiki_title_en":"João Henrique Caldas"},
+    # ── PIAUÍ ────────────────────────────────────────────────────
+    "Teresina":                 {"id":"mayor-teresina", "name":"Dr. Silvio Mendes", "role":"Prefeito de Teresina", "party":"União Brasil", "uf":"PI", "photo":"", "wiki_title_pt":"Silvio Mendes", "wiki_title_en":"Silvio Mendes"},
+    # ── PARAÍBA ──────────────────────────────────────────────────
+    "João Pessoa":              {"id":"mayor-joao-pessoa", "name":"Cícero Lucena", "role":"Prefeito de João Pessoa", "party":"PP", "uf":"PB", "photo":"", "wiki_title_pt":"Cícero Lucena", "wiki_title_en":"Cícero Lucena"},
+    # ── RIO GRANDE DO NORTE ──────────────────────────────────────
+    "Natal":                    {"id":"mayor-natal", "name":"Paulinho Freire", "role":"Prefeito de Natal", "party":"União Brasil", "uf":"RN", "photo":"", "wiki_title_pt":"Paulinho Freire", "wiki_title_en":"Paulinho Freire"},
+    # ── SERGIPE ──────────────────────────────────────────────────
+    "Aracaju":                  {"id":"mayor-aracaju", "name":"Emília Corrêa", "role":"Prefeita de Aracaju", "party":"PL", "uf":"SE", "photo":"", "wiki_title_pt":"Emília Corrêa", "wiki_title_en":"Emília Corrêa"},
+    # ── DISTRITO FEDERAL ─────────────────────────────────────────
+    "Brasília":                 {"id":"wd-Q10303893", "name":"Ibaneis Rocha", "role":"Governador do DF", "party":"MDB", "uf":"DF", "photo":"", "wiki_title_pt":"Ibaneis Rocha", "wiki_title_en":"Ibaneis Rocha"},
+    # ── ESPÍRITO SANTO ───────────────────────────────────────────
+    "Vitória":                  {"id":"mayor-vitoria", "name":"Lorenzo Pazolini", "role":"Prefeito de Vitória", "party":"Republicanos", "uf":"ES", "photo":"", "wiki_title_pt":"Lorenzo Pazolini", "wiki_title_en":"Lorenzo Pazolini"},
+    # ── MATO GROSSO ──────────────────────────────────────────────
+    "Cuiabá":                   {"id":"mayor-cuiaba", "name":"Abilio Brunini", "role":"Prefeito de Cuiabá", "party":"PL", "uf":"MT", "photo":"", "wiki_title_pt":"Abilio Brunini", "wiki_title_en":"Abilio Brunini"},
+    # ── AMAPÁ ────────────────────────────────────────────────────
+    "Macapá":                   {"id":"mayor-macapa", "name":"Dr. Furlan", "role":"Prefeito de Macapá", "party":"MDB", "uf":"AP", "photo":"", "wiki_title_pt":"Furlan (político)", "wiki_title_en":"Furlan"},
+    # ── RONDÔNIA ─────────────────────────────────────────────────
+    "Porto Velho":              {"id":"mayor-porto-velho", "name":"Hildon Chaves", "role":"Prefeito de Porto Velho", "party":"PSDB", "uf":"RO", "photo":"", "wiki_title_pt":"Hildon Chaves", "wiki_title_en":"Hildon Chaves"},
+    # ── RORAIMA ──────────────────────────────────────────────────
+    "Boa Vista":                {"id":"mayor-boa-vista", "name":"Arthur Henrique", "role":"Prefeito de Boa Vista", "party":"MDB", "uf":"RR", "photo":"", "wiki_title_pt":"Arthur Henrique", "wiki_title_en":"Arthur Henrique"},
+    # ── TOCANTINS ────────────────────────────────────────────────
+    "Palmas":                   {"id":"mayor-palmas", "name":"Eduardo Siqueira Campos", "role":"Prefeito de Palmas", "party":"Podemos", "uf":"TO", "photo":"", "wiki_title_pt":"Eduardo Siqueira Campos", "wiki_title_en":"Eduardo Siqueira Campos"},
+    # ── ACRE ─────────────────────────────────────────────────────
+    "Rio Branco":               {"id":"mayor-rio-branco", "name":"Tião Bocalom", "role":"Prefeito de Rio Branco", "party":"PP", "uf":"AC", "photo":"", "wiki_title_pt":"Tião Bocalom", "wiki_title_en":"Tião Bocalom"},
 }
 
 async def enrich_with_photo(p: dict) -> dict:
