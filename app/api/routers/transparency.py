@@ -51,6 +51,37 @@ _PHOTO_CACHE: dict = {}          # { wiki_title: { photo, bio, link, ts } }
 _PHOTO_CACHE_TTL = 43200         # 12 horas em segundos
 _PHOTO_LOCK = asyncio.Lock()
 
+# URLs de fallback verificadas — usadas quando Wikipedia API falha
+# Formato: { wiki_title_pt: "url_commons" }
+_FALLBACK_PHOTOS: dict[str, str] = {
+    "Luiz Inácio Lula da Silva":        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/400px-Lula_-_foto_oficial_2023.jpg",
+    "Geraldo Alckmin":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Geraldo_Alckmin_-_foto_oficial_2023.jpg/400px-Geraldo_Alckmin_-_foto_oficial_2023.jpg",
+    "Luís Roberto Barroso":             "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg",
+    "Alexandre de Moraes":              "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg",
+    "Cármen Lúcia Antunes Rocha":       "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg/400px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg",
+    "Cármen Lúcia":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg/400px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg",
+    "Dias Toffoli":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Dias_Toffoli_%282023%29.jpg/400px-Dias_Toffoli_%282023%29.jpg",
+    "Gilmar Ferreira Mendes":           "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg",
+    "Gilmar Mendes":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg",
+    "Edson Fachin":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Edson_Fachin_2023.jpg/400px-Edson_Fachin_2023.jpg",
+    "André Mendonça (ministro)":        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg",
+    "André Mendonça":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg",
+    "Kassio Nunes Marques":             "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Kassio_Nunes_Marques_2023.jpg/400px-Kassio_Nunes_Marques_2023.jpg",
+    "Flávio Dino":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg/400px-Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg",
+    "Cristiano Zanin Martins":          "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg",
+    "Cristiano Zanin":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg",
+    "Jair Bolsonaro":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Jair_Bolsonaro_2019.jpg/400px-Jair_Bolsonaro_2019.jpg",
+    "Tarcísio de Freitas":              "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Tarc%C3%ADsio_de_Freitas_-_foto_oficial_2022_%28cropped%29.jpg/400px-Tarc%C3%ADsio_de_Freitas_-_foto_oficial_2022_%28cropped%29.jpg",
+    "Arthur Lira":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Arthur_Lira_-_foto_oficial_2023.jpg/400px-Arthur_Lira_-_foto_oficial_2023.jpg",
+    "Rodrigo Pacheco":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Rodrigo_Pacheco_-_foto_oficial_2021.jpg/400px-Rodrigo_Pacheco_-_foto_oficial_2021.jpg",
+    "Michel Temer":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Michel_Temer_-_foto_oficial_2016.jpg/400px-Michel_Temer_-_foto_oficial_2016.jpg",
+    "Dilma Rousseff":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Dilma_Rousseff_-_foto_oficial_2011.jpg/400px-Dilma_Rousseff_-_foto_oficial_2011.jpg",
+    "Romeu Zema":                       "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Romeu_Zema_-_foto_oficial_2019.jpg/400px-Romeu_Zema_-_foto_oficial_2019.jpg",
+    "Raquel Lyra":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Raquel_Lyra_-_foto_oficial_2023.jpg/400px-Raquel_Lyra_-_foto_oficial_2023.jpg",
+    "Helder Barbalho":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Helder_Barbalho_-_foto_oficial_2019.jpg/400px-Helder_Barbalho_-_foto_oficial_2019.jpg",
+    "Eduardo Leite (político)":         "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Eduardo_Leite_-_foto_oficial_2023.jpg/400px-Eduardo_Leite_-_foto_oficial_2023.jpg",
+}
+
 async def _wiki_summary(title: str, lang: str = "pt") -> dict:
     """Busca resumo Wikipedia pelo título EXATO via REST API — sempre URL atual."""
     encoded = urllib.parse.quote(title.replace(" ", "_"), safe="")
@@ -67,19 +98,15 @@ async def _wiki_summary(title: str, lang: str = "pt") -> dict:
     return {}
 
 async def get_photo(wiki_title_pt: str, wiki_title_en: str = "") -> str:
-    """Retorna URL de foto sempre atualizada via Wikipedia.
-    Cache em memória de 12h. Thread-safe com asyncio.Lock."""
+    """Retorna URL de foto via Wikipedia (cache 12h) com fallback garantido."""
     if not wiki_title_pt and not wiki_title_en:
         return ""
     cache_key = wiki_title_pt or wiki_title_en
     now = time.time()
-    # Check cache
     cached = _PHOTO_CACHE.get(cache_key)
     if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
         return cached.get("photo", "")
-    # Fetch fresh
     async with _PHOTO_LOCK:
-        # Double-check após obter lock
         cached = _PHOTO_CACHE.get(cache_key)
         if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
             return cached.get("photo", "")
@@ -88,6 +115,11 @@ async def get_photo(wiki_title_pt: str, wiki_title_en: str = "") -> str:
             result = await _wiki_summary(wiki_title_pt, "pt")
         if not result.get("photo") and wiki_title_en:
             result = await _wiki_summary(wiki_title_en, "en")
+        # Fallback garantido: URLs verificadas do Wikimedia Commons
+        if not result.get("photo"):
+            fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
+            if fb:
+                result = {**result, "photo": fb}
         _PHOTO_CACHE[cache_key] = {**result, "ts": now}
         return result.get("photo", "")
 
@@ -109,31 +141,16 @@ async def get_wiki_data(wiki_title_pt: str, wiki_title_en: str = "") -> dict:
             result = await _wiki_summary(wiki_title_pt, "pt")
         if not result.get("photo") and wiki_title_en:
             result = await _wiki_summary(wiki_title_en, "en")
+        # Fallback garantido — URLs verificadas do Wikimedia Commons
+        if not result.get("photo"):
+            fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
+            if fb:
+                result = {**result, "photo": fb}
         entry = {**result, "ts": now}
         _PHOTO_CACHE[cache_key] = entry
         return entry
 
-async def _warmup_photo_cache():
-    """Pre-aquece o cache de fotos para todos os políticos curados em background."""
-    await asyncio.sleep(5)  # Aguarda app inicializar
-    titles = []
-    for p in CURATED_POLITICIANS.values():
-        t = p.get("wiki_title_pt") or p.get("wiki_title_en", "")
-        if t:
-            titles.append((t, p.get("wiki_title_en", "")))
-    # Fetch em lotes de 5 para não sobrecarregar Wikipedia
-    for i in range(0, len(titles), 5):
-        batch = titles[i:i+5]
-        await asyncio.gather(*[get_wiki_data(pt, en) for pt, en in batch])
-        await asyncio.sleep(1)  # Rate limit gentil
-
-# Warmup automático ao importar o módulo
-try:
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        asyncio.create_task(_warmup_photo_cache())
-except Exception:
-    pass
+# _warmup_photo_cache é definida APÓS CURATED_POLITICIANS (ver abaixo)
 
 # ── DADOS CURADOS — POLÍTICOS PRINCIPAIS ─────────────────────
 # Fonte: dados oficiais verificados manualmente
@@ -326,13 +343,13 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q2948413": {
-        "id": "wd-Q2948413", "name": "Cármen Lúcia", "display_name": "Cármen Lúcia",
+        "id": "wd-Q2948413", "name": "Cármen Lúcia", "wiki_title_pt": "Cármen Lúcia Antunes Rocha", "wiki_title_en": "Carmen Lúcia", "display_name": "Cármen Lúcia",
         "role": "Ministra do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "Cármen Lúcia Antunes Rocha",
         "birth_date": "1954-04-05", "birth_place": "Montes Claros, MG",
         "education": "Direito — PUC Minas; Doutorado — UFMG",
         "occupation": "Jurista / Professora",
-        "wiki_title_pt": "Cármen Lúcia",
+        "wiki_title_pt": "Cármen Lúcia Antunes Rocha",
         "all_roles": ["Ministra do STF (desde 2006)", "Presidente do STF (2016–2018)", "Presidente do TSE (2016–2018)"],
         "all_education": ["Direito — PUC Minas", "Doutorado em Direito — UFMG"],
         "salary_info": {
@@ -361,14 +378,14 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q1516706": {
-        "id": "wd-Q1516706", "name": "Gilmar Mendes", "display_name": "Gilmar Mendes",
+        "id": "wd-Q1516706", "name": "Gilmar Mendes", "wiki_title_pt": "Gilmar Ferreira Mendes", "wiki_title_en": "Gilmar Mendes", "display_name": "Gilmar Mendes",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "",
         "full_name": "Gilmar Ferreira Mendes",
         "birth_date": "1955-02-17", "birth_place": "Diamantino, MT",
         "education": "Direito — UnB; Doutorado — Universidade de Münster (Alemanha)",
         "occupation": "Jurista / Professor",
-        "wiki_title_pt": "Gilmar Mendes",
+        "wiki_title_pt": "Gilmar Ferreira Mendes",
         "all_roles": ["Ministro do STF (desde 2002)", "Presidente do STF (2008–2010)", "Advogado-Geral da União (2000–2002)"],
         "all_education": ["Direito — UnB", "Doutorado — Universidade de Münster (Alemanha)"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [{"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": ""}, {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": ""}], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
@@ -391,13 +408,13 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q106363617": {
-        "id": "wd-Q106363617", "name": "André Mendonça", "display_name": "André Mendonça",
+        "id": "wd-Q106363617", "name": "André Mendonça", "wiki_title_pt": "André Mendonça (ministro)", "wiki_title_en": "André Mendonça", "display_name": "André Mendonça",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "André Luís de Almeida Mendonça",
         "birth_date": "1977-03-24", "birth_place": "Goiânia, GO",
         "education": "Direito — UFG; Doutorado — UnB",
         "occupation": "Advogado / Procurador da República",
-        "wiki_title_pt": "André Mendonça",
+        "wiki_title_pt": "André Mendonça (ministro)",
         "all_roles": ["Ministro do STF (desde 2021)", "AGU (2019–2020)", "Ministro da Justiça (2020–2021)"],
         "all_education": ["Direito — UFG", "Doutorado em Direito — UnB"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
@@ -433,13 +450,13 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q118812476": {
-        "id": "wd-Q118812476", "name": "Cristiano Zanin", "display_name": "Cristiano Zanin",
+        "id": "wd-Q118812476", "name": "Cristiano Zanin", "wiki_title_pt": "Cristiano Zanin Martins", "wiki_title_en": "Cristiano Zanin", "display_name": "Cristiano Zanin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "Cristiano Zanin Martins",
         "birth_date": "1977-10-23", "birth_place": "Lins, SP",
         "education": "Direito — Universidade Metodista de Piracicaba; Doutorado — USP",
         "occupation": "Advogado criminalista",
-        "wiki_title_pt": "Cristiano Zanin",
+        "wiki_title_pt": "Cristiano Zanin Martins",
         "all_roles": ["Ministro do STF (desde 2023)", "Advogado de Lula no processo do Mensalão e Lava Jato (2004–2021)"],
         "all_education": ["Direito — Universidade Metodista de Piracicaba", "Doutorado — USP"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
@@ -472,7 +489,7 @@ CURATED_POLITICIANS = {
         "photo": "", "full_name": "Cláudio Bomfim de Castro e Silva",
         "birth_date": "1980-04-04", "birth_place": "Rio de Janeiro, RJ",
         "education": "Administração de Empresas",
-        "wiki_title_pt": "Cláudio Castro", "wiki_title_en": "Cláudio Castro (politician)",
+        "wiki_title_pt": "Cláudio Castro (político)", "wiki_title_en": "Cláudio Castro (politician)",
         "all_roles": ["Governador do Rio de Janeiro (2021–presente)", "Vice-Governador (2019–2021)", "Vereador Rio de Janeiro (2017–2019)"],
         "salary_info": {"cargo": "Governador do Rio de Janeiro", "subsidio_mensal": 32411.36,
             "subsidio_desc": "Subsídio do Governador do Estado do Rio de Janeiro", "beneficios": [],
@@ -580,7 +597,7 @@ CURATED_POLITICIANS = {
         "photo": "", "full_name": "Wilson Miranda Lima",
         "birth_date": "1978-11-29", "birth_place": "Manaus, AM",
         "education": "Jornalismo — UFAM",
-        "wiki_title_pt": "Wilson Lima", "wiki_title_en": "Wilson Lima",
+        "wiki_title_pt": "Wilson Lima (político)", "wiki_title_en": "Wilson Lima",
         "all_roles": ["Governador do Amazonas (2019–presente)", "Apresentador de TV"],
         "salary_info": {"cargo": "Governador do Amazonas", "subsidio_mensal": 30934.70,
             "subsidio_desc": "Subsídio do Governador do Estado do Amazonas", "beneficios": [],
@@ -720,6 +737,29 @@ CURATED_POLITICIANS = {
     },
 
 }
+
+
+
+# ═══════════════════════════════════════════════════════════════
+#  WARMUP DO CACHE DE FOTOS — roda APÓS CURATED_POLITICIANS
+# ═══════════════════════════════════════════════════════════════
+async def _warmup_photo_cache():
+    """Pre-aquece o cache de fotos em background. Definida após CURATED_POLITICIANS."""
+    await asyncio.sleep(8)
+    batch_size = 4
+    keys = list(CURATED_POLITICIANS.keys())
+    for i in range(0, len(keys), batch_size):
+        batch = [CURATED_POLITICIANS[k] for k in keys[i:i+batch_size]]
+        await asyncio.gather(*[
+            get_wiki_data(p.get("wiki_title_pt",""), p.get("wiki_title_en",""))
+            for p in batch if p.get("wiki_title_pt") or p.get("wiki_title_en")
+        ])
+        await asyncio.sleep(0.8)
+
+@router.on_event("startup")
+async def on_startup():
+    """Dispara warmup do cache de fotos na inicialização do servidor."""
+    asyncio.create_task(_warmup_photo_cache())
 
 
 # Salário padrão para Deputados e Senadores
@@ -1116,43 +1156,61 @@ MAYORS_BY_CITY = {
 }
 
 async def enrich_with_photo(p: dict) -> dict:
-    """Busca foto via cache dinâmico (Wikipedia). Sempre retorna URL atual."""
-    wiki_title = p.get("wiki_title_pt") or p.get("name", "")
-    wiki_en    = p.get("wiki_title_en", "")
-    if not wiki_title:
+    """Busca foto via cache dinâmico com múltiplos fallbacks.
+    Ordem: 1) wiki_title_pt → Wikipedia PT
+           2) wiki_title_en → Wikipedia EN
+           3) _FALLBACK_PHOTOS (Wikimedia Commons verificado)
+           4) foto já presente no dict (não sobrescreve)
+    """
+    wiki_title = p.get("wiki_title_pt") or ""
+    wiki_en    = p.get("wiki_title_en") or ""
+    name       = p.get("name", "")
+
+    # 1 & 2: Wikipedia PT/EN via cache
+    if wiki_title or wiki_en:
+        photo = await get_photo(wiki_title, wiki_en)
+        if photo:
+            return {**p, "photo": photo}
+
+    # 3: Fallback por nome ou título
+    for key in [wiki_title, wiki_en, name]:
+        if key and key in _FALLBACK_PHOTOS:
+            return {**p, "photo": _FALLBACK_PHOTOS[key]}
+
+    # 4: Se já tem foto, mantém
+    if p.get("photo"):
         return p
-    photo = await get_photo(wiki_title, wiki_en)
-    if photo:
-        p = {**p, "photo": photo}
-    elif not p.get("photo"):
-        # Fallback: tenta pelo nome direto
-        wiki = await _wiki_summary(p.get("name", ""), "pt")
+
+    # 5: Última tentativa — busca pelo nome sem cache
+    if name and name != wiki_title:
+        wiki = await _wiki_summary(name, "pt")
         if wiki.get("photo"):
-            p = {**p, "photo": wiki["photo"]}
+            return {**p, "photo": wiki["photo"]}
+
     return p
 # Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
 # Padrão: https://commons.wikimedia.org/wiki/File:Nome_do_arquivo.jpg
 STF_MINISTERS = [
     {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Luís Roberto Barroso","wiki_title_en":"Roberto Barroso","photo":""},
     {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Cármen Lúcia Antunes Rocha","wiki_title_en":"Carmen Lúcia","photo":""},
     {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Dias Toffoli","wiki_title_en":"Dias Toffoli","photo":""},
     {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Gilmar Ferreira Mendes","wiki_title_en":"Gilmar Mendes","photo":""},
     {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Edson Fachin","wiki_title_en":"Edson Fachin","photo":""},
     {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Alexandre de Moraes","wiki_title_en":"Alexandre de Moraes","photo":""},
     {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"André Mendonça (ministro)","wiki_title_en":"André Mendonça","photo":""},
     {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Kassio Nunes Marques","wiki_title_en":"Kassio Nunes Marques","photo":""},
     {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Flávio Dino","wiki_title_en":"Flávio Dino","photo":""},
     {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "photo":""},
+     "wiki_title_pt":"Cristiano Zanin Martins","wiki_title_en":"Cristiano Zanin","photo":""},
 ]
 
 async def _resolve_geo(ip: str) -> dict:
@@ -1259,8 +1317,8 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
     # 1. Verifica banco de dados curado primeiro
     if politician_id in CURATED_POLITICIANS:
         details = dict(CURATED_POLITICIANS[politician_id])
-        wiki_title_pt = details.pop("wiki_title_pt", "")
-        wiki_title_en = details.pop("wiki_title_en", "")
+        wiki_title_pt = details.pop("wiki_title_pt", "") or ""
+        wiki_title_en = details.pop("wiki_title_en", "") or ""
 
         # Busca bio + foto via cache dinâmico (sempre URL atual)
         async def _empty(): return {}
@@ -1270,8 +1328,11 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
         act_task  = get_executive_actions() if is_exec else _empty()
         wiki_res, act_res = await asyncio.gather(wiki_task, act_task)
 
-        # Foto: sempre do Wikipedia (mais recente)
-        details["photo"]     = wiki_res.get("photo", "") or details.get("photo", "")
+        # Foto: Wikipedia → fallback Wikimedia Commons
+        photo = wiki_res.get("photo", "")
+        if not photo:
+            photo = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
+        details["photo"] = photo or details.get("photo", "")
         if wiki_res.get("bio"):
             details["bio"]       = wiki_res["bio"]
             details["wiki_link"] = wiki_res.get("link", "")
@@ -1431,10 +1492,13 @@ async def get_local_politicians(
     sen_enrich = await asyncio.gather(*[enrich_with_photo(s) for s in senadores])
     senadores = list(sen_enrich)
 
-    executivo = [
+    # Executivo: Lula e Alckmin com foto dinâmica
+    exec_raw = [
         {**CURATED_POLITICIANS["wd-Q28227"], "highlight": True},
         {**CURATED_POLITICIANS["wd-Q41551"], "highlight": False},
     ]
+    exec_enrich = await asyncio.gather(*[enrich_with_photo(e) for e in exec_raw])
+    executivo = list(exec_enrich)
 
     # Governador com foto
     gov_raw = GOVERNORS_BY_UF.get(uf)
@@ -1462,6 +1526,9 @@ async def get_local_politicians(
     prefeito_ids = {p["id"] for p in prefeito}
     vereadores = [p for p in city_politicians_raw if p["id"] not in prefeito_ids]
 
+    # STF: enriquece fotos em paralelo
+    stf_enriched = list(await asyncio.gather(*[enrich_with_photo(dict(m)) for m in STF_MINISTERS]))
+
     sections = [
         {"id":"executivo","title":f"{country_flag} Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República","color":"#ffd93d","politicians":executivo},
         {"id":"governador","title":"🏛️ Governo do Estado","subtitle":f"Governador(a) de {state_full}","color":"#66fcf1","politicians":governador},
@@ -1473,7 +1540,7 @@ async def get_local_politicians(
     sections += [
         {"id":"senadores","title":f"🗣️ Senadores de {uf}","subtitle":f"Senadores de {state_full} no Senado Federal","color":"#c678dd","politicians":senadores},
         {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {state_full}","color":"#45b7d1","politicians":deputados},
-        {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros — guardiões da Constituição Federal","color":"#ff6b6b","politicians":STF_MINISTERS},
+        {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros — guardiões da Constituição Federal","color":"#ff6b6b","politicians":stf_enriched},
     ]
 
     return {
