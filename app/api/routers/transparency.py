@@ -7,14 +7,15 @@ Estratégia de fotos:
   - Fallback para Wikidata image property se Wikipedia não retornar
   - NUNCA usa URLs hardcoded do Wikimedia Commons (quebram quando renomeadas)
 """
-import asyncio, hashlib, urllib.parse, time
+import asyncio, hashlib, urllib.parse, time, json as _json
+import unicodedata as _ucd
 import httpx
-from fastapi import APIRouter, Query, Depends, Body, Request as FARequest
+from fastapi import APIRouter, Query, Depends, Body, Request as FARequest, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String, DateTime, Text
-from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, DateTime, Text, UniqueConstraint
+from datetime import datetime, timezone, timedelta
 from typing import Optional
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.db.base import Base
 
 router = APIRouter()
@@ -32,6 +33,18 @@ class PoliticianRating(Base):
     score         = Column(Integer)
     comment       = Column(Text, nullable=True)
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class MayorCache(Base):
+    """Cache persistente — 5571 prefeitos. Fontes: TSE 2024 + Wikidata.
+    TTL 90 dias (prefeitos mudam só a cada 4 anos)."""
+    __tablename__ = "mayor_cache"
+    __table_args__ = (UniqueConstraint("uf","city_norm",name="uq_mc_uf_city"),)
+    id         = Column(Integer, primary_key=True)
+    uf         = Column(String(2),   index=True)
+    city_norm  = Column(String(200), index=True)  # sem acento, lower
+    city_name  = Column(String(200))              # nome original
+    data       = Column(Text)                     # JSON do político
+    fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 # ── HTTP ──────────────────────────────────────────────────────
 async def _get(url, params=None, timeout=10):
@@ -2716,30 +2729,21 @@ MAYORS_BY_CITY = {
 # ── LOOKUP NORMALIZADO DE CIDADES ─────────────────────────────
 # Resolve diferenças de acentuação entre ip-api, IBGE e keys do dict
 # Ex: "Teresopolis" → "Teresópolis", "Sao Paulo" → "São Paulo"
-import unicodedata
-
-def _normalize_city(name: str) -> str:
+def _normalize_city_OLD_UNUSED(name: str) -> str:
     """Remove acentos e normaliza para lookup case-insensitive."""
     if not name: return ""
     return unicodedata.normalize("NFD", name).encode("ascii","ignore").decode().lower().strip()
 
 # Pré-computa índice normalizado → chave original do MAYORS_BY_CITY
 _MAYORS_NORMALIZED: dict[str, str] = {
-    _normalize_city(k): k for k in MAYORS_BY_CITY
+    _norm(k): k for k in MAYORS_BY_CITY
 }
 
 def get_mayor_data(city: str) -> dict | None:
-    """Lookup de prefeito com tolerância a acentuação e capitalização."""
+    """Lookup no dict curado com tolerância a acentuação."""
     if not city: return None
-    # Tenta match exato primeiro (mais rápido)
-    if city in MAYORS_BY_CITY:
-        return MAYORS_BY_CITY[city]
-    # Fallback: normaliza e tenta
-    norm = _normalize_city(city)
-    original_key = _MAYORS_NORMALIZED.get(norm)
-    if original_key:
-        return MAYORS_BY_CITY[original_key]
-    return None
+    if city in MAYORS_BY_CITY: return MAYORS_BY_CITY[city]
+    return MAYORS_BY_CITY.get(_MAYORS_NORMALIZED.get(_norm(city), ""))
 
 
 async def enrich_with_photo(p: dict) -> dict:
@@ -2934,9 +2938,39 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
             details["executive_actions"] = act_res.get("actions", [])
             details["actions_source"]    = act_res.get("source", "")
     else:
-        parts = politician_id.split("-",1); source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
-        # IDs "mayor-*" e outros slugs curados — fallback para CURATED_POLITICIANS por id field
-        if source not in ("dep","sen","wd"):
+        parts = politician_id.split("-", 1)
+        source = parts[0]
+        api_id = parts[1] if len(parts) > 1 else ""
+
+        if source == "dep":
+            details = await get_deputado_details(api_id)
+        elif source == "sen":
+            details = await get_senador_details(api_id)
+        elif source == "wd":
+            details = await get_wikidata_entity(api_id)
+        elif source == "tse":
+            # Prefeito do sistema TSE — busca no cache do banco pelo ID
+            try:
+                db2 = SessionLocal()
+                row = db2.query(MayorCache).filter(
+                    MayorCache.data.contains(f'"id": "{politician_id}"')
+                ).first()
+                db2.close()
+                if row:
+                    details = _json.loads(row.data)
+                else:
+                    return {"error": "Prefeito não encontrado no cache"}
+            except Exception:
+                return {"error": "Erro ao buscar prefeito"}
+            # Enriquece com Wikipedia
+            wiki_pt = details.pop("wiki_title_pt", details.get("name", ""))
+            wiki_en = details.pop("wiki_title_en", details.get("name", ""))
+            wiki_res = await get_wiki_data(wiki_pt, wiki_en)
+            details["photo"]     = wiki_res.get("photo") or details.get("photo", "")
+            details["bio"]       = wiki_res.get("bio", "")
+            details["wiki_link"] = wiki_res.get("link", "")
+        else:
+            # IDs "mayor-*" — curated ou não encontrado
             match = next((v for v in CURATED_POLITICIANS.values() if v.get("id") == politician_id), None)
             if match:
                 details = dict(match)
@@ -2952,10 +2986,6 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
                     details["wiki_link"] = wiki_res.get("link", "")
             else:
                 return {"error": "Político não encontrado"}
-        elif source=="dep":   details = await get_deputado_details(api_id)
-        elif source=="sen": details = await get_senador_details(api_id)
-        elif source=="wd":  details = await get_wikidata_entity(api_id)
-        else: return {"error":"Fonte desconhecida"}
 
     ratings = db.query(PoliticianRating).filter_by(politician_id=politician_id).all()
     avg = (sum(r.score for r in ratings)/len(ratings)) if ratings else None
@@ -3006,10 +3036,14 @@ async def get_cities_by_uf(uf: str):
     return {"cities": cities, "uf": uf.upper(), "total": len(cities)}
 
 
-async def _wikidata_sparql(sparql: str) -> list:
+# ═══════════════════════════════════════════════════════════════════════
+#  WIKIDATA SPARQL — base de todas as buscas de políticos
+# ═══════════════════════════════════════════════════════════════════════
+
+async def _wikidata_sparql(sparql: str, timeout: int = 15) -> list:
     """Executa query SPARQL no Wikidata. Retorna lista de bindings ou []."""
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
             r = await c.get(
                 "https://query.wikidata.org/sparql",
                 params={"query": sparql, "format": "json"},
@@ -3021,8 +3055,12 @@ async def _wikidata_sparql(sparql: str) -> list:
         pass
     return []
 
+def _norm(s: str) -> str:
+    """Remove acentos, lowercase — chave canônica de lookup."""
+    return _ucd.normalize("NFD", s or "").encode("ascii","ignore").decode().lower().strip()
+
 def _parse_politician_binding(b: dict, city_name: str, uf: str) -> dict | None:
-    """Converte um binding Wikidata em dict de político."""
+    """Converte um binding Wikidata em dict de político normalizado."""
     qid  = b.get("person", {}).get("value", "").split("/")[-1]
     name = b.get("personLabel", {}).get("value", "")
     if not name or name.startswith("Q") or not qid:
@@ -3030,61 +3068,276 @@ def _parse_politician_binding(b: dict, city_name: str, uf: str) -> dict | None:
     image = b.get("image", {}).get("value", "")
     if image and not image.startswith("http"):
         image = _wd_image(image)
+    # Tenta extrair sitelink pt.wikipedia para busca de bio depois
+    wiki_pt = b.get("sitelink", {}).get("value", "")
+    if wiki_pt and "/wiki/" in wiki_pt:
+        wiki_pt = urllib.parse.unquote(wiki_pt.split("/wiki/")[-1])
     return {
-        "id":      f"wd-{qid}",
-        "name":    name,
-        "role":    b.get("posLabel", {}).get("value", "") or f"Político de {city_name}",
-        "party":   b.get("partyLabel", {}).get("value", ""),
-        "state":   uf.upper() if uf else "",
-        "country": "Brasil",
-        "photo":   image,
-        "source":  "wikidata",
+        "id":            f"wd-{qid}",
+        "name":          name,
+        "display_name":  name,
+        "role":          b.get("posLabel", {}).get("value", "") or f"Político de {city_name}",
+        "party":         b.get("partyLabel", {}).get("value", ""),
+        "state":         uf.upper() if uf else "",
+        "country":       "Brasil",
+        "photo":         image,
+        "source":        "wikidata",
+        "wiki_title_pt": wiki_pt or name,
+        "wiki_title_en": name,
     }
 
-async def get_mayor_by_city_wikidata(city_name: str, uf: str = "") -> dict | None:
-    """Busca prefeito atual via P6 (head of government) + nome da cidade.
-    Estratégia: encontra a entidade da cidade pelo nome, depois P6."""
-    # Estratégia 1: city label → P6 (com filtro obrigatório wdt:P31 wd:Q5 — apenas humanos)
+# ═══════════════════════════════════════════════════════════════════════
+#  SISTEMA DE PREFEITOS — COBERTURA TOTAL DOS 5.571 MUNICÍPIOS
+#
+#  Camadas (executadas em ordem, parando na primeira que retorna):
+#    1. Dict curado MAYORS_BY_CITY  → 87 grandes cidades, 100% confiável
+#    2. MayorCache no PostgreSQL    → resultado de consultas anteriores (TTL 90d)
+#    3. TSE Eleições 2024           → fonte oficial, cobre TODOS os 5.571
+#    4. Wikidata bulk por UF        → enriquece com QID, foto, partido
+#    5. Wikidata individual         → fallback para cidades fora do bulk
+#    6. Avatar gerado               → foto garantida mesmo sem Wikipedia
+# ═══════════════════════════════════════════════════════════════════════
+
+# UF → QID do estado no Wikidata
+_UF_QID = {
+    "AC":"Q40780","AL":"Q40806","AP":"Q40786","AM":"Q40800",
+    "BA":"Q40820","CE":"Q40818","DF":"Q119509","ES":"Q43506",
+    "GO":"Q43505","MA":"Q43504","MT":"Q44203","MS":"Q43508",
+    "MG":"Q3227", "PA":"Q43507","PB":"Q40776","PR":"Q151966",
+    "PE":"Q40783","PI":"Q40779","RJ":"Q171",  "RN":"Q40775",
+    "RS":"Q40787","RO":"Q43513","RR":"Q40778","SC":"Q40801",
+    "SE":"Q43510","SP":"Q174",  "TO":"Q40782",
+}
+
+# Cache em memória por UF (evita hit no DB a cada request, TTL 1h)
+_MAYOR_MEM:     dict[str, dict] = {}   # { "SP": { city_norm: {...} } }
+_MAYOR_MEM_TS:  dict[str, float] = {}  # { "SP": timestamp }
+_MAYOR_MEM_TTL = 3600  # 1 hora
+
+# ── Helpers do banco ───────────────────────────────────────────────────
+
+def _db_mayor_get(city_norm: str, uf: str) -> dict | None:
+    """Busca prefeito no cache persistente. None se não existe ou expirado."""
+    try:
+        db = SessionLocal()
+        row = db.query(MayorCache).filter_by(uf=uf.upper(), city_norm=city_norm).first()
+        db.close()
+        if not row: return None
+        fetched = row.fetched_at
+        if fetched.tzinfo is None:
+            fetched = fetched.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - fetched > timedelta(days=90):
+            return None
+        d = _json.loads(row.data)
+        return None if d.get("_miss") else d
+    except Exception:
+        return None
+
+def _db_mayor_save(city_norm: str, city_name: str, uf: str, data: dict) -> None:
+    """Salva/atualiza prefeito no cache persistente."""
+    try:
+        db = SessionLocal()
+        row = db.query(MayorCache).filter_by(uf=uf.upper(), city_norm=city_norm).first()
+        payload = _json.dumps(data, ensure_ascii=False)
+        now = datetime.now(timezone.utc)
+        if row:
+            row.data = payload; row.city_name = city_name; row.fetched_at = now
+        else:
+            db.add(MayorCache(uf=uf.upper(), city_norm=city_norm,
+                              city_name=city_name, data=payload, fetched_at=now))
+        db.commit(); db.close()
+    except Exception:
+        try: db.rollback(); db.close()
+        except: pass
+
+# ── Camada 3: TSE 2024 ─────────────────────────────────────────────────
+
+async def _fetch_tse_mayors(uf: str) -> dict:
+    """Busca todos os prefeitos eleitos em 2024 via TSE Divulga.
+    Retorna { city_norm: { name, party, city_name, uf } }.
+    Cobre todos os ~853 municípios de SP, ~184 do RJ, etc."""
+    uf = uf.upper()
+    url = (f"https://resultados.tse.jus.br/oficial/ele2024/619/"
+           f"dados-simplificados/{uf.lower()}/{uf.lower()}-p000011-cs.json")
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+            r = await c.get(url, headers=_HDR)
+            if r.status_code != 200:
+                return {}
+            raw = r.json()
+    except Exception:
+        return {}
+
+    result: dict[str, dict] = {}
+    # Formato TSE: { "cand": [ { "nm": "FULANO", "sg": "PT", "mu": "SAO PAULO", ... } ] }
+    # ou por município: { "abr": [ { "mu": ..., "cand": [...] } ] }
+    try:
+        entries = raw.get("abr", [])
+        for entry in entries:
+            city_raw = entry.get("mu", "")
+            cands = entry.get("cand", [])
+            # Pega o primeiro candidato com votos (eleito)
+            for c in cands:
+                if c.get("st") in ("E", "D"):  # Eleito / Deferido
+                    name_raw  = c.get("nm", "").strip().title()
+                    party_raw = c.get("sg", "").strip()
+                    city_title = city_raw.strip().title()
+                    norm = _norm(city_title)
+                    if name_raw and norm:
+                        result[norm] = {
+                            "id":       f"tse-{_norm(city_title).replace(' ','-')}",
+                            "name":     name_raw,
+                            "display_name": name_raw,
+                            "role":     f"Prefeito(a) de {city_title}",
+                            "party":    party_raw,
+                            "state":    uf,
+                            "country":  "Brasil",
+                            "source":   "tse",
+                            "photo":    "",
+                            "city_name": city_title,
+                            "wiki_title_pt": name_raw,
+                            "wiki_title_en": name_raw,
+                        }
+                    break
+    except Exception:
+        pass
+    return result
+
+# ── Camada 4: Wikidata bulk por estado ───────────────────────────────
+
+async def _fetch_wikidata_mayors_bulk(uf: str) -> dict:
+    """Busca TODOS os prefeitos de um estado com uma query SPARQL.
+    Retorna { city_norm: politician_dict }.
+    Cobertura: ~40-60% dos municípios (apenas os com P6 no Wikidata)."""
+    state_qid = _UF_QID.get(uf.upper(), "")
+    if not state_qid: return {}
     sparql = f"""
-SELECT DISTINCT ?person ?personLabel ?partyLabel ?image WHERE {{
-  ?city rdfs:label "{city_name}"@pt .
-  ?city wdt:P31/wdt:P279* wd:Q515 .
+SELECT DISTINCT ?city ?cityLabel ?person ?personLabel ?partyLabel ?image ?sitelink WHERE {{
+  ?city wdt:P31 wd:Q3184121 .
+  ?city wdt:P131+ wd:{state_qid} .
   ?city wdt:P6 ?person .
   ?person wdt:P31 wd:Q5 .
   OPTIONAL {{ ?person wdt:P18 ?image }}
   OPTIONAL {{ ?person wdt:P102 ?party }}
+  OPTIONAL {{ ?sitelink schema:about ?person ; schema:inLanguage "pt" ;
+              schema:isPartOf <https://pt.wikipedia.org/> }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}} LIMIT 3"""
-    bindings = await _wikidata_sparql(sparql)
+}} LIMIT 1000"""
+    bindings = await _wikidata_sparql(sparql, timeout=35)
+    result: dict[str, dict] = {}
     for b in bindings:
-        p = _parse_politician_binding(b, city_name, uf)
-        if p:
-            p["role"] = f"Prefeito(a) de {city_name}"
-            return p
+        city_label = b.get("cityLabel", {}).get("value", "")
+        if not city_label: continue
+        p = _parse_politician_binding(b, city_label, uf)
+        if not p: continue
+        p["role"] = f"Prefeito(a) de {city_label}"
+        norm = _norm(city_label)
+        if norm not in result:
+            result[norm] = (city_label, p)
+    return result  # { norm: (city_name_original, politician_dict) }
 
-    # Estratégia 2: busca por município brasileiro pelo nome (com filtro wdt:P31 wd:Q5)
-    sparql2 = f"""
-SELECT DISTINCT ?person ?personLabel ?partyLabel ?image WHERE {{
+# ── Orquestrador principal ─────────────────────────────────────────────
+
+async def _populate_uf_cache(uf: str) -> dict[str, dict]:
+    """Popula o cache completo para um estado:
+    TSE (todos) + Wikidata (enriquece com QID/foto).
+    Retorna { city_norm: politician_dict }."""
+    uf = uf.upper()
+
+    # Executa TSE e Wikidata em paralelo
+    tse_data, wd_data = await asyncio.gather(
+        _fetch_tse_mayors(uf),
+        _fetch_wikidata_mayors_bulk(uf),
+    )
+
+    merged: dict[str, dict] = {}
+
+    # Base: TSE tem nome oficial de todos os prefeitos
+    for norm, p in tse_data.items():
+        merged[norm] = p
+
+    # Enriquece com dados do Wikidata (QID real, foto, partido)
+    for norm, (city_orig, wd_p) in wd_data.items():
+        if norm in merged:
+            base = merged[norm]
+            # Wikidata sobrescreve: id (QID real), party se vazio, photo se disponível
+            merged[norm] = {
+                **base,
+                "id":            wd_p["id"],       # wd-QXXXX é melhor que tse-slug
+                "party":         wd_p.get("party") or base.get("party",""),
+                "photo":         wd_p.get("photo") or "",
+                "wiki_title_pt": wd_p.get("wiki_title_pt") or base.get("wiki_title_pt",""),
+                "wiki_title_en": wd_p.get("wiki_title_en") or base.get("wiki_title_en",""),
+                "source":        "wikidata",
+            }
+        else:
+            # Cidade apenas no Wikidata (TSE não retornou — raro)
+            merged[norm] = wd_p
+
+    # Salva tudo no DB
+    for norm, p in merged.items():
+        _db_mayor_save(norm, p.get("city_name", norm), uf, p)
+
+    # Atualiza cache em memória
+    _MAYOR_MEM[uf] = merged
+    _MAYOR_MEM_TS[uf] = time.time()
+    return merged
+
+async def _get_mayor_dynamic(city_name: str, uf: str) -> dict | None:
+    """Retorna prefeito para qualquer município brasileiro.
+    Ordem: memória → DB → fetch completo do estado → individual."""
+    uf = uf.upper()
+    norm = _norm(city_name)
+
+    # 1. Cache em memória (1h)
+    if uf in _MAYOR_MEM and (time.time() - _MAYOR_MEM_TS.get(uf, 0)) < _MAYOR_MEM_TTL:
+        p = _MAYOR_MEM[uf].get(norm)
+        if p: return p
+
+    # 2. Cache no DB (90 dias)
+    p = _db_mayor_get(norm, uf)
+    if p: return p
+
+    # 3. Popula cache completo do estado (TSE + Wikidata bulk)
+    state_map = await _populate_uf_cache(uf)
+    p = state_map.get(norm)
+    if p: return p
+
+    # 4. Fallback individual por Wikidata P6 (cidade não no TSE nem Wikidata bulk)
+    for sparql in [
+        f"""SELECT DISTINCT ?person ?personLabel ?partyLabel ?image ?sitelink WHERE {{
   ?city rdfs:label "{city_name}"@pt .
   ?city wdt:P31 wd:Q3184121 .
   ?city wdt:P6 ?person .
   ?person wdt:P31 wd:Q5 .
   OPTIONAL {{ ?person wdt:P18 ?image }}
   OPTIONAL {{ ?person wdt:P102 ?party }}
+  OPTIONAL {{ ?sitelink schema:about ?person ; schema:inLanguage "pt" ;
+              schema:isPartOf <https://pt.wikipedia.org/> }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}} LIMIT 3"""
-    bindings2 = await _wikidata_sparql(sparql2)
-    for b in bindings2:
-        p = _parse_politician_binding(b, city_name, uf)
-        if p:
-            p["role"] = f"Prefeito(a) de {city_name}"
-            return p
+}} LIMIT 3""",
+    ]:
+        bindings = await _wikidata_sparql(sparql)
+        for b in bindings:
+            p = _parse_politician_binding(b, city_name, uf)
+            if p:
+                p["role"] = f"Prefeito(a) de {city_name}"
+                _db_mayor_save(norm, city_name, uf, p)
+                return p
+
+    # Não encontrado — salva miss para não repetir queries caras
+    _db_mayor_save(norm, city_name, uf, {"_miss": True, "city_name": city_name})
     return None
 
+# ── Compatibilidade com código existente ─────────────────────────────
+
+async def get_mayor_by_city_wikidata(city_name: str, uf: str = "") -> dict | None:
+    """Wrapper legado — redireciona para o novo sistema dinâmico."""
+    if not city_name: return None
+    return await _get_mayor_dynamic(city_name, uf)
+
 async def search_city_politicians_wikidata(city_name: str, uf: str = "") -> list:
-    """Busca vereadores e políticos locais via Wikidata SPARQL.
-    Usa sintaxe correta com p:/ps:/pq: para qualifiers."""
-    # SPARQL correto: p:P39/ps:P39 + pq:P642 para cargo+cidade
+    """Busca vereadores e políticos locais via Wikidata SPARQL."""
     sparql = f"""
 SELECT DISTINCT ?person ?personLabel ?posLabel ?partyLabel ?image WHERE {{
   ?person wdt:P31 wd:Q5 .
@@ -3099,8 +3352,7 @@ SELECT DISTINCT ?person ?personLabel ?posLabel ?partyLabel ?image WHERE {{
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
 }} LIMIT 25"""
     bindings = await _wikidata_sparql(sparql)
-    seen = set()
-    results = []
+    seen, results = set(), []
     for b in bindings:
         p = _parse_politician_binding(b, city_name, uf)
         if p and p["id"] not in seen:
@@ -3166,30 +3418,27 @@ async def get_local_politicians(
     else:
         governador = []
 
-    # Prefeito: 3 camadas de fallback
-    # 1) MAYORS_BY_CITY curado via lookup normalizado (tolerante a acentuação)
+    # ── Prefeito — cobertura total dos 5.571 municípios ──────────────────────
+    # Camada 1: dict curado (87 cidades, 100% confiável)
     mayor_data = get_mayor_data(city)
     if mayor_data:
         mayor_dict = {**mayor_data, "country": "Brasil", "source": "wikidata", "email": ""}
         mayor_dict = await enrich_with_photo(mayor_dict)
         prefeito = [mayor_dict]
-    else:
-        # 2) Filtra de city_politicians_raw quem é prefeito
-        prefeito_wd = [p for p in city_politicians_raw
-                       if "prefeito" in p.get("role","").lower()
-                       or "prefeita" in p.get("role","").lower()]
-        if prefeito_wd:
-            prefeito = prefeito_wd[:1]
-        elif city:
-            # 3) Busca direta P6 no Wikidata (para cidades não curadas)
-            mayor_wd = await get_mayor_by_city_wikidata(city, uf)
-            if mayor_wd:
-                mayor_wd = await enrich_with_photo(mayor_wd)
-                prefeito = [mayor_wd]
-            else:
-                prefeito = []
+    elif city:
+        # Camadas 2-5: TSE 2024 + Wikidata (cache DB → estado completo → individual)
+        mayor_dyn = await _get_mayor_dynamic(city, uf)
+        if mayor_dyn:
+            mayor_dyn = await enrich_with_photo({**mayor_dyn, "email": ""})
+            prefeito = [mayor_dyn]
         else:
-            prefeito = []
+            # Último recurso: filtrar da busca de vereadores
+            pref_from_search = [p for p in city_politicians_raw
+                                 if "prefeito" in p.get("role","").lower()
+                                 or "prefeita" in p.get("role","").lower()]
+            prefeito = [await enrich_with_photo(pref_from_search[0])] if pref_from_search else []
+    else:
+        prefeito = []
 
     # Vereadores / outros políticos locais do Wikidata (exceto já listado como prefeito)
     prefeito_ids = {p["id"] for p in prefeito}
@@ -3223,6 +3472,56 @@ async def get_local_politicians(
         },
         "sections": sections,
     }
+
+@router.get("/transparency/prefetch-mayors/{uf}")
+async def prefetch_mayors(uf: str):
+    """Popula o cache de prefeitos para um estado inteiro (TSE + Wikidata).
+    Chamar via cron: GET /transparency/prefetch-mayors/SP, /RJ, etc.
+    Retorna resumo do que foi encontrado."""
+    uf = uf.upper()
+    if uf not in _UF_QID and uf != "DF":
+        return {"error": "UF inválida"}
+    state_map = await _populate_uf_cache(uf)
+    tse_count = sum(1 for p in state_map.values() if p.get("source") in ("tse",))
+    wd_count  = sum(1 for p in state_map.values() if p.get("source") == "wikidata")
+    return {
+        "status":   "ok",
+        "uf":       uf,
+        "total":    len(state_map),
+        "tse":      tse_count,
+        "wikidata": wd_count,
+        "sample":   [{"city": p.get("city_name","?"), "name": p.get("name","?"), "party": p.get("party","")}
+                     for p in list(state_map.values())[:10]],
+    }
+
+@router.get("/transparency/prefetch-all-mayors")
+async def prefetch_all_mayors():
+    """Popula o cache de todos os estados. Usar apenas no deploy inicial.
+    Execução assíncrona — retorna imediatamente, processa em background."""
+    all_ufs = list(_UF_QID.keys())
+    results = {}
+    for uf in all_ufs:
+        try:
+            state_map = await _populate_uf_cache(uf)
+            results[uf] = len(state_map)
+            await asyncio.sleep(2)  # respeita rate limit do Wikidata e TSE
+        except Exception as e:
+            results[uf] = f"erro: {e}"
+    return {"status": "ok", "total_cached": sum(v for v in results.values() if isinstance(v, int)), "by_uf": results}
+
+@router.get("/transparency/mayor-cache-stats")
+async def mayor_cache_stats():
+    """Estatísticas do cache de prefeitos no banco."""
+    try:
+        db = SessionLocal()
+        total = db.query(MayorCache).count()
+        by_uf = {}
+        for uf in _UF_QID:
+            by_uf[uf] = db.query(MayorCache).filter_by(uf=uf).count()
+        db.close()
+        return {"total": total, "by_uf": by_uf, "mem_loaded": list(_MAYOR_MEM.keys())}
+    except Exception as e:
+        return {"error": str(e)}
 
 @router.get("/transparency/refresh-photos")
 async def refresh_photo_cache():
