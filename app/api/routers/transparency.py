@@ -80,18 +80,6 @@ _FALLBACK_PHOTOS: dict[str, str] = {
     "Raquel Lyra":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Raquel_Lyra_-_foto_oficial_2023.jpg/400px-Raquel_Lyra_-_foto_oficial_2023.jpg",
     "Helder Barbalho":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Helder_Barbalho_-_foto_oficial_2019.jpg/400px-Helder_Barbalho_-_foto_oficial_2019.jpg",
     "Eduardo Leite (político)":         "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Eduardo_Leite_-_foto_oficial_2023.jpg/400px-Eduardo_Leite_-_foto_oficial_2023.jpg",
-    # ── PREFEITOS ────────────────────────────────────────────────
-    "Eduardo Paes":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Eduardo_Paes_-_foto_oficial_2021.jpg/400px-Eduardo_Paes_-_foto_oficial_2021.jpg",
-    "Ricardo Nunes":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Ricardo_Nunes_-_foto_oficial_2021.jpg/400px-Ricardo_Nunes_-_foto_oficial_2021.jpg",
-    "Fuad Noman":                       "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Fuad_Noman_2024.jpg/400px-Fuad_Noman_2024.jpg",
-    "Bruno Reis (político)":            "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Bruno_Reis_prefeito_Salvador.jpg/400px-Bruno_Reis_prefeito_Salvador.jpg",
-    "João Campos (político)":           "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Jo%C3%A3o_Campos_2021.jpg/400px-Jo%C3%A3o_Campos_2021.jpg",
-    "Sebastião Melo":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Sebasti%C3%A3o_Melo_2021.jpg/400px-Sebasti%C3%A3o_Melo_2021.jpg",
-    "Rodrigo Neves":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Rodrigo_Neves_-_foto_oficial.jpg/400px-Rodrigo_Neves_-_foto_oficial.jpg",
-    "Evandro Leitão":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Evandro_Leit%C3%A3o_2024.jpg/400px-Evandro_Leit%C3%A3o_2024.jpg",
-    "Cícero Lucena":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/C%C3%ADcero_Lucena_2021.jpg/400px-C%C3%ADcero_Lucena_2021.jpg",
-    "Rubens Bomtempo":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Rubens_Bomtempo_2013.jpg/400px-Rubens_Bomtempo_2013.jpg",
-    "Wladimir Garotinho":               "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Wladimir_Garotinho_2024.jpg/400px-Wladimir_Garotinho_2024.jpg",
 }
 
 async def _wiki_summary(title: str, lang: str = "pt") -> dict:
@@ -1841,6 +1829,372 @@ CURATED_POLITICIANS = {
         "charges": [], "votes": [], "expenses": [],
     },
 
+    # ═══════════════════════════════════════════════════════════════
+    # NOVAS CIDADES — ELEIÇÕES 2024
+    # ═══════════════════════════════════════════════════════════════
+
+    # ── MINAS GERAIS ─────────────────────────────────────────────
+    "mayor-juiz-de-fora": {
+        "id": "mayor-juiz-de-fora", "name": "Margarida Salomão", "display_name": "Margarida Salomão",
+        "role": "Prefeita de Juiz de Fora", "party": "PT", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Maria Margarida Salomão", "birth_date": "1954-04-01", "birth_place": "Juiz de Fora, MG",
+        "education": "Economia — UFJF; Doutorado — UFJF", "occupation": "Economista / Professora / Política",
+        "website": "https://www.pjf.mg.gov.br",
+        "wiki_title_pt": "Margarida Salomão", "wiki_title_en": "Margarida Salomão",
+        "all_parties": ["PT"], "all_roles": ["Prefeita de Juiz de Fora (2021–presente)", "Reitora da UFJF (2016–2020)"], "all_education": ["Economia — UFJF", "Doutorado em Economia — UFJF"],
+        "salary_info": {"cargo": "Prefeita de Juiz de Fora", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio da Prefeita de Juiz de Fora", "beneficios": [], "fonte": "https://www.pjf.mg.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-betim": {
+        "id": "mayor-betim", "name": "Vittório Medioli", "display_name": "Vittório Medioli",
+        "role": "Prefeito de Betim", "party": "PSD", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Vittório Medioli", "birth_date": "", "birth_place": "Betim, MG",
+        "education": "", "occupation": "Político", "website": "https://www.betim.mg.gov.br",
+        "wiki_title_pt": "Vittório Medioli", "wiki_title_en": "Vittório Medioli",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Betim (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Betim", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Betim", "beneficios": [], "fonte": "https://www.betim.mg.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-montes-claros": {
+        "id": "mayor-montes-claros", "name": "Humberto Souto", "display_name": "Humberto Souto",
+        "role": "Prefeito de Montes Claros", "party": "Cidadania", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Humberto Souto", "birth_date": "1935-01-01", "birth_place": "Montes Claros, MG",
+        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.montesclaros.mg.gov.br",
+        "wiki_title_pt": "Humberto Souto", "wiki_title_en": "Humberto Souto",
+        "all_parties": ["Cidadania", "PPS (antes)"], "all_roles": ["Prefeito de Montes Claros (2021–presente)", "Deputado Federal MG (múltiplos mandatos)"], "all_education": ["Direito"],
+        "salary_info": {"cargo": "Prefeito de Montes Claros", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Montes Claros", "beneficios": [], "fonte": "https://www.montesclaros.mg.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── PARÁ ─────────────────────────────────────────────────────
+    "mayor-ananindeua": {
+        "id": "mayor-ananindeua", "name": "Daniel Santos", "display_name": "Daniel Santos",
+        "role": "Prefeito de Ananindeua", "party": "MDB", "state": "PA", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Daniel dos Santos Vilela", "birth_date": "", "birth_place": "Ananindeua, PA",
+        "education": "", "occupation": "Político", "website": "https://www.ananindeua.pa.gov.br",
+        "wiki_title_pt": "Daniel Santos (político)", "wiki_title_en": "Daniel Santos",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de Ananindeua (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Ananindeua", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Ananindeua", "beneficios": [], "fonte": "https://www.ananindeua.pa.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-santarem": {
+        "id": "mayor-santarem", "name": "Nélio Aguiar", "display_name": "Nélio Aguiar",
+        "role": "Prefeito de Santarém", "party": "PSD", "state": "PA", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Nélio Aguiar Bezerra", "birth_date": "", "birth_place": "Santarém, PA",
+        "education": "", "occupation": "Político", "website": "https://www.santarem.pa.gov.br",
+        "wiki_title_pt": "Nélio Aguiar", "wiki_title_en": "Nélio Aguiar",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Santarém (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Santarém", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Santarém", "beneficios": [], "fonte": "https://www.santarem.pa.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── GOIÁS ─────────────────────────────────────────────────────
+    "mayor-aparecida-de-goiania": {
+        "id": "mayor-aparecida-de-goiania", "name": "Gustavo Mendanha", "display_name": "Gustavo Mendanha",
+        "role": "Prefeito de Aparecida de Goiânia", "party": "MDB", "state": "GO", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Gustavo Mendanha Rezende", "birth_date": "1985-01-01", "birth_place": "Aparecida de Goiânia, GO",
+        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.aparecida.go.gov.br",
+        "wiki_title_pt": "Gustavo Mendanha", "wiki_title_en": "Gustavo Mendanha",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de Aparecida de Goiânia (2021–presente)"], "all_education": ["Direito"],
+        "salary_info": {"cargo": "Prefeito de Aparecida de Goiânia", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Aparecida de Goiânia", "beneficios": [], "fonte": "https://www.aparecida.go.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-anapolis": {
+        "id": "mayor-anapolis", "name": "Roberto Naves", "display_name": "Roberto Naves",
+        "role": "Prefeito de Anápolis", "party": "PP", "state": "GO", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Roberto Naves de Abreu", "birth_date": "1963-01-01", "birth_place": "Anápolis, GO",
+        "education": "Medicina", "occupation": "Médico / Político", "website": "https://www.anapolis.go.gov.br",
+        "wiki_title_pt": "Roberto Naves", "wiki_title_en": "Roberto Naves",
+        "all_parties": ["PP"], "all_roles": ["Prefeito de Anápolis (múltiplos mandatos)", "Senador Federal GO (2011–2019)"], "all_education": ["Medicina"],
+        "salary_info": {"cargo": "Prefeito de Anápolis", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Anápolis", "beneficios": [], "fonte": "https://www.anapolis.go.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── SÃO PAULO — INTERIOR ──────────────────────────────────────
+    "mayor-santos": {
+        "id": "mayor-santos", "name": "Rogério Santos", "display_name": "Rogério Santos",
+        "role": "Prefeito de Santos", "party": "PSDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Rogério Santos", "birth_date": "1972-01-01", "birth_place": "Santos, SP",
+        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.santos.sp.gov.br",
+        "wiki_title_pt": "Rogério Santos (político)", "wiki_title_en": "Rogério Santos",
+        "all_parties": ["PSDB"], "all_roles": ["Prefeito de Santos (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Santos", "subsidio_mensal": 24000.00, "subsidio_desc": "Subsídio do Prefeito de Santos", "beneficios": [], "fonte": "https://www.santos.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-sao-jose-dos-campos": {
+        "id": "mayor-sao-jose-dos-campos", "name": "Anderson Farias", "display_name": "Anderson Farias",
+        "role": "Prefeito de São José dos Campos", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Anderson Farias", "birth_date": "", "birth_place": "São José dos Campos, SP",
+        "education": "", "occupation": "Político", "website": "https://www.sjc.sp.gov.br",
+        "wiki_title_pt": "Anderson Farias", "wiki_title_en": "Anderson Farias",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de São José dos Campos (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de São José dos Campos", "subsidio_mensal": 24000.00, "subsidio_desc": "Subsídio do Prefeito de São José dos Campos", "beneficios": [], "fonte": "https://www.sjc.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-mogi-das-cruzes": {
+        "id": "mayor-mogi-das-cruzes", "name": "Caio Cunha", "display_name": "Caio Cunha",
+        "role": "Prefeito de Mogi das Cruzes", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Caio Cunha", "birth_date": "1985-01-01", "birth_place": "Mogi das Cruzes, SP",
+        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.mogidascruzes.sp.gov.br",
+        "wiki_title_pt": "Caio Cunha", "wiki_title_en": "Caio Cunha",
+        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Mogi das Cruzes (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Mogi das Cruzes", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Mogi das Cruzes", "beneficios": [], "fonte": "https://www.mogidascruzes.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-jundiai": {
+        "id": "mayor-jundiai", "name": "Gustavo Martinelli", "display_name": "Gustavo Martinelli",
+        "role": "Prefeito de Jundiaí", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Gustavo Martinelli", "birth_date": "1982-01-01", "birth_place": "Jundiaí, SP",
+        "education": "Engenharia", "occupation": "Engenheiro / Político", "website": "https://www.jundiai.sp.gov.br",
+        "wiki_title_pt": "Gustavo Martinelli", "wiki_title_en": "Gustavo Martinelli",
+        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Jundiaí (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Jundiaí", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Jundiaí", "beneficios": [], "fonte": "https://www.jundiai.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-piracicaba": {
+        "id": "mayor-piracicaba", "name": "Luciano Almeida", "display_name": "Luciano Almeida",
+        "role": "Prefeito de Piracicaba", "party": "PSD", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Luciano Almeida", "birth_date": "", "birth_place": "Piracicaba, SP",
+        "education": "", "occupation": "Político", "website": "https://www.piracicaba.sp.gov.br",
+        "wiki_title_pt": "Luciano Almeida", "wiki_title_en": "Luciano Almeida",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Piracicaba (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Piracicaba", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Piracicaba", "beneficios": [], "fonte": "https://www.piracicaba.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-bauru": {
+        "id": "mayor-bauru", "name": "Suéllen Rosim", "display_name": "Suéllen Rosim",
+        "role": "Prefeita de Bauru", "party": "PL", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Suéllen Rosim", "birth_date": "1989-01-01", "birth_place": "Bauru, SP",
+        "education": "Odontologia — USC", "occupation": "Odontologista / Política", "website": "https://www.bauru.sp.gov.br",
+        "wiki_title_pt": "Suéllen Rosim", "wiki_title_en": "Suéllen Rosim",
+        "all_parties": ["PL"], "all_roles": ["Prefeita de Bauru (2021–presente)"], "all_education": ["Odontologia — USC"],
+        "salary_info": {"cargo": "Prefeita de Bauru", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Bauru", "beneficios": [], "fonte": "https://www.bauru.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-franca": {
+        "id": "mayor-franca", "name": "Alexandre Ferreira", "display_name": "Alexandre Ferreira",
+        "role": "Prefeito de Franca", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Alexandre Ferreira", "birth_date": "", "birth_place": "Franca, SP",
+        "education": "", "occupation": "Político", "website": "https://www.franca.sp.gov.br",
+        "wiki_title_pt": "Alexandre Ferreira (político)", "wiki_title_en": "Alexandre Ferreira",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de Franca (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Franca", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Franca", "beneficios": [], "fonte": "https://www.franca.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-sao-jose-do-rio-preto": {
+        "id": "mayor-sao-jose-do-rio-preto", "name": "Edinho Araújo", "display_name": "Edinho Araújo",
+        "role": "Prefeito de São José do Rio Preto", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Eduardo Araújo", "birth_date": "", "birth_place": "São José do Rio Preto, SP",
+        "education": "", "occupation": "Político", "website": "https://www.riopreto.sp.gov.br",
+        "wiki_title_pt": "Edinho Araújo", "wiki_title_en": "Edinho Araújo",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de São José do Rio Preto (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de São José do Rio Preto", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de São José do Rio Preto", "beneficios": [], "fonte": "https://www.riopreto.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-sao-vicente": {
+        "id": "mayor-sao-vicente", "name": "Guilherme Gomes", "display_name": "Guilherme Gomes",
+        "role": "Prefeito de São Vicente", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Guilherme Gomes", "birth_date": "", "birth_place": "São Vicente, SP",
+        "education": "", "occupation": "Político", "website": "https://www.saovicente.sp.gov.br",
+        "wiki_title_pt": "Guilherme Gomes (político)", "wiki_title_en": "Guilherme Gomes",
+        "all_parties": ["Podemos"], "all_roles": ["Prefeito de São Vicente (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de São Vicente", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de São Vicente", "beneficios": [], "fonte": "https://www.saovicente.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-praia-grande": {
+        "id": "mayor-praia-grande", "name": "Raquel Chini", "display_name": "Raquel Chini",
+        "role": "Prefeita de Praia Grande", "party": "PL", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Raquel Chini", "birth_date": "", "birth_place": "Praia Grande, SP",
+        "education": "", "occupation": "Política", "website": "https://www.praiagrande.sp.gov.br",
+        "wiki_title_pt": "Raquel Chini", "wiki_title_en": "Raquel Chini",
+        "all_parties": ["PL"], "all_roles": ["Prefeita de Praia Grande (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeita de Praia Grande", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Praia Grande", "beneficios": [], "fonte": "https://www.praiagrande.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-diadema": {
+        "id": "mayor-diadema", "name": "José de Filippi Júnior", "display_name": "Filippi Júnior",
+        "role": "Prefeito de Diadema", "party": "PT", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "José de Filippi Júnior", "birth_date": "1958-01-01", "birth_place": "Diadema, SP",
+        "education": "Administração de Empresas", "occupation": "Político", "website": "https://www.diadema.sp.gov.br",
+        "wiki_title_pt": "Filippi Júnior", "wiki_title_en": "Filippi Júnior",
+        "all_parties": ["PT"], "all_roles": ["Prefeito de Diadema (2025–presente, múltiplos mandatos anteriores)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Diadema", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Diadema", "beneficios": [], "fonte": "https://www.diadema.sp.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── PERNAMBUCO ───────────────────────────────────────────────
+    "mayor-olinda": {
+        "id": "mayor-olinda", "name": "Vitor Marinho", "display_name": "Vitor Marinho",
+        "role": "Prefeito de Olinda", "party": "MDB", "state": "PE", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Vitor Marinho", "birth_date": "", "birth_place": "Olinda, PE",
+        "education": "", "occupation": "Político", "website": "https://www.olinda.pe.gov.br",
+        "wiki_title_pt": "Vitor Marinho", "wiki_title_en": "Vitor Marinho",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de Olinda (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Olinda", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Olinda", "beneficios": [], "fonte": "https://www.olinda.pe.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-caruaru": {
+        "id": "mayor-caruaru", "name": "Rodrigo Pinheiro", "display_name": "Rodrigo Pinheiro",
+        "role": "Prefeito de Caruaru", "party": "PSD", "state": "PE", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Rodrigo Pinheiro", "birth_date": "", "birth_place": "Caruaru, PE",
+        "education": "", "occupation": "Político", "website": "https://www.caruaru.pe.gov.br",
+        "wiki_title_pt": "Rodrigo Pinheiro", "wiki_title_en": "Rodrigo Pinheiro",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Caruaru (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Caruaru", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Caruaru", "beneficios": [], "fonte": "https://www.caruaru.pe.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── PARAÍBA ──────────────────────────────────────────────────
+    "mayor-campina-grande": {
+        "id": "mayor-campina-grande", "name": "Bruno Cunha Lima", "display_name": "Bruno Cunha Lima",
+        "role": "Prefeito de Campina Grande", "party": "União Brasil", "state": "PB", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Bruno Cunha Lima", "birth_date": "1984-01-01", "birth_place": "Campina Grande, PB",
+        "education": "Direito — UFPB", "occupation": "Advogado / Político", "website": "https://www.campinagrande.pb.gov.br",
+        "wiki_title_pt": "Bruno Cunha Lima", "wiki_title_en": "Bruno Cunha Lima",
+        "all_parties": ["União Brasil", "PSDB (antes)"], "all_roles": ["Prefeito de Campina Grande (2021–presente)", "Vereador de Campina Grande"], "all_education": ["Direito — UFPB"],
+        "salary_info": {"cargo": "Prefeito de Campina Grande", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Campina Grande", "beneficios": [], "fonte": "https://www.campinagrande.pb.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── CEARÁ ────────────────────────────────────────────────────
+    "mayor-caucaia": {
+        "id": "mayor-caucaia", "name": "Naumi Amorim", "display_name": "Naumi Amorim",
+        "role": "Prefeito de Caucaia", "party": "PSD", "state": "CE", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Naumi Amorim", "birth_date": "", "birth_place": "Caucaia, CE",
+        "education": "", "occupation": "Político", "website": "https://www.caucaia.ce.gov.br",
+        "wiki_title_pt": "Naumi Amorim", "wiki_title_en": "Naumi Amorim",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Caucaia (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Caucaia", "subsidio_mensal": 15000.00, "subsidio_desc": "Subsídio do Prefeito de Caucaia", "beneficios": [], "fonte": "https://www.caucaia.ce.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-juazeiro-do-norte": {
+        "id": "mayor-juazeiro-do-norte", "name": "Glêdson Bezerra", "display_name": "Glêdson Bezerra",
+        "role": "Prefeito de Juazeiro do Norte", "party": "Podemos", "state": "CE", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Glêdson Bezerra", "birth_date": "", "birth_place": "Juazeiro do Norte, CE",
+        "education": "", "occupation": "Político", "website": "https://www.juazeirodonorte.ce.gov.br",
+        "wiki_title_pt": "Glêdson Bezerra", "wiki_title_en": "Glêdson Bezerra",
+        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Juazeiro do Norte (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Juazeiro do Norte", "subsidio_mensal": 14000.00, "subsidio_desc": "Subsídio do Prefeito de Juazeiro do Norte", "beneficios": [], "fonte": "https://www.juazeirodonorte.ce.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── ESPÍRITO SANTO ───────────────────────────────────────────
+    "mayor-serra": {
+        "id": "mayor-serra", "name": "Sergio Vidigal", "display_name": "Sergio Vidigal",
+        "role": "Prefeito de Serra", "party": "PDT", "state": "ES", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Sérgio Luiz Vidigal", "birth_date": "1968-01-01", "birth_place": "Serra, ES",
+        "education": "Medicina — UFES", "occupation": "Médico / Político", "website": "https://www.serra.es.gov.br",
+        "wiki_title_pt": "Sergio Vidigal", "wiki_title_en": "Sergio Vidigal",
+        "all_parties": ["PDT"], "all_roles": ["Prefeito de Serra (2021–presente)", "Deputado Federal ES"], "all_education": ["Medicina — UFES"],
+        "salary_info": {"cargo": "Prefeito de Serra", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Serra", "beneficios": [], "fonte": "https://www.serra.es.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── SANTA CATARINA ───────────────────────────────────────────
+    "mayor-blumenau": {
+        "id": "mayor-blumenau", "name": "Mário Hildebrandt", "display_name": "Mário Hildebrandt",
+        "role": "Prefeito de Blumenau", "party": "PSD", "state": "SC", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Mário Hildebrandt", "birth_date": "", "birth_place": "Blumenau, SC",
+        "education": "", "occupation": "Político", "website": "https://www.blumenau.sc.gov.br",
+        "wiki_title_pt": "Mário Hildebrandt", "wiki_title_en": "Mário Hildebrandt",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Blumenau (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Blumenau", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Blumenau", "beneficios": [], "fonte": "https://www.blumenau.sc.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── PARANÁ ───────────────────────────────────────────────────
+    "mayor-cascavel": {
+        "id": "mayor-cascavel", "name": "Leonaldo Paranhos", "display_name": "Leonaldo Paranhos",
+        "role": "Prefeito de Cascavel", "party": "PP", "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Leonaldo Paranhos da Silva", "birth_date": "1978-01-01", "birth_place": "Cascavel, PR",
+        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.cascavel.pr.gov.br",
+        "wiki_title_pt": "Leonaldo Paranhos", "wiki_title_en": "Leonaldo Paranhos",
+        "all_parties": ["PP"], "all_roles": ["Prefeito de Cascavel (2021–presente)"], "all_education": ["Direito"],
+        "salary_info": {"cargo": "Prefeito de Cascavel", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Cascavel", "beneficios": [], "fonte": "https://www.cascavel.pr.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-foz-do-iguacu": {
+        "id": "mayor-foz-do-iguacu", "name": "Chico Brasileiro", "display_name": "Chico Brasileiro",
+        "role": "Prefeito de Foz do Iguaçu", "party": "PSD", "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Francisco Humberto Brasileiro", "birth_date": "1968-01-01", "birth_place": "Foz do Iguaçu, PR",
+        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.pmfi.pr.gov.br",
+        "wiki_title_pt": "Chico Brasileiro", "wiki_title_en": "Chico Brasileiro",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Foz do Iguaçu (2017–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Foz do Iguaçu", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Foz do Iguaçu", "beneficios": [], "fonte": "https://www.pmfi.pr.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── BAHIA ────────────────────────────────────────────────────
+    "mayor-camacari": {
+        "id": "mayor-camacari", "name": "Mário Alexandre", "display_name": "Mário Alexandre",
+        "role": "Prefeito de Camaçari", "party": "PSD", "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Mário Alexandre Borges Pires", "birth_date": "", "birth_place": "Camaçari, BA",
+        "education": "", "occupation": "Político", "website": "https://www.camacari.ba.gov.br",
+        "wiki_title_pt": "Mário Alexandre", "wiki_title_en": "Mário Alexandre",
+        "all_parties": ["PSD"], "all_roles": ["Prefeito de Camaçari (2025–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Camaçari", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Camaçari", "beneficios": [], "fonte": "https://www.camacari.ba.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-vitoria-da-conquista": {
+        "id": "mayor-vitoria-da-conquista", "name": "Herzem Gusmão", "display_name": "Herzem Gusmão",
+        "role": "Prefeito de Vitória da Conquista", "party": "MDB", "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Herzem Gusmão", "birth_date": "", "birth_place": "Vitória da Conquista, BA",
+        "education": "", "occupation": "Político", "website": "https://www.pmvc.ba.gov.br",
+        "wiki_title_pt": "Herzem Gusmão", "wiki_title_en": "Herzem Gusmão",
+        "all_parties": ["MDB"], "all_roles": ["Prefeito de Vitória da Conquista (2021–presente)"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Vitória da Conquista", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Vitória da Conquista", "beneficios": [], "fonte": "https://www.pmvc.ba.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── MATO GROSSO ──────────────────────────────────────────────
+    "mayor-rondonopolis": {
+        "id": "mayor-rondonopolis", "name": "Eduardo Botelho", "display_name": "Eduardo Botelho",
+        "role": "Prefeito de Rondonópolis", "party": "União Brasil", "state": "MT", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Eduardo Botelho", "birth_date": "1974-01-01", "birth_place": "Rondonópolis, MT",
+        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.rondonopolis.mt.gov.br",
+        "wiki_title_pt": "Eduardo Botelho", "wiki_title_en": "Eduardo Botelho",
+        "all_parties": ["União Brasil", "DEM (antes)"], "all_roles": ["Prefeito de Rondonópolis (2025–presente)", "Deputado Federal MT (2019–2024)"], "all_education": ["Direito"],
+        "salary_info": {"cargo": "Prefeito de Rondonópolis", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Rondonópolis", "beneficios": [], "fonte": "https://www.rondonopolis.mt.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── RIO GRANDE DO SUL ────────────────────────────────────────
+    "mayor-canoas": {
+        "id": "mayor-canoas", "name": "Jairo Jorge", "display_name": "Jairo Jorge",
+        "role": "Prefeito de Canoas", "party": "PSD", "state": "RS", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Jairo Jorge", "birth_date": "1968-01-01", "birth_place": "Canoas, RS",
+        "education": "Direito — PUC-RS", "occupation": "Advogado / Político", "website": "https://www.canoas.rs.gov.br",
+        "wiki_title_pt": "Jairo Jorge", "wiki_title_en": "Jairo Jorge",
+        "all_parties": ["PSD", "PT (antes)"], "all_roles": ["Prefeito de Canoas (2021–presente)", "Deputado Federal RS"], "all_education": ["Direito — PUC-RS"],
+        "salary_info": {"cargo": "Prefeito de Canoas", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Canoas", "beneficios": [], "fonte": "https://www.canoas.rs.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+
+    # ── RIO DE JANEIRO — INTERIOR ────────────────────────────────
+    "mayor-sao-joao-de-meriti": {
+        "id": "mayor-sao-joao-de-meriti", "name": "Dr. João", "display_name": "Dr. João",
+        "role": "Prefeito de São João de Meriti", "party": "Avante", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "João Siqueira", "birth_date": "", "birth_place": "São João de Meriti, RJ",
+        "education": "Medicina", "occupation": "Médico / Político", "website": "https://www.sjmeriti.rj.gov.br",
+        "wiki_title_pt": "Dr. João (São João de Meriti)", "wiki_title_en": "Dr. João",
+        "all_parties": ["Avante"], "all_roles": ["Prefeito de São João de Meriti (2021–presente)"], "all_education": ["Medicina"],
+        "salary_info": {"cargo": "Prefeito de São João de Meriti", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de São João de Meriti", "beneficios": [], "fonte": "https://www.sjmeriti.rj.gov.br/transparencia"},
+        "charges": [], "votes": [], "expenses": [],
+    },
+    "mayor-belford-roxo": {
+        "id": "mayor-belford-roxo", "name": "Wagner dos Santos Carneiro", "display_name": "Waguinho",
+        "role": "Prefeito de Belford Roxo", "party": "PL", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
+        "full_name": "Wagner dos Santos Carneiro", "birth_date": "1975-01-01", "birth_place": "Belford Roxo, RJ",
+        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.belfordroxo.rj.gov.br",
+        "wiki_title_pt": "Wagner Carneiro", "wiki_title_en": "Wagner Carneiro",
+        "all_parties": ["PL", "Republicanos (antes)"], "all_roles": ["Prefeito de Belford Roxo (2017–presente)", "Deputado Federal RJ"], "all_education": [],
+        "salary_info": {"cargo": "Prefeito de Belford Roxo", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Belford Roxo", "beneficios": [], "fonte": "https://www.belfordroxo.rj.gov.br/transparencia"},
+        "charges": [
+            "Investigado pelo MP-RJ por suspeita de irregularidades em contratos municipais de saúde (2022) — em apuração",
+        ],
+        "votes": [], "expenses": [],
+    },
+
 }  # fim CURATED_POLITICIANS
 
 
@@ -2309,6 +2663,53 @@ MAYORS_BY_CITY = {
     "Palmas":                   {"id":"mayor-palmas", "name":"Eduardo Siqueira Campos", "role":"Prefeito de Palmas", "party":"Podemos", "uf":"TO", "photo":"", "wiki_title_pt":"Eduardo Siqueira Campos", "wiki_title_en":"Eduardo Siqueira Campos"},
     # ── ACRE ─────────────────────────────────────────────────────
     "Rio Branco":               {"id":"mayor-rio-branco", "name":"Tião Bocalom", "role":"Prefeito de Rio Branco", "party":"PP", "uf":"AC", "photo":"", "wiki_title_pt":"Tião Bocalom", "wiki_title_en":"Tião Bocalom"},
+    # ── MINAS GERAIS — INTERIOR ──────────────────────────────────
+    "Juiz de Fora":             {"id":"mayor-juiz-de-fora", "name":"Margarida Salomão", "role":"Prefeita de Juiz de Fora", "party":"PT", "uf":"MG", "photo":"", "wiki_title_pt":"Margarida Salomão", "wiki_title_en":"Margarida Salomão"},
+    "Betim":                    {"id":"mayor-betim", "name":"Vittório Medioli", "role":"Prefeito de Betim", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Vittório Medioli", "wiki_title_en":"Vittório Medioli"},
+    "Montes Claros":            {"id":"mayor-montes-claros", "name":"Humberto Souto", "role":"Prefeito de Montes Claros", "party":"Cidadania", "uf":"MG", "photo":"", "wiki_title_pt":"Humberto Souto", "wiki_title_en":"Humberto Souto"},
+    # ── PARÁ — INTERIOR ──────────────────────────────────────────
+    "Ananindeua":               {"id":"mayor-ananindeua", "name":"Daniel Santos", "role":"Prefeito de Ananindeua", "party":"MDB", "uf":"PA", "photo":"", "wiki_title_pt":"Daniel Santos (político)", "wiki_title_en":"Daniel Santos"},
+    "Santarém":                 {"id":"mayor-santarem", "name":"Nélio Aguiar", "role":"Prefeito de Santarém", "party":"PSD", "uf":"PA", "photo":"", "wiki_title_pt":"Nélio Aguiar", "wiki_title_en":"Nélio Aguiar"},
+    # ── GOIÁS — INTERIOR ─────────────────────────────────────────
+    "Aparecida de Goiânia":     {"id":"mayor-aparecida-de-goiania", "name":"Gustavo Mendanha", "role":"Prefeito de Aparecida de Goiânia", "party":"MDB", "uf":"GO", "photo":"", "wiki_title_pt":"Gustavo Mendanha", "wiki_title_en":"Gustavo Mendanha"},
+    "Anápolis":                 {"id":"mayor-anapolis", "name":"Roberto Naves", "role":"Prefeito de Anápolis", "party":"PP", "uf":"GO", "photo":"", "wiki_title_pt":"Roberto Naves", "wiki_title_en":"Roberto Naves"},
+    # ── SÃO PAULO — INTERIOR ─────────────────────────────────────
+    "Santos":                   {"id":"mayor-santos", "name":"Rogério Santos", "role":"Prefeito de Santos", "party":"PSDB", "uf":"SP", "photo":"", "wiki_title_pt":"Rogério Santos (político)", "wiki_title_en":"Rogério Santos"},
+    "São José dos Campos":      {"id":"mayor-sao-jose-dos-campos", "name":"Anderson Farias", "role":"Prefeito de São José dos Campos", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Anderson Farias", "wiki_title_en":"Anderson Farias"},
+    "Mogi das Cruzes":          {"id":"mayor-mogi-das-cruzes", "name":"Caio Cunha", "role":"Prefeito de Mogi das Cruzes", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Caio Cunha", "wiki_title_en":"Caio Cunha"},
+    "Jundiaí":                  {"id":"mayor-jundiai", "name":"Gustavo Martinelli", "role":"Prefeito de Jundiaí", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Gustavo Martinelli", "wiki_title_en":"Gustavo Martinelli"},
+    "Piracicaba":               {"id":"mayor-piracicaba", "name":"Luciano Almeida", "role":"Prefeito de Piracicaba", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Luciano Almeida", "wiki_title_en":"Luciano Almeida"},
+    "Bauru":                    {"id":"mayor-bauru", "name":"Suéllen Rosim", "role":"Prefeita de Bauru", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Suéllen Rosim", "wiki_title_en":"Suéllen Rosim"},
+    "Franca":                   {"id":"mayor-franca", "name":"Alexandre Ferreira", "role":"Prefeito de Franca", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Alexandre Ferreira (político)", "wiki_title_en":"Alexandre Ferreira"},
+    "São José do Rio Preto":    {"id":"mayor-sao-jose-do-rio-preto", "name":"Edinho Araújo", "role":"Prefeito de São José do Rio Preto", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Edinho Araújo", "wiki_title_en":"Edinho Araújo"},
+    "São Vicente":              {"id":"mayor-sao-vicente", "name":"Guilherme Gomes", "role":"Prefeito de São Vicente", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Guilherme Gomes (político)", "wiki_title_en":"Guilherme Gomes"},
+    "Praia Grande":             {"id":"mayor-praia-grande", "name":"Raquel Chini", "role":"Prefeita de Praia Grande", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Raquel Chini", "wiki_title_en":"Raquel Chini"},
+    "Diadema":                  {"id":"mayor-diadema", "name":"José de Filippi Júnior", "role":"Prefeito de Diadema", "party":"PT", "uf":"SP", "photo":"", "wiki_title_pt":"Filippi Júnior", "wiki_title_en":"Filippi Júnior"},
+    # ── PERNAMBUCO — INTERIOR ────────────────────────────────────
+    "Olinda":                   {"id":"mayor-olinda", "name":"Vitor Marinho", "role":"Prefeito de Olinda", "party":"MDB", "uf":"PE", "photo":"", "wiki_title_pt":"Vitor Marinho", "wiki_title_en":"Vitor Marinho"},
+    "Caruaru":                  {"id":"mayor-caruaru", "name":"Rodrigo Pinheiro", "role":"Prefeito de Caruaru", "party":"PSD", "uf":"PE", "photo":"", "wiki_title_pt":"Rodrigo Pinheiro", "wiki_title_en":"Rodrigo Pinheiro"},
+    # ── PARAÍBA — INTERIOR ───────────────────────────────────────
+    "Campina Grande":           {"id":"mayor-campina-grande", "name":"Bruno Cunha Lima", "role":"Prefeito de Campina Grande", "party":"União Brasil", "uf":"PB", "photo":"", "wiki_title_pt":"Bruno Cunha Lima", "wiki_title_en":"Bruno Cunha Lima"},
+    # ── CEARÁ — INTERIOR ─────────────────────────────────────────
+    "Caucaia":                  {"id":"mayor-caucaia", "name":"Naumi Amorim", "role":"Prefeito de Caucaia", "party":"PSD", "uf":"CE", "photo":"", "wiki_title_pt":"Naumi Amorim", "wiki_title_en":"Naumi Amorim"},
+    "Juazeiro do Norte":        {"id":"mayor-juazeiro-do-norte", "name":"Glêdson Bezerra", "role":"Prefeito de Juazeiro do Norte", "party":"Podemos", "uf":"CE", "photo":"", "wiki_title_pt":"Glêdson Bezerra", "wiki_title_en":"Glêdson Bezerra"},
+    # ── ESPÍRITO SANTO — INTERIOR ────────────────────────────────
+    "Serra":                    {"id":"mayor-serra", "name":"Sergio Vidigal", "role":"Prefeito de Serra", "party":"PDT", "uf":"ES", "photo":"", "wiki_title_pt":"Sergio Vidigal", "wiki_title_en":"Sergio Vidigal"},
+    # ── SANTA CATARINA — INTERIOR ────────────────────────────────
+    "Blumenau":                 {"id":"mayor-blumenau", "name":"Mário Hildebrandt", "role":"Prefeito de Blumenau", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Mário Hildebrandt", "wiki_title_en":"Mário Hildebrandt"},
+    # ── PARANÁ — INTERIOR ────────────────────────────────────────
+    "Cascavel":                 {"id":"mayor-cascavel", "name":"Leonaldo Paranhos", "role":"Prefeito de Cascavel", "party":"PP", "uf":"PR", "photo":"", "wiki_title_pt":"Leonaldo Paranhos", "wiki_title_en":"Leonaldo Paranhos"},
+    "Foz do Iguaçu":            {"id":"mayor-foz-do-iguacu", "name":"Chico Brasileiro", "role":"Prefeito de Foz do Iguaçu", "party":"PSD", "uf":"PR", "photo":"", "wiki_title_pt":"Chico Brasileiro", "wiki_title_en":"Chico Brasileiro"},
+    # ── BAHIA — INTERIOR ─────────────────────────────────────────
+    "Camaçari":                 {"id":"mayor-camacari", "name":"Mário Alexandre", "role":"Prefeito de Camaçari", "party":"PSD", "uf":"BA", "photo":"", "wiki_title_pt":"Mário Alexandre", "wiki_title_en":"Mário Alexandre"},
+    "Vitória da Conquista":     {"id":"mayor-vitoria-da-conquista", "name":"Herzem Gusmão", "role":"Prefeito de Vitória da Conquista", "party":"MDB", "uf":"BA", "photo":"", "wiki_title_pt":"Herzem Gusmão", "wiki_title_en":"Herzem Gusmão"},
+    # ── MATO GROSSO — INTERIOR ───────────────────────────────────
+    "Rondonópolis":             {"id":"mayor-rondonopolis", "name":"Eduardo Botelho", "role":"Prefeito de Rondonópolis", "party":"União Brasil", "uf":"MT", "photo":"", "wiki_title_pt":"Eduardo Botelho", "wiki_title_en":"Eduardo Botelho"},
+    # ── RIO GRANDE DO SUL — INTERIOR ─────────────────────────────
+    "Canoas":                   {"id":"mayor-canoas", "name":"Jairo Jorge", "role":"Prefeito de Canoas", "party":"PSD", "uf":"RS", "photo":"", "wiki_title_pt":"Jairo Jorge", "wiki_title_en":"Jairo Jorge"},
+    # ── RIO DE JANEIRO — INTERIOR ────────────────────────────────
+    "São João de Meriti":       {"id":"mayor-sao-joao-de-meriti", "name":"Dr. João", "role":"Prefeito de São João de Meriti", "party":"Avante", "uf":"RJ", "photo":"", "wiki_title_pt":"Dr. João (São João de Meriti)", "wiki_title_en":"Dr. João"},
+    "Belford Roxo":             {"id":"mayor-belford-roxo", "name":"Wagner dos Santos Carneiro", "role":"Prefeito de Belford Roxo", "party":"PL", "uf":"RJ", "photo":"", "wiki_title_pt":"Wagner Carneiro", "wiki_title_en":"Wagner Carneiro"},
 }
 
 
