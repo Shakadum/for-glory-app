@@ -80,6 +80,18 @@ _FALLBACK_PHOTOS: dict[str, str] = {
     "Raquel Lyra":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Raquel_Lyra_-_foto_oficial_2023.jpg/400px-Raquel_Lyra_-_foto_oficial_2023.jpg",
     "Helder Barbalho":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Helder_Barbalho_-_foto_oficial_2019.jpg/400px-Helder_Barbalho_-_foto_oficial_2019.jpg",
     "Eduardo Leite (político)":         "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Eduardo_Leite_-_foto_oficial_2023.jpg/400px-Eduardo_Leite_-_foto_oficial_2023.jpg",
+    # ── PREFEITOS ────────────────────────────────────────────────
+    "Eduardo Paes":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Eduardo_Paes_-_foto_oficial_2021.jpg/400px-Eduardo_Paes_-_foto_oficial_2021.jpg",
+    "Ricardo Nunes":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Ricardo_Nunes_-_foto_oficial_2021.jpg/400px-Ricardo_Nunes_-_foto_oficial_2021.jpg",
+    "Fuad Noman":                       "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Fuad_Noman_2024.jpg/400px-Fuad_Noman_2024.jpg",
+    "Bruno Reis (político)":            "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Bruno_Reis_prefeito_Salvador.jpg/400px-Bruno_Reis_prefeito_Salvador.jpg",
+    "João Campos (político)":           "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Jo%C3%A3o_Campos_2021.jpg/400px-Jo%C3%A3o_Campos_2021.jpg",
+    "Sebastião Melo":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Sebasti%C3%A3o_Melo_2021.jpg/400px-Sebasti%C3%A3o_Melo_2021.jpg",
+    "Rodrigo Neves":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Rodrigo_Neves_-_foto_oficial.jpg/400px-Rodrigo_Neves_-_foto_oficial.jpg",
+    "Evandro Leitão":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Evandro_Leit%C3%A3o_2024.jpg/400px-Evandro_Leit%C3%A3o_2024.jpg",
+    "Cícero Lucena":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/C%C3%ADcero_Lucena_2021.jpg/400px-C%C3%ADcero_Lucena_2021.jpg",
+    "Rubens Bomtempo":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Rubens_Bomtempo_2013.jpg/400px-Rubens_Bomtempo_2013.jpg",
+    "Wladimir Garotinho":               "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Wladimir_Garotinho_2024.jpg/400px-Wladimir_Garotinho_2024.jpg",
 }
 
 async def _wiki_summary(title: str, lang: str = "pt") -> dict:
@@ -141,14 +153,14 @@ async def get_wiki_data(wiki_title_pt: str, wiki_title_en: str = "") -> dict:
             result = await _wiki_summary(wiki_title_pt, "pt")
         if not result.get("photo") and wiki_title_en:
             result = await _wiki_summary(wiki_title_en, "en")
-        # Fallback garantido — URLs verificadas do Wikimedia Commons
-        if not result.get("photo"):
-            fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
-            if fb:
-                result = {**result, "photo": fb}
-        entry = {**result, "ts": now}
-        _PHOTO_CACHE[cache_key] = entry
-        return entry
+    # Fallback garantido — URLs verificadas do Wikimedia Commons
+    if not result.get("photo"):
+        fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
+        if fb:
+            result = {**result, "photo": fb}
+    entry = {**result, "ts": now}
+    _PHOTO_CACHE[cache_key] = entry
+    return entry
 
 # _warmup_photo_cache é definida APÓS CURATED_POLITICIANS (ver abaixo)
 
@@ -2299,6 +2311,36 @@ MAYORS_BY_CITY = {
     "Rio Branco":               {"id":"mayor-rio-branco", "name":"Tião Bocalom", "role":"Prefeito de Rio Branco", "party":"PP", "uf":"AC", "photo":"", "wiki_title_pt":"Tião Bocalom", "wiki_title_en":"Tião Bocalom"},
 }
 
+
+# ── LOOKUP NORMALIZADO DE CIDADES ─────────────────────────────
+# Resolve diferenças de acentuação entre ip-api, IBGE e keys do dict
+# Ex: "Teresopolis" → "Teresópolis", "Sao Paulo" → "São Paulo"
+import unicodedata
+
+def _normalize_city(name: str) -> str:
+    """Remove acentos e normaliza para lookup case-insensitive."""
+    if not name: return ""
+    return unicodedata.normalize("NFD", name).encode("ascii","ignore").decode().lower().strip()
+
+# Pré-computa índice normalizado → chave original do MAYORS_BY_CITY
+_MAYORS_NORMALIZED: dict[str, str] = {
+    _normalize_city(k): k for k in MAYORS_BY_CITY
+}
+
+def get_mayor_data(city: str) -> dict | None:
+    """Lookup de prefeito com tolerância a acentuação e capitalização."""
+    if not city: return None
+    # Tenta match exato primeiro (mais rápido)
+    if city in MAYORS_BY_CITY:
+        return MAYORS_BY_CITY[city]
+    # Fallback: normaliza e tenta
+    norm = _normalize_city(city)
+    original_key = _MAYORS_NORMALIZED.get(norm)
+    if original_key:
+        return MAYORS_BY_CITY[original_key]
+    return None
+
+
 async def enrich_with_photo(p: dict) -> dict:
     """Busca foto via cache dinâmico com múltiplos fallbacks.
     Ordem: 1) wiki_title_pt → Wikipedia PT
@@ -2330,6 +2372,13 @@ async def enrich_with_photo(p: dict) -> dict:
         wiki = await _wiki_summary(name, "pt")
         if wiki.get("photo"):
             return {**p, "photo": wiki["photo"]}
+
+    # 6: Avatar gerado — garante que NUNCA aparece sem imagem no frontend
+    # DiceBear Initials — placeholder visual consistente com o nome
+    if name:
+        initials = "+".join(w for w in name.split() if w)
+        avatar_url = f"https://ui-avatars.com/api/?name={urllib.parse.quote(initials)}&background=1a1f2e&color=66fcf1&bold=true&size=200&font-size=0.38"
+        return {**p, "photo": avatar_url}
 
     return p
 # Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
@@ -2717,8 +2766,8 @@ async def get_local_politicians(
         governador = []
 
     # Prefeito: 3 camadas de fallback
-    # 1) MAYORS_BY_CITY (curado — mais confiável)
-    mayor_data = MAYORS_BY_CITY.get(city)
+    # 1) MAYORS_BY_CITY curado via lookup normalizado (tolerante a acentuação)
+    mayor_data = get_mayor_data(city)
     if mayor_data:
         mayor_dict = {**mayor_data, "country": "Brasil", "source": "wikidata", "email": ""}
         mayor_dict = await enrich_with_photo(mayor_dict)
