@@ -3228,12 +3228,25 @@ async def rate_politician(data:dict=Body(...), db:Session=Depends(get_db)):
 async def compare_politicians(ids:str=Query(...)):
     id_list = [i.strip() for i in ids.split(",") if i.strip()][:4]
     async def _fetch(pid):
+        # 1. Dict curado pelo ID exato
         if pid in CURATED_POLITICIANS:
-            d = dict(CURATED_POLITICIANS[pid]); d.pop("wiki_title_pt",None); return d
+            d = dict(CURATED_POLITICIANS[pid]); d.pop("wiki_title_pt",None); d.pop("wiki_title_en",None); return d
+        # 2. IDs curados alternativos (mayor-*, etc.)
+        match = next((v for v in CURATED_POLITICIANS.values() if v.get("id") == pid), None)
+        if match:
+            d = dict(match); d.pop("wiki_title_pt",None); d.pop("wiki_title_en",None); return d
         parts=pid.split("-",1); src=parts[0]; aid=parts[1] if len(parts)>1 else ""
         if src=="dep": return await get_deputado_details(aid)
         if src=="sen": return await get_senador_details(aid)
         if src=="wd":  return await get_wikidata_entity(aid)
+        if src=="tse":
+            try:
+                db2 = SessionLocal()
+                needle = '"id": "' + pid + '"'
+                row = db2.query(MayorCache).filter(MayorCache.data.contains(needle)).first()
+                db2.close()
+                return _json.loads(row.data) if row else {}
+            except: return {}
         return {}
     results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
     return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
