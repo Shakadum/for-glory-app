@@ -20,6 +20,11 @@ from app.db.base import Base
 
 router = APIRouter()
 
+# ── Normalização de nomes — definido cedo para uso em MAYORS_BY_CITY ────────
+def _norm(s: str) -> str:
+    """Remove acentos, lowercase — chave canônica de lookup."""
+    return _ucd.normalize("NFD", s or "").encode("ascii","ignore").decode().lower().strip()
+
 CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
 _HDR = {"User-Agent": "ForGloryApp/2.0 (transparency@forglory.online)"}
@@ -3055,9 +3060,6 @@ async def _wikidata_sparql(sparql: str, timeout: int = 15) -> list:
         pass
     return []
 
-def _norm(s: str) -> str:
-    """Remove acentos, lowercase — chave canônica de lookup."""
-    return _ucd.normalize("NFD", s or "").encode("ascii","ignore").decode().lower().strip()
 
 def _parse_politician_binding(b: dict, city_name: str, uf: str) -> dict | None:
     """Converte um binding Wikidata em dict de político normalizado."""
