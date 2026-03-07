@@ -5,14 +5,8 @@ window.__transState = {
     tab:'search', politician:null, compareList:[], comparePoliticians:[],
     country:'BR', currentRating:0, localData:null,
 };
-// Objeto store para passar p entre HTML e JS sem JSON-in-onclick
-window.__polStore = {};
-let __polStoreSeq = 0;
-function _pkey(p) {
-    const k = 'p' + (++__polStoreSeq);
-    window.__polStore[k] = p;
-    return k;
-}
+window.__polStore = {}; let __polStoreSeq = 0;
+function _pkey(p) { const k='p'+(++__polStoreSeq); window.__polStore[k]=p; return k; }
 
 // ── INIT ─────────────────────────────────────────────────────
 async function initTransparency() {
@@ -45,7 +39,7 @@ function renderSearchView(container) {
                 <input id="trans-search-input" class="gs-input" style="flex:1;"
                     placeholder="🔍 Buscar político por nome..."
                     onkeydown="if(event.key==='Enter')doTransSearch()">
-                <button onclick="doTransSearch()" style="flex-shrink:0;padding:8px 12px;font-size:12px;font-weight:700;background:rgba(102,252,241,0.1);border:1px solid rgba(102,252,241,0.3);color:#66fcf1;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .15s;" onmouseover="this.style.background='rgba(102,252,241,0.22)'" onmouseout="this.style.background='rgba(102,252,241,0.1)'">🔍</button>
+                <button onclick="doTransSearch()" style="flex-shrink:0;padding:8px 13px;font-size:12px;font-weight:700;background:rgba(102,252,241,0.1);border:1px solid rgba(102,252,241,0.3);color:#66fcf1;border-radius:8px;cursor:pointer;transition:all .2s cubic-bezier(.34,1.56,.64,1);" onmouseover="this.style.transform='scale(1.05)';this.style.background='rgba(102,252,241,0.2)'" onmouseout="this.style.transform='';this.style.background='rgba(102,252,241,0.1)'">🔍</button>
             </div>
         </div>
         <div id="trans-results" class="trans-results-list"></div>
