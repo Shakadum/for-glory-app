@@ -1287,10 +1287,7 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     Quiz
                 </button>
-                <button class="news-main-tab" data-main="vip" onclick="switchMainTab('vip')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                    VIP
-                </button>
+
             </div>
             <!-- ══ PAINEL NOTÍCIAS ══ -->
             <div id="panel-news" class="news-panel">
@@ -1376,30 +1373,81 @@
                             <div style="text-align:center; color:#4b5563; padding:20px; font-size:13px;">Carregando ranking...</div>
                         </div>
                     </div>
+                    <!-- ── VIP INLINE ── -->
+                    <div id="vip-inline-section" style="margin-top:32px;">
+                        <div style="font-family:'Rajdhani'; font-weight:800; font-size:16px; color:#c5c6c7; letter-spacing:0.5px; margin-bottom:4px;">⭐ FOR GLORY VIP</div>
+                        <div style="font-size:12px; color:#4b5563; margin-bottom:18px;">Desbloqueie benefícios exclusivos e multiplique sua glória</div>
+
+                        <!-- Plano único card -->
+                        <div id="vip-inline-plan" style="background:linear-gradient(135deg,rgba(102,252,241,0.07) 0%,rgba(139,92,246,0.07) 100%); border:1.5px solid rgba(102,252,241,0.25); border-radius:18px; padding:20px; margin-bottom:16px; position:relative; overflow:hidden;">
+                            <div style="position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(circle,rgba(102,252,241,0.08) 0%,transparent 70%);pointer-events:none;"></div>
+                            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                                <div style="font-size:28px;">⭐</div>
+                                <div>
+                                    <div style="font-family:'Syne';font-weight:800;font-size:18px;color:#66fcf1;letter-spacing:0.5px;">VIP</div>
+                                    <div style="font-size:11px;color:#6b7280;margin-top:1px;">Único plano · Todos os benefícios</div>
+                                </div>
+                                <div id="vip-current-badge" style="margin-left:auto;display:none;background:rgba(102,252,241,0.15);border:1px solid rgba(102,252,241,0.3);border-radius:20px;padding:4px 10px;font-size:10px;font-weight:700;color:#66fcf1;font-family:'Rajdhani';">✓ ATIVO</div>
+                            </div>
+
+                            <!-- Toggle mensal/anual -->
+                            <div style="display:flex;background:rgba(255,255,255,0.05);border-radius:10px;padding:3px;margin-bottom:16px;">
+                                <button id="vip-btn-monthly" onclick="setVipInlineBilling('monthly')" style="flex:1;padding:7px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;background:rgba(102,252,241,0.15);color:#66fcf1;">MENSAL</button>
+                                <button id="vip-btn-yearly" onclick="setVipInlineBilling('yearly')" style="flex:1;padding:7px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;background:transparent;color:#4b5563;">
+                                    ANUAL <span style="font-size:9px;background:#10b981;color:#fff;border-radius:20px;padding:1px 5px;margin-left:3px;">-25%</span>
+                                </button>
+                            </div>
+
+                            <!-- Preço -->
+                            <div style="text-align:center;margin-bottom:18px;">
+                                <div id="vip-inline-price" style="font-family:'Rajdhani';font-weight:800;font-size:36px;color:#f3f4f6;">R$&nbsp;15<span style="font-size:16px;color:#6b7280;font-weight:400;">/mês</span></div>
+                                <div id="vip-inline-sub" style="font-size:12px;color:#6b7280;margin-top:2px;">Cobrado mensalmente · Cancele quando quiser</div>
+                            </div>
+
+                            <!-- Benefícios -->
+                            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🧠</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">30 Quizzes por dia</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">10× mais que no plano gratuito</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">⚡</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">2× Glory Points</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Suba de rank duas vezes mais rápido</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">⭐</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">Badge VIP <span style="color:#66fcf1;">+</span> TAG VIP</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Distintivo e tag exclusiva no perfil, igual à tag de Fundador</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🖼️</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">Borda de perfil exclusiva</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Bordas animadas e gradientes na foto</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🏰</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">Base personalizada</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Faceplate e destaque exclusivos na sua base</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🌈</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">Temas exclusivos do app</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Visuais únicos indisponíveis no plano gratuito</div></div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(102,252,241,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">✍️</div>
+                                    <div><div style="font-size:13px;font-weight:600;color:#e5e7eb;">Fonte do nome personalizável</div><div style="font-size:11px;color:#6b7280;margin-top:1px;">Escolha a fonte do seu nome em chats e perfil</div></div>
+                                </div>
+                            </div>
+
+                            <!-- CTA -->
+                            <button id="vip-inline-cta" onclick="vipInlineSubscribe()" style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#66fcf1,#4dd9d0);color:#0b0c10;font-family:'Rajdhani';font-weight:800;font-size:15px;letter-spacing:0.5px;cursor:pointer;transition:opacity .2s;">
+                                ASSINAR VIP · R$ 15,00/mês
+                            </button>
+                            <div id="vip-inline-note" style="text-align:center;font-size:11px;color:#4b5563;margin-top:8px;">Pagamento seguro · Cancele quando quiser · Sem taxas ocultas</div>
+                        </div>
+                    </div>
+                    <!-- ── FIM VIP INLINE ── -->
                 </div>
             </div>
 
-            <!-- ══ PAINEL VIP ══ -->
-            <div id="panel-vip" class="news-panel" style="display:none; flex-direction:column; flex:1; overflow-y:auto;">
-                <div style="padding:16px; max-width:600px; margin:0 auto; width:100%;">
-                    <div style="text-align:center; margin-bottom:24px;">
-                        <div style="font-size:36px; margin-bottom:8px;">⭐</div>
-                        <div style="font-family:'Syne'; font-weight:800; font-size:22px; color:#66fcf1; letter-spacing:1px;">FOR GLORY VIP</div>
-                        <div style="font-size:13px; color:#6b7280; margin-top:6px;">Multiplique seus pontos de glória e desbloqueie benefícios exclusivos</div>
-                    </div>
-                    <div id="vip-current-plan" style="margin-bottom:24px;"></div>
-                    <div id="vip-plans" style="display:flex; flex-direction:column; gap:14px;">
-                        <div style="text-align:center; color:#4b5563; padding:40px;">Carregando planos...</div>
-                    </div>
-                    <div style="margin-top:28px; background:rgba(102,252,241,0.04); border:1px solid rgba(102,252,241,0.1); border-radius:14px; padding:18px;">
-                        <div style="font-family:'Rajdhani'; font-weight:800; font-size:14px; color:#66fcf1; margin-bottom:12px; letter-spacing:0.5px;">📊 DIAGNÓSTICO DO SISTEMA</div>
-                        <div id="diag-mini" style="font-size:12px; color:#6b7280;">
-                            <span style="cursor:pointer; color:#66fcf1; text-decoration:underline;" onclick="loadDiagnostics()">Ver relatório completo →</span>
-                        </div>
-                    </div>
-                    <div id="diagnostics-panel" style="display:none; margin-top:16px;"></div>
-                </div>
-            </div>
+            <!-- painel-vip removido — VIP integrado ao painel Quiz -->
 
         </div>
 
@@ -1437,7 +1485,6 @@ function switchMainTab(tab) {
         news:         document.getElementById('panel-news'),
         transparency: document.getElementById('panel-transparency'),
         quiz:         document.getElementById('panel-quiz'),
-        vip:          document.getElementById('panel-vip'),
     };
     Object.entries(panels).forEach(([key, el]) => {
         if (!el) return;
@@ -1449,7 +1496,7 @@ function switchMainTab(tab) {
     });
     if (tab === 'news')         { if (typeof initNews         === 'function') initNews(); }
     if (tab === 'transparency') { if (typeof initTransparency === 'function') initTransparency(); }
-    if (tab === 'quiz')         { if (typeof loadQuizPanel    === 'function') loadQuizPanel(); }
+    if (tab === 'quiz')         { if (typeof loadQuizPanel    === 'function') loadQuizPanel(); if (typeof checkVipStatus === 'function') checkVipStatus(); }
     if (tab === 'vip')          { if (typeof loadVipPanel     === 'function') loadVipPanel(); }
 }
 
@@ -1727,42 +1774,27 @@ document.addEventListener('DOMContentLoaded', () => {
             features:[]
         },
         {
-            slug:'vip1', name:'Cidadão VIP', icon:'🥈',
-            monthly:9.90, yearly:99.00,
-            color:'#e2e8f0', colorRgb:'226,232,240',
-            mult:'2×', badge:'prata',
-            features:['name_color','font','border','bubble']
-        },
-        {
-            slug:'vip2', name:'Guardião', icon:'🥇',
-            monthly:24.90, yearly:249.00,
-            color:'#fbbf24', colorRgb:'251,191,36',
-            mult:'5×', badge:'ouro',
-            features:['name_color','font','border','bubble','faceplate_name','bio_style']
-        },
-        {
-            slug:'vip3', name:'Sentinela', icon:'💎',
-            monthly:49.90, yearly:499.00,
-            color:'#67e8f9', colorRgb:'103,232,249',
-            mult:'10×', badge:'diamante',
-            features:['name_color','font','border','bubble','faceplate_name','faceplate_base','bio_style','themes','support']
+            slug:'vip', name:'VIP', icon:'⭐',
+            monthly:15.00, yearly:135.00,
+            color:'#66fcf1', colorRgb:'102,252,241',
+            mult:'2×', badge:'vip',
+            features:['quiz_30','glory_2x','badge_vip','tag_vip','border','faceplate_base','themes','font']
         }
     ];
 
     const BENEFIT_LABELS = {
-        name_color:    {icon:'🎨', name:'Cor do nome',        desc:'Qualquer cor no seu nome em chats e perfil'},
-        font:          {icon:'✍️', name:'Fonte exclusiva',     desc:'Fontes únicas para nome, bio e nome da sua base'},
-        border:        {icon:'🖼️', name:'Borda de perfil',     desc:'Bordas animadas e gradientes na foto de perfil'},
-        bubble:        {icon:'💬', name:'Balões exclusivos',   desc:'Estilo personalizado nos seus balões de mensagem'},
-        faceplate_name:{icon:'🏷️', name:'Faceplate no nome',   desc:'Tag decorativa exclusiva ao lado do seu nome'},
-        faceplate_base:{icon:'🏰', name:'Faceplate da base',   desc:'Destaque no nome da comunidade que você criou'},
-        bio_style:     {icon:'📝', name:'Bio estilizada',      desc:'Balão de bio com formato e cor exclusivos'},
-        themes:        {icon:'🌈', name:'Temas do app',        desc:'Acesso a temas visuais exclusivos do ForGlory'},
-        support:       {icon:'⚡', name:'Suporte prioritário', desc:'Resposta em até 24h pela equipe ForGlory'}
+        quiz_30:       {icon:'🧠', name:'30 Quizzes/dia',       desc:'10× mais quizzes diários que no plano gratuito'},
+        glory_2x:      {icon:'⚡', name:'2× Glory Points',      desc:'Suba de rank duas vezes mais rápido'},
+        badge_vip:     {icon:'⭐', name:'Badge VIP',             desc:'Distintivo VIP exclusivo no seu perfil'},
+        tag_vip:       {icon:'🏷️', name:'TAG VIP',              desc:'Tag dourada ao lado do nome, igual à tag de Fundador'},
+        border:        {icon:'🖼️', name:'Borda de perfil',       desc:'Bordas animadas e gradientes na foto de perfil'},
+        faceplate_base:{icon:'🏰', name:'Base personalizada',    desc:'Faceplate e destaque exclusivos na sua comunidade'},
+        themes:        {icon:'🌈', name:'Temas exclusivos',      desc:'Visuais únicos indisponíveis no plano gratuito'},
+        font:          {icon:'✍️', name:'Fonte do nome',         desc:'Escolha a fonte do seu nome em chats e perfil'}
     };
 
     let _billing = 'monthly';
-    let _selectedPlan = 'vip1';
+    let _selectedPlan = 'vip';
     let _currentPlan = 'free';
 
     // ── OPEN ──────────────────────────────────────────────────────
@@ -1777,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (r && r.ok) {
                 const d = await r.json();
                 _currentPlan = d.plan_slug || 'free';
-                _selectedPlan = _currentPlan === 'free' ? 'vip1' : _currentPlan;
+                _selectedPlan = _currentPlan === 'free' ? 'vip' : _currentPlan;
             }
         } catch(e) { /* offline */ }
         renderVupPlans();
@@ -1848,7 +1880,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (usernameEl) {
             usernameEl.style.color = plan.features.includes('name_color') ? plan.color : '#e5e7eb';
-            const fonts = {vip1:'Rajdhani', vip2:'Syne', vip3:'Orbitron'};
+            const fonts = {vip:'Rajdhani'};
             usernameEl.style.fontFamily = fonts[plan.slug] ? \`'\${fonts[plan.slug]}'\` : 'inherit';
         }
         if (faceplateEl) {
@@ -1944,6 +1976,65 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btn) { btn.disabled = false; updateVupCta(); }
         }
     };
+
+
+    // ── VIP INLINE (na aba Quiz) ──────────────────────────────
+    let _inlineBilling = 'monthly';
+
+    window.setVipInlineBilling = function(type) {
+        _inlineBilling = type;
+        const btnM = document.getElementById('vip-btn-monthly');
+        const btnY = document.getElementById('vip-btn-yearly');
+        const priceEl = document.getElementById('vip-inline-price');
+        const subEl = document.getElementById('vip-inline-sub');
+        const ctaEl = document.getElementById('vip-inline-cta');
+        if (btnM) { btnM.style.background = type==='monthly'?'rgba(102,252,241,0.15)':'transparent'; btnM.style.color = type==='monthly'?'#66fcf1':'#4b5563'; }
+        if (btnY) { btnY.style.background = type==='yearly'?'rgba(102,252,241,0.15)':'transparent'; btnY.style.color = type==='yearly'?'#66fcf1':'#4b5563'; }
+        if (priceEl) priceEl.innerHTML = type==='monthly' ? 'R$&nbsp;15<span style="font-size:16px;color:#6b7280;font-weight:400;">/mês</span>' : 'R$&nbsp;135<span style="font-size:16px;color:#6b7280;font-weight:400;">/ano</span>';
+        if (subEl) subEl.textContent = type==='monthly' ? 'Cobrado mensalmente · Cancele quando quiser' : 'Cobrado anualmente · Equivale a R$ 11,25/mês · 3 meses grátis';
+        if (ctaEl) ctaEl.textContent = type==='monthly' ? 'ASSINAR VIP · R$ 15,00/mês' : 'ASSINAR VIP · R$ 135,00/ano';
+    };
+
+    window.vipInlineSubscribe = async function() {
+        const btn = document.getElementById('vip-inline-cta');
+        if (btn) { btn.disabled=true; btn.textContent='Processando...'; }
+        try {
+            const r = await authFetch('/subscription/create', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ plan_slug:'vip', billing:_inlineBilling })
+            });
+            if (r && r.ok) {
+                const badge = document.getElementById('vip-current-badge');
+                if (badge) badge.style.display='';
+                if (btn) { btn.disabled=true; btn.textContent='✓ VIP Ativo!'; btn.style.background='rgba(102,252,241,0.15)'; btn.style.color='#66fcf1'; }
+                const note = document.getElementById('vip-inline-note');
+                if (note) note.textContent='✅ Plano VIP ativado! Aproveite todos os benefícios.';
+                if (typeof showToast==='function') showToast('🎉 Bem-vindo ao VIP!');
+            } else {
+                if (btn) { btn.disabled=false; window.setVipInlineBilling(_inlineBilling); }
+                if (typeof showToast==='function') showToast('Erro ao processar pagamento.');
+            }
+        } catch(e) {
+            if (btn) { btn.disabled=false; window.setVipInlineBilling(_inlineBilling); }
+        }
+    };
+
+    // Verifica plano atual ao carregar aba quiz
+    async function checkVipStatus() {
+        try {
+            const r = await authFetch('/my/plan');
+            if (r && r.ok) {
+                const d = await r.json();
+                _currentPlan = d.plan_slug || 'free';
+                if (_currentPlan === 'vip') {
+                    const badge = document.getElementById('vip-current-badge');
+                    if (badge) badge.style.display='';
+                    const cta = document.getElementById('vip-inline-cta');
+                    if (cta) { cta.disabled=true; cta.textContent='✓ VIP Ativo'; cta.style.background='rgba(102,252,241,0.15)'; cta.style.color='#66fcf1'; }
+                }
+            }
+        } catch(e) {}
+    }
 
     // ── CLOSE ON BACKDROP ─────────────────────────────────────────
     document.addEventListener('click', function(e) {

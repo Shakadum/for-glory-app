@@ -5,6 +5,14 @@ window.__transState = {
     tab:'search', politician:null, compareList:[], comparePoliticians:[],
     country:'BR', currentRating:0, localData:null,
 };
+// Objeto store para passar p entre HTML e JS sem JSON-in-onclick
+window.__polStore = {};
+let __polStoreSeq = 0;
+function _pkey(p) {
+    const k = 'p' + (++__polStoreSeq);
+    window.__polStore[k] = p;
+    return k;
+}
 
 // ── INIT ─────────────────────────────────────────────────────
 async function initTransparency() {
@@ -27,17 +35,17 @@ function renderTransparencyView(tab) {
 // ── SEARCH VIEW ───────────────────────────────────────────────
 function renderSearchView(container) {
     container.innerHTML = `
-        <div class="trans-search-bar" style="gap:6px;margin-bottom:12px;">
-            <div class="trans-country-chips" style="gap:4px;">
+        <div class="trans-search-bar">
+            <div class="trans-country-chips">
                 ${['BR','US','FR','DE','GB','AR','PT','MX','JP','CN','RU','IT','ES'].map(cc =>
                     `<button class="trans-chip ${window.__transState.country===cc?'active':''}"
                         onclick="setTransCountry('${cc}')">${cc}</button>`).join('')}
             </div>
-            <div class="trans-input-row" style="gap:6px;">
-                <input id="trans-search-input" class="gs-input" style="flex:1;min-width:0;padding:8px 12px;font-size:13px;"
+            <div class="trans-input-row">
+                <input id="trans-search-input" class="gs-input" style="flex:1;"
                     placeholder="🔍 Buscar político por nome..."
                     onkeydown="if(event.key==='Enter')doTransSearch()">
-                <button onclick="doTransSearch()" style="flex-shrink:0;padding:8px 14px;font-size:12px;font-weight:700;background:rgba(102,252,241,0.12);border:1px solid rgba(102,252,241,0.35);color:#66fcf1;border-radius:8px;cursor:pointer;white-space:nowrap;letter-spacing:.5px;transition:all .15s;" onmouseover="this.style.background='rgba(102,252,241,0.22)'" onmouseout="this.style.background='rgba(102,252,241,0.12)'">🔍 Buscar</button>
+                <button onclick="doTransSearch()" style="flex-shrink:0;padding:8px 12px;font-size:12px;font-weight:700;background:rgba(102,252,241,0.1);border:1px solid rgba(102,252,241,0.3);color:#66fcf1;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .15s;" onmouseover="this.style.background='rgba(102,252,241,0.22)'" onmouseout="this.style.background='rgba(102,252,241,0.1)'">🔍</button>
             </div>
         </div>
         <div id="trans-results" class="trans-results-list"></div>
@@ -133,10 +141,10 @@ function renderSection(s) {
 // Big card for president/vp
 function renderExecCard(p, color) {
     const inCmp = window.__transState.compareList.includes(p.id);
-    const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,'\\u0027');
+    const k = _pkey(p);
     const avatar = _safeAvatarUrl(p.name, color);
     return `
-        <div class="trans-exec-card" onclick='openPolitician(${pJson})'
+        <div class="trans-exec-card" onclick="openPolitician(window.__polStore['${k}'])"
             style="--accent:${color};">
             <div class="trans-exec-photo-wrap">
                 <img src="${escapeHtml(p.photo||avatar)}" class="trans-exec-photo"
@@ -149,9 +157,9 @@ function renderExecCard(p, color) {
                 <div class="trans-exec-role">${escapeHtml(p.role||'')}</div>
                 ${p.party ? `<span class="trans-exec-party" style="background:${color}18;border-color:${color}40;color:${color};">${escapeHtml(p.party)}</span>` : ''}
                 <div class="trans-exec-actions">
-                    <button class="trans-exec-btn" onclick="event.stopPropagation();openPolitician(${pJson})">Ver Ficha</button>
+                    <button class="trans-exec-btn" onclick="event.stopPropagation();openPolitician(window.__polStore['${k}'])">Ver Ficha</button>
                     <button class="trans-cmp-sm ${inCmp?'active':''}"
-                        onclick="event.stopPropagation();toggleCompare(${pJson})"
+                        onclick="event.stopPropagation();toggleCompare(window.__polStore['${k}'])"
                         title="Adicionar ao comparativo">${inCmp?'✓':'+Compare'}</button>
                 </div>
             </div>
@@ -161,10 +169,10 @@ function renderExecCard(p, color) {
 // Compact card for deputies/senators/ministers
 function renderMiniCard(p, color) {
     const inCmp = window.__transState.compareList.includes(p.id);
-    const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,'\\u0027');
+    const k = _pkey(p);
     const avatar = _safeAvatarUrl(p.name, color);
     return `
-        <div class="trans-mini-card" onclick='openPolitician(${pJson})'
+        <div class="trans-mini-card" onclick="openPolitician(window.__polStore['${k}'])"
             style="--accent:${color};">
             <img src="${escapeHtml(p.photo||avatar)}" class="trans-mini-photo"
                 onerror="this.onerror=null;this.src='${avatar}'">
@@ -175,7 +183,7 @@ function renderMiniCard(p, color) {
             </div>
             <button class="trans-mini-cmp ${inCmp?'active':''}"
                 style="color:${inCmp?color:'#4b5563'};border-color:${inCmp?color:'rgba(255,255,255,0.1)'};"
-                onclick="event.stopPropagation();toggleCompare(${pJson})">${inCmp?'✓':'+'}</button>
+                onclick="event.stopPropagation();toggleCompare(window.__polStore['${k}'])">${inCmp?'✓':'+'}</button>
         </div>`;
 }
 
@@ -183,10 +191,10 @@ function renderMiniCard(p, color) {
 function politicianCard(p) {
     const inCmp = window.__transState.compareList.includes(p.id);
     const srcColor = {camara:'#66fcf1',senado:'#ffd93d',wikidata:'#c678dd'}[p.source]||'#888';
-    const pJson = JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,'\\u0027');
+    const k = _pkey(p);
     const avatar = _safeAvatarUrl(p.name, '66fcf1');
     return `
-    <div class="trans-card" onclick='openPolitician(${pJson})'>
+    <div class="trans-card" onclick="openPolitician(window.__polStore['${k}'])">
         <div class="trans-card-left">
             <img src="${escapeHtml(p.photo||avatar)}" class="trans-card-photo"
                 onerror="this.onerror=null;this.src='${avatar}'">
@@ -203,7 +211,7 @@ function politicianCard(p) {
         </div>
         <div class="trans-card-actions">
             <button class="trans-compare-btn ${inCmp?'active':''}"
-                onclick="event.stopPropagation();toggleCompare(${pJson})"
+                onclick="event.stopPropagation();toggleCompare(window.__polStore['${k}'])"
                 title="${inCmp?'Remover':'Adicionar ao comparativo'}">${inCmp?'✓':'+'}</button>
         </div>
     </div>`;
@@ -234,7 +242,7 @@ function _fmt_date(s){if(!s)return '';try{return new Date(s+'T00:00:00').toLocal
 
 function renderProfile(p, d, container) {
     const r=d.community_rating||{}, sal=d.salary_info, inCmp=window.__transState.compareList.includes(p.id);
-    const pJson=JSON.stringify(p).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,'\\u0027');
+    const _pk=_pkey(p);
 
     const bioHtml = d.bio ? `<div class="trans-section"><div class="trans-section-label">📖 Biografia</div><p style="color:#9ca3af;font-size:13px;line-height:1.75;margin:0;">${escapeHtml(d.bio)}</p>${d.wiki_link?`<a href="${escapeHtml(d.wiki_link)}" target="_blank" class="trans-source-link">Leia mais na Wikipedia ↗</a>`:''}</div>` : '';
 
@@ -296,7 +304,7 @@ function renderProfile(p, d, container) {
                 </div>
                 ${avgR?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">${_stars(avgR)}<span style="color:#ffd93d;font-weight:700;">${avgR}</span><span style="color:#6b7280;font-size:12px;">(${r.count})</span></div>`:''}
             </div>
-            <button class="trans-compare-btn-lg ${inCmp?'active':''}" onclick="toggleCompare(${pJson})">${inCmp?'✓ No comparativo':'+ Comparar'}</button>
+            <button class="trans-compare-btn-lg ${inCmp?'active':''}" onclick="toggleCompare(window.__polStore['${_pk}'])">${inCmp?'✓ No comparativo':'+ Comparar'}</button>
         </div>
         ${bioHtml}${dadosHtml}${cargosHtml}${salHtml}${despHtml}${votHtml}${chargesHtml}${ratingHtml}
     </div>`;
@@ -342,10 +350,10 @@ async function renderCompareView(container){
         const data=await r.json(); const pols=data.politicians||[];
         if(!pols.length)throw new Error();
         const fields=[['Cargo',d=>(d.all_roles&&d.all_roles[0])||d.role||'—'],['Partido',d=>(d.all_parties&&d.all_parties[0])||d.party||'—'],['País',d=>d.country||'—'],['Formação',d=>d.education||'—'],['Profissão ant.',d=>d.occupation||'—'],['Nascimento',d=>_fmt_date(d.birth_date)||'—'],['Subsídio/mês',d=>d.salary_info?_fmt_brl(d.salary_info.subsidio_mensal):'—'],['Total despesas',d=>{const t=(d.expenses||[]).reduce((s,e)=>s+(e.value||0),0);return t?_fmt_brl(t):'—';}],['Votações',d=>d.votes&&d.votes.length?d.votes.length+'':'—']];
-        const headers=pols.map((pol,i)=>{const o=pList.find(x=>x.id===list[i])||pList[i]||{};const nm=o.name||pol.full_name||pol.name||pol.id||'?';const avatar=_safeAvatarUrl(nm,'66fcf1');const photo=o.photo||pol.photo||'';return `<th class="trans-cmp-header"><img src="${escapeHtml(photo||avatar)}" class="trans-cmp-photo" onerror="this.onerror=null;this.src='${avatar}'"><div class="trans-cmp-name">${escapeHtml(nm)}</div><div class="trans-cmp-role">${escapeHtml(o.role||pol.role||'')}</div></th>`;}).join('');
+        const headers=pols.map((pol,i)=>{const o=pList[i]||{};const avatar=_safeAvatarUrl(o.name||pol.full_name||'?','66fcf1');return `<th class="trans-cmp-header"><img src="${escapeHtml(o.photo||pol.photo||avatar)}" class="trans-cmp-photo" onerror="this.onerror=null;this.src='${avatar}'"><div class="trans-cmp-name">${escapeHtml(o.name||pol.full_name||pol.id)}</div><div class="trans-cmp-role">${escapeHtml(o.role||pol.role||'')}</div></th>`;}).join('');
         const rows=fields.map(([label,fn])=>`<tr><td class="trans-cmp-label">${label}</td>${pols.map(pol=>`<td class="trans-cmp-cell">${escapeHtml(fn(pol))}</td>`).join('')}</tr>`).join('');
         container.innerHTML=`<div class="trans-profile-wrap"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="font-family:'Rajdhani';font-size:18px;color:var(--primary);font-weight:700;">⚖️ Comparativo</div><button class="trans-back-btn" onclick="renderTransparencyView('search')">← Voltar</button></div><div style="overflow-x:auto;"><table class="trans-compare-table"><thead><tr><th class="trans-cmp-label">Campo</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div><button class="glass-btn" style="margin-top:16px;" onclick="window.__transState.compareList=[];window.__transState.comparePoliticians=[];renderTransparencyView('search');">✕ Limpar comparativo</button></div>`;
-    }catch(e){console.error('Compare error:',e);container.innerHTML=`<div class="news-empty"><div style="font-size:32px;margin-bottom:8px;">⚠️</div><div style="margin-bottom:12px;color:#9ca3af;font-size:13px;">Erro ao carregar comparativo.<br>Tente buscar os políticos novamente e adicioná-los.</div><button class="glass-btn" onclick="window.__transState.compareList=[];window.__transState.comparePoliticians=[];renderTransparencyView('search')">↺ Reiniciar</button></div>`;}
+    }catch(e){container.innerHTML=`<div class="news-empty">Erro. <button class="glass-btn" onclick="renderTransparencyView('search')">← Voltar</button></div>`;}
 }
 
 // ── LOCATION OVERRIDE ─────────────────────────────────────────
