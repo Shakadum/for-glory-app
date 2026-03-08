@@ -1222,55 +1222,117 @@
             <div style="background:rgba(0,0,0,0.3);border-bottom:1px solid #222;flex-shrink:0;">
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;">
                     <span style="color:white;font-family:'Rajdhani';font-weight:800;font-size:22px;letter-spacing:1px;">⭐ MEUS FAVORITOS</span>
-                    <button onclick="clearAllFavorites()" style="background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#4b5563;padding:5px 10px;font-size:11px;cursor:pointer;">Limpar</button>
+                    <button id="fav-clear-btn" onclick="clearAllFavorites()" style="background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#4b5563;padding:5px 10px;font-size:11px;cursor:pointer;">Limpar</button>
                 </div>
                 <div style="display:flex;overflow-x:auto;scrollbar-width:none;padding:0 8px;">
                     <button class="fav-tab active" data-tab="quizzes" onclick="switchFavTab('quizzes',this)">🧠 Quizzes</button>
                     <button class="fav-tab" data-tab="noticias" onclick="switchFavTab('noticias',this)">📰 Notícias</button>
                     <button class="fav-tab" data-tab="politicos" onclick="switchFavTab('politicos',this)">🏛️ Políticos</button>
                     <button class="fav-tab" data-tab="comparacoes" onclick="switchFavTab('comparacoes',this)">⚖️ Comparações</button>
+                    <button class="fav-tab" data-tab="vip" onclick="switchFavTab('vip',this)" style="white-space:nowrap;">⭐ VIP</button>
                 </div>
             </div>
-            <!-- Panels -->
+            <!-- Panels (scrollable, ocupa tudo) -->
             <div style="flex:1;overflow-y:auto;padding:16px;">
                 <div id="fav-panel-quizzes" class="fav-panel"></div>
                 <div id="fav-panel-noticias" class="fav-panel" style="display:none;"></div>
                 <div id="fav-panel-politicos" class="fav-panel" style="display:none;"></div>
                 <div id="fav-panel-comparacoes" class="fav-panel" style="display:none;"></div>
-            </div>
-            <!-- VIP -->
-            <div id="fav-vip-section" style="padding:0 16px 24px;flex-shrink:0;">
-                <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:20px;">
-                    <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#c5c6c7;letter-spacing:.5px;margin-bottom:3px;">⭐ FOR GLORY VIP</div>
-                    <div style="font-size:11px;color:#4b5563;margin-bottom:14px;">Benefícios exclusivos + 2× Glory Points</div>
-                    <div style="background:linear-gradient(135deg,rgba(102,252,241,0.07),rgba(139,92,246,0.07));border:1.5px solid rgba(102,252,241,0.22);border-radius:14px;padding:16px;position:relative;overflow:hidden;">
-                        <div style="position:absolute;top:-20px;right:-20px;width:90px;height:90px;background:radial-gradient(circle,rgba(102,252,241,0.1),transparent 70%);pointer-events:none;"></div>
-                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                            <span style="font-size:22px;">⭐</span>
-                            <div style="flex:1;"><div style="font-family:'Syne';font-weight:800;font-size:15px;color:#66fcf1;">VIP</div><div style="font-size:10px;color:#6b7280;">Todos os benefícios · Plano único</div></div>
-                            <div id="fav-vip-active-badge" style="display:none;background:rgba(102,252,241,0.15);border:1px solid rgba(102,252,241,0.3);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:700;color:#66fcf1;font-family:'Rajdhani';">✓ ATIVO</div>
+
+                <!-- Painel VIP — aparece só na aba ⭐ VIP -->
+                <div id="fav-panel-vip" class="fav-panel" style="display:none;">
+
+                    <!-- Plano VIP -->
+                    <div id="fav-vip-section" style="margin-bottom:20px;">
+                        <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#c5c6c7;letter-spacing:.5px;margin-bottom:3px;">⭐ FOR GLORY VIP</div>
+                        <div style="font-size:11px;color:#4b5563;margin-bottom:14px;">Benefícios exclusivos + 2× Glory Points</div>
+                        <div style="background:linear-gradient(135deg,rgba(102,252,241,0.07),rgba(139,92,246,0.07));border:1.5px solid rgba(102,252,241,0.22);border-radius:14px;padding:16px;position:relative;overflow:hidden;">
+                            <div style="position:absolute;top:-20px;right:-20px;width:90px;height:90px;background:radial-gradient(circle,rgba(102,252,241,0.1),transparent 70%);pointer-events:none;"></div>
+                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                                <span style="font-size:22px;">⭐</span>
+                                <div style="flex:1;"><div style="font-family:'Syne';font-weight:800;font-size:15px;color:#66fcf1;">VIP</div><div style="font-size:10px;color:#6b7280;">Todos os benefícios · Plano único</div></div>
+                                <div id="fav-vip-active-badge" style="display:none;background:rgba(102,252,241,0.15);border:1px solid rgba(102,252,241,0.3);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:700;color:#66fcf1;font-family:'Rajdhani';">✓ ATIVO</div>
+                            </div>
+                            <div style="display:flex;background:rgba(255,255,255,0.05);border-radius:9px;padding:3px;margin-bottom:12px;">
+                                <button id="fav-vip-btn-m" onclick="favVipBilling('monthly')" style="flex:1;padding:6px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:rgba(102,252,241,0.15);color:#66fcf1;">MENSAL</button>
+                                <button id="fav-vip-btn-y" onclick="favVipBilling('yearly')" style="flex:1;padding:6px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:transparent;color:#4b5563;">ANUAL <span style="font-size:9px;background:#10b981;color:#fff;border-radius:20px;padding:1px 4px;">-25%</span></button>
+                            </div>
+                            <div style="text-align:center;margin-bottom:12px;">
+                                <div id="fav-vip-price" style="font-family:'Rajdhani';font-weight:800;font-size:28px;color:#f3f4f6;">R$&nbsp;15<span style="font-size:13px;color:#6b7280;font-weight:400;">/mês</span></div>
+                                <div id="fav-vip-sub" style="font-size:10px;color:#6b7280;margin-top:1px;">Cobrado mensalmente · Cancele quando quiser</div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;">
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🧠</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">30 quizzes/dia</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">⚡</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">2× Glory Points</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🏷️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Badge + TAG VIP</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🖼️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Borda de perfil</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🏰</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Base personalizada</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🌈</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Temas exclusivos</span></div>
+                                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;grid-column:span 2;"><span style="font-size:13px;">✍️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Fonte do nome personalizável</span></div>
+                            </div>
+                            <button id="fav-vip-cta" onclick="favVipSubscribe()" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#66fcf1,#4dd9d0);color:#0b0c10;font-family:'Rajdhani';font-weight:800;font-size:13px;letter-spacing:.5px;cursor:pointer;">ASSINAR VIP · R$ 15,00/mês</button>
+                            <div id="fav-vip-note" style="text-align:center;font-size:10px;color:#4b5563;margin-top:5px;">Pagamento seguro · Cancele quando quiser</div>
                         </div>
-                        <div style="display:flex;background:rgba(255,255,255,0.05);border-radius:9px;padding:3px;margin-bottom:12px;">
-                            <button id="fav-vip-btn-m" onclick="favVipBilling('monthly')" style="flex:1;padding:6px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:rgba(102,252,241,0.15);color:#66fcf1;">MENSAL</button>
-                            <button id="fav-vip-btn-y" onclick="favVipBilling('yearly')" style="flex:1;padding:6px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:transparent;color:#4b5563;">ANUAL <span style="font-size:9px;background:#10b981;color:#fff;border-radius:20px;padding:1px 4px;">-25%</span></button>
-                        </div>
-                        <div style="text-align:center;margin-bottom:12px;">
-                            <div id="fav-vip-price" style="font-family:'Rajdhani';font-weight:800;font-size:28px;color:#f3f4f6;">R$&nbsp;15<span style="font-size:13px;color:#6b7280;font-weight:400;">/mês</span></div>
-                            <div id="fav-vip-sub" style="font-size:10px;color:#6b7280;margin-top:1px;">Cobrado mensalmente · Cancele quando quiser</div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;">
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🧠</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">30 quizzes/dia</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">⚡</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">2× Glory Points</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🏷️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Badge + TAG VIP</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🖼️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Borda de perfil</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🏰</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Base personalizada</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;"><span style="font-size:13px;">🌈</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Temas exclusivos</span></div>
-                            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 9px;grid-column:span 2;"><span style="font-size:13px;">✍️</span><span style="font-size:10px;color:#e5e7eb;font-weight:600;">Fonte do nome personalizável</span></div>
-                        </div>
-                        <button id="fav-vip-cta" onclick="favVipSubscribe()" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#66fcf1,#4dd9d0);color:#0b0c10;font-family:'Rajdhani';font-weight:800;font-size:13px;letter-spacing:.5px;cursor:pointer;">ASSINAR VIP · R$ 15,00/mês</button>
-                        <div id="fav-vip-note" style="text-align:center;font-size:10px;color:#4b5563;margin-top:5px;">Pagamento seguro · Cancele quando quiser</div>
                     </div>
-                </div>
+
+                    <!-- Seletor de Temas VIP -->
+                    <div id="fav-themes-section">
+                        <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#c5c6c7;letter-spacing:.5px;margin-bottom:3px;">🎨 TEMAS VISUAIS</div>
+                        <div style="font-size:11px;color:#4b5563;margin-bottom:14px;">Personalize o visual do app inteiro <span id="fav-theme-vip-lock" style="color:#ffd93d;">· Exclusivo VIP ⭐</span></div>
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+
+                            <!-- Tema Padrão -->
+                            <button id="theme-btn-default" onclick="applyTheme('default')" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(102,252,241,0.35);background:rgba(102,252,241,0.07);cursor:pointer;text-align:left;transition:all .2s;">
+                                <span style="font-size:22px;flex-shrink:0;">⚡</span>
+                                <div style="flex:1;">
+                                    <div style="font-family:'Rajdhani';font-weight:800;font-size:13px;color:#66fcf1;letter-spacing:.5px;">PADRÃO</div>
+                                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">Cyberpunk escuro · DM Sans + Syne</div>
+                                </div>
+                                <div id="theme-active-default" style="font-family:'Rajdhani';font-size:10px;font-weight:700;color:#66fcf1;background:rgba(102,252,241,0.15);border:1px solid rgba(102,252,241,0.3);border-radius:20px;padding:2px 8px;">ATIVO</div>
+                            </button>
+
+                            <!-- Tema Medieval -->
+                            <button id="theme-btn-medieval" onclick="applyTheme('medieval')" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(212,175,55,0.25);background:rgba(212,175,55,0.05);cursor:pointer;text-align:left;transition:all .2s;position:relative;overflow:hidden;">
+                                <span style="font-size:22px;flex-shrink:0;">⚔️</span>
+                                <div style="flex:1;">
+                                    <div style="font-family:'Rajdhani';font-weight:800;font-size:13px;color:#d4af37;letter-spacing:.5px;">FANTASIA ÉPICA MEDIEVAL</div>
+                                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">Pergaminho, dourado e pedra · Cinzel + IM Fell</div>
+                                </div>
+                                <div id="theme-active-medieval" style="display:none;font-family:'Rajdhani';font-size:10px;font-weight:700;color:#d4af37;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.35);border-radius:20px;padding:2px 8px;">ATIVO</div>
+                                <div id="theme-lock-medieval" style="font-family:'Rajdhani';font-size:10px;font-weight:700;color:#ffd93d;opacity:0.7;">VIP</div>
+                            </button>
+
+                            <!-- Temas futuros — bloqueados -->
+                            <button disabled style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:not-allowed;text-align:left;opacity:0.45;">
+                                <span style="font-size:22px;flex-shrink:0;">🤖</span>
+                                <div style="flex:1;">
+                                    <div style="font-family:'Rajdhani';font-weight:800;font-size:13px;color:#9ca3af;letter-spacing:.5px;">CYBERPUNK 2099</div>
+                                    <div style="font-size:10px;color:#4b5563;margin-top:1px;">Neon, glitch e neblina · Em breve</div>
+                                </div>
+                                <div style="font-family:'Rajdhani';font-size:10px;font-weight:700;color:#6b7280;">EM BREVE</div>
+                            </button>
+
+                            <button disabled style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:not-allowed;text-align:left;opacity:0.45;">
+                                <span style="font-size:22px;flex-shrink:0;">🌿</span>
+                                <div style="flex:1;">
+                                    <div style="font-family:'Rajdhani';font-weight:800;font-size:13px;color:#9ca3af;letter-spacing:.5px;">NATUREZA VIVA</div>
+                                    <div style="font-size:10px;color:#4b5563;margin-top:1px;">Verde, folhas e luz solar · Em breve</div>
+                                </div>
+                                <div style="font-family:'Rajdhani';font-size:10px;font-weight:700;color:#6b7280;">EM BREVE</div>
+                            </button>
+
+                            <button disabled style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:not-allowed;text-align:left;opacity:0.45;">
+                                <span style="font-size:22px;flex-shrink:0;">🕵️</span>
+                                <div style="flex:1;">
+                                    <div style="font-family:'Rajdhani';font-weight:800;font-size:13px;color:#9ca3af;letter-spacing:.5px;">NOIR URBANO</div>
+                                    <div style="font-size:10px;color:#4b5563;margin-top:1px;">Preto, creme e vermelho sangue · Em breve</div>
+                                </div>
+                                <div style="font-family:'Rajdhani';font-size:10px;font-weight:700;color:#6b7280;">EM BREVE</div>
+                            </button>
+
+                        </div>
+                    </div>
+                </div><!-- /fav-panel-vip -->
             </div>
         </div>
         
@@ -2098,9 +2160,75 @@ document.addEventListener('DOMContentLoaded', () => {
     window.switchFavTab = function(tab) {
         document.querySelectorAll('.fav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
         document.querySelectorAll('.fav-panel').forEach(p => p.style.display='none');
+        // Esconde botão Limpar na aba VIP
+        const clearBtn = document.getElementById('fav-clear-btn');
+        if (clearBtn) clearBtn.style.display = (tab==='vip') ? 'none' : '';
         const panel = document.getElementById('fav-panel-'+tab);
-        if (panel) { panel.style.display=''; renderFavPanel(tab); }
+        if (panel) { panel.style.display=''; if (tab!=='vip') renderFavPanel(tab); }
+        if (tab==='vip') { setTimeout(checkFavVipStatus, 50); }
     };
+
+    // ── SISTEMA DE TEMAS ──────────────────────────────────────────
+    const _THEME_CSS_ID = 'fg-theme-css';
+    const _THEME_KEY = 'fg_active_theme';
+    const _THEMES = {
+        default:  { name:'Padrão',               icon:'⚡', css:null },
+        medieval: { name:'Fantasia Épica Medieval', icon:'⚔️', css:'/static/theme_medieval.css' },
+    };
+
+    function _updateThemeBtns(themeId) {
+        Object.keys(_THEMES).forEach(id => {
+            const activeBadge = document.getElementById('theme-active-'+id);
+            const lockBadge   = document.getElementById('theme-lock-'+id);
+            const btn = document.getElementById('theme-btn-'+id);
+            if (!btn) return;
+            if (id === 'default') {
+                if (activeBadge) activeBadge.style.display = (themeId==='default') ? '' : 'none';
+                btn.style.borderColor = (themeId==='default') ? 'rgba(102,252,241,0.4)' : 'rgba(255,255,255,0.08)';
+                btn.style.background  = (themeId==='default') ? 'rgba(102,252,241,0.07)' : 'rgba(255,255,255,0.02)';
+            } else {
+                const isActive = themeId === id;
+                if (activeBadge) activeBadge.style.display = isActive ? '' : 'none';
+                if (lockBadge)   lockBadge.style.display   = isActive ? 'none' : '';
+                btn.style.borderColor = isActive ? 'rgba(212,175,55,0.5)' : 'rgba(212,175,55,0.2)';
+                btn.style.background  = isActive ? 'rgba(212,175,55,0.1)' : 'rgba(212,175,55,0.04)';
+            }
+        });
+    }
+
+    window.applyTheme = async function(themeId) {
+        if (!_THEMES[themeId]) return;
+        // Remove CSS anterior
+        const old = document.getElementById(_THEME_CSS_ID);
+        if (old) old.remove();
+        document.documentElement.removeAttribute('data-theme');
+
+        if (themeId !== 'default') {
+            const t = _THEMES[themeId];
+            const link = document.createElement('link');
+            link.id = _THEME_CSS_ID;
+            link.rel = 'stylesheet';
+            link.href = t.css + '?v=' + Date.now();
+            document.head.appendChild(link);
+            await new Promise(res => { link.onload=res; link.onerror=res; setTimeout(res,1200); });
+            document.documentElement.setAttribute('data-theme', themeId);
+        }
+
+        try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
+        _updateThemeBtns(themeId);
+        if (typeof showToast==='function') showToast(_THEMES[themeId].icon+' Tema "'+_THEMES[themeId].name+'" ativado!');
+    };
+
+    // Restaura tema salvo ao carregar
+    (function() {
+        try {
+            const saved = localStorage.getItem(_THEME_KEY);
+            if (saved && saved !== 'default' && _THEMES[saved]) {
+                // Aplica sem aguardar (async background)
+                window.applyTheme(saved);
+            }
+        } catch(e) {}
+    })();
     function renderFavPanel(type) {
         const panel = document.getElementById('fav-panel-'+type);
         if (!panel || panel.style.display==='none') return;
