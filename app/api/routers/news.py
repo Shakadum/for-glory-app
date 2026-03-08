@@ -128,7 +128,7 @@ async def get_location(request: Request):
 @router.get("/news")
 async def get_news(
     request: Request,
-    level: str = Query("city", pattern="^(city|state|world)$"),
+    level: str = Query("city", regex="^(city|state|world)$"),
     custom_city: Optional[str] = Query(None),
 ):
     """

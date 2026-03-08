@@ -189,6 +189,14 @@ function applyNewsTravel() {
     loadNews('city');
 }
 
-// ── goView hook gerenciado centralmente em index.html ──
-// (initNews é chamado via switchMainTab e goView patch no HTML)
-
+// ── goView hook: patch app.js's goView to also init news ───
+// (called once after app.js loads)
+document.addEventListener('DOMContentLoaded', () => {
+    const _orig = window.goView;
+    if (typeof _orig === 'function') {
+        window.goView = function(v, btn) {
+            _orig(v, btn);
+            if (v === 'news') initNews();
+        };
+    }
+});

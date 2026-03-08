@@ -1,26 +1,23 @@
-"""
-WebSocket unificado — corrigido e estável.
-
-Fixes:
-- Heartbeat ping/pong
-- Presença online via Redis com TTL
-- accept() SEMPRE primeiro (sem race condition)
-- typing_start / typing_stop
-- delete_msg broadcast
-"""
 from fastapi import APIRouter
 from app.api.core import *
-from app.core.redis import online_add, online_remove
 
 router = APIRouter()
 
-
 @router.websocket("/ws/{ch}/{uid}")
 async def ws_end(ws: WebSocket, ch: str, uid: int):
-    # ── 1. Accept PRIMEIRO ───────────────────────────────────────────────────
+    """WebSocket por canal + usuário.
+
+    IMPORTANTE: accept() sempre vem PRIMEIRO.
+    Fechar sem accept() resulta em 403 no cliente (Starlette/FastAPI).
+
+    Protocolos suportados:
+      - JSON estruturado: {"type": "msg", "content": "..."}
+      - Strings legadas: CALL_SIGNAL:uid:action:channel | SYNC_BG:channel:url | KICK_CALL:uid
+    """
+    # ── 1. Aceitar ANTES de qualquer validação ───────────────────────────────
     await ws.accept()
 
-    # ── 2. Validar token ─────────────────────────────────────────────────────
+    # ── 2. Validar token ────────────────────────────────────────────────────
     token = ws.query_params.get("token")
     try:
         token_payload = verify_token(token)
@@ -30,7 +27,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         await ws.close(code=1008)
         return
 
-    # ── 3. Validar usuário ───────────────────────────────────────────────────
+    # ── 3. Validar usuário e conferir que uid da URL bate com o token ────────
     with SessionLocal() as db:
         user = db.query(User).filter(User.id == uid).first()
         if not user or user.username != token_username:
@@ -38,9 +35,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             await ws.close(code=1008)
             return
 
-    # ── 4. Registrar + marcar online ─────────────────────────────────────────
+    # ── 4. Registrar conexão (já aceita) ─────────────────────────────────────
     manager.connect_accepted(ws, ch, uid)
-    await online_add(uid)
 
     try:
         while True:
@@ -55,13 +51,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
             if not text_msg:
                 continue
 
-            # Ping string legado
-            if text_msg == "ping":
-                await ws.send_text(json.dumps({"type": "pong"}))
-                await online_add(uid)
-                continue
-
-            # Protocolos legados
+            # ── Protocolos legados (string pura) ────────────────────────────
             if text_msg.startswith("CALL_SIGNAL:"):
                 parts = text_msg.split(":", 3)
                 if len(parts) == 4:
@@ -71,9 +61,12 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         continue
                     action = parts[2]
                     channel_name = parts[3]
-                    type_map = {"accepted": "call_accepted", "rejected": "call_rejected", "cancelled": "call_cancelled"}
-                    if action in type_map:
-                        await manager.send_personal({"type": type_map[action], "channel": channel_name}, target_uid)
+                    if action == "accepted":
+                        await manager.send_personal({"type": "call_accepted", "channel": channel_name}, target_uid)
+                    elif action == "rejected":
+                        await manager.send_personal({"type": "call_rejected", "channel": channel_name}, target_uid)
+                    elif action == "cancelled":
+                        await manager.send_personal({"type": "call_cancelled", "channel": channel_name}, target_uid)
                 continue
 
             if text_msg.startswith("SYNC_BG:"):
@@ -86,12 +79,13 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                 parts = text_msg.split(":", 1)
                 if len(parts) == 2:
                     try:
-                        await manager.send_personal({"type": "kick_call", "from": uid}, int(parts[1]))
+                        target_uid = int(parts[1])
+                        await manager.send_personal({"type": "kick_call", "from": uid}, target_uid)
                     except Exception:
                         pass
                 continue
 
-            # Parse JSON
+            # ── JSON estruturado ou string pura ─────────────────────────────
             try:
                 data = json.loads(text_msg)
                 if not isinstance(data, dict):
@@ -103,23 +97,9 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
 
             if msg_type == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
-                await online_add(uid)
                 continue
 
-            # Typing indicators
-            if msg_type in ("typing_start", "typing_stop"):
-                for conn in list(manager.active.get(ch, [])):
-                    if conn is not ws:
-                        try:
-                            await conn.send_text(json.dumps({
-                                "type": msg_type, "user_id": uid,
-                                "username": data.get("username", ""),
-                            }))
-                        except Exception:
-                            pass
-                continue
-
-            # Call signaling JSON
+            # ── Sinalização de chamada ───────────────────────────────────────
             if msg_type in {"call_invite", "call_accept", "call_reject", "call_end"}:
                 to_uid = data.get("to")
                 channel_name = data.get("channel")
@@ -129,19 +109,16 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     to_uid = int(to_uid)
                 except Exception:
                     continue
-                type_map = {"call_invite": "incoming_call", "call_accept": "call_accepted",
-                            "call_reject": "call_rejected", "call_end": "call_ended"}
+                type_map = {
+                    "call_invite": "incoming_call",
+                    "call_accept": "call_accepted",
+                    "call_reject": "call_rejected",
+                    "call_end":    "call_ended",
+                }
                 await manager.send_personal({"type": type_map[msg_type], "from": uid, "channel": channel_name}, to_uid)
                 continue
 
-            # Delete message
-            if msg_type == "delete_msg":
-                msg_id = data.get("msg_id")
-                if msg_id:
-                    await manager.broadcast({"type": "message_deleted", "msg_id": msg_id}, ch)
-                continue
-
-            # Normal message
+            # ── Mensagem normal ──────────────────────────────────────────────
             content = data.get("content")
             if content is None:
                 continue
@@ -164,7 +141,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     "type": "msg",
                     "user_id": uid,
                     "username": u_sum.get("username") or sender.username,
-                    "avatar": u_sum.get("avatar_url") or sender.avatar_url or "",
+                    "avatar": u_sum.get("avatar_url") or sender.avatar_url,
                     "rank": u_sum.get("rank"),
                     "color": u_sum.get("color"),
                     "special_emblem": u_sum.get("special_emblem"),
@@ -182,8 +159,9 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         db.add(pm); db.commit(); db.refresh(pm)
                         payload["id"] = pm.id
                         await manager.broadcast(payload, ch)
+                        # notifica o destinatário em qualquer canal que ele esteja
                         await manager.send_personal({**payload, "type": "new_dm"}, to_uid)
-                    continue
+                        continue
 
                 if ch.startswith("group_"):
                     parts = ch.split("_")
@@ -193,7 +171,7 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         db.add(gm); db.commit(); db.refresh(gm)
                         payload["id"] = gm.id
                         await manager.broadcast(payload, ch)
-                    continue
+                        continue
 
                 if ch.startswith("comm_"):
                     parts = ch.split("_")
@@ -203,8 +181,9 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                         db.add(cm); db.commit(); db.refresh(cm)
                         payload["id"] = cm.id
                         await manager.broadcast(payload, ch)
-                    continue
+                        continue
 
+                # fallback (canal global / status)
                 payload["id"] = int(now.timestamp() * 1000)
                 await manager.broadcast(payload, ch)
 
@@ -212,5 +191,3 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
         logger.exception("Erro no WebSocket uid=%s ch=%s", uid, ch)
     finally:
         manager.disconnect(ws, ch, uid)
-        if not manager.user_ws.get(uid):
-            await online_remove(uid)

@@ -1,0 +1,27 @@
+(function () {
+  window.FGCommunity = Object.freeze({
+    submitCreateComm: (...args) => window.submitCreateComm(...args),
+    submitEditComm: (...args) => window.submitEditComm(...args),
+    submitCreateChannel: (...args) => window.submitCreateChannel(...args),
+    loadMyComms: (...args) => window.loadMyComms(...args),
+    loadPublicComms: (...args) => window.loadPublicComms(...args),
+    clearCommSearch: (...args) => window.clearCommSearch(...args),
+    searchComms: (...args) => window.searchComms(...args),
+    joinCommunity: (...args) => window.joinCommunity(...args),
+    requestCommJoin: (...args) => window.requestCommJoin(...args),
+    leaveCommunity: (...args) => window.leaveCommunity(...args),
+    openCommunity: (...args) => window.openCommunity(...args),
+    promoteMember: (...args) => window.promoteMember(...args),
+    demoteMember: (...args) => window.demoteMember(...args),
+    kickMember: (...args) => window.kickMember(...args),
+    showCommInfo: (...args) => window.showCommInfo(...args),
+    closeComm: (...args) => window.closeComm(...args),
+    openEditChannelModal: (...args) => window.openEditChannelModal(...args),
+    submitEditChannel: (...args) => window.submitEditChannel(...args),
+    fetchCommMessages: (...args) => window.fetchCommMessages(...args),
+    connectCommWS: (...args) => window.connectCommWS(...args),
+    joinChannel: (...args) => window.joinChannel(...args),
+    sendCommMsg: (...args) => window.sendCommMsg(...args),
+    uploadCommImage: (...args) => window.uploadCommImage(...args),
+  });
+})();

@@ -1,33 +1,26 @@
 """
-For Glory — Portal da Transparência v6
-Estratégia de fotos:
-  - Sistema de cache dinâmico: Wikipedia REST API como fonte única de verdade
-  - Todas as fotos são buscadas via /api/rest_v1/page/summary/{title}
-  - Cache em memória com TTL de 12h — refresh automático no background
-  - Fallback para Wikidata image property se Wikipedia não retornar
-  - NUNCA usa URLs hardcoded do Wikimedia Commons (quebram quando renomeadas)
+For Glory — Portal da Transparência v5
+Estratégia:
+  - Políticos-chave (Presidente, VP, STF) têm dados curados e verificados manualmente
+  - Deputados/Senadores: API oficial da Câmara e Senado
+  - Internacionais: Wikidata Entity API + Wikipedia REST (com validação)
+  - Nunca usa busca por texto livre para encontrar o artigo de um político conhecido
 """
-import asyncio, hashlib, urllib.parse, time, json as _json
-import unicodedata as _ucd
+import asyncio, hashlib, urllib.parse
 import httpx
-from fastapi import APIRouter, Query, Depends, Body, Request as FARequest, BackgroundTasks
+from fastapi import APIRouter, Query, Depends, Body, Request as FARequest
 from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String, DateTime, Text, UniqueConstraint
-from datetime import datetime, timezone, timedelta
+from sqlalchemy import Column, Integer, String, DateTime, Text
+from datetime import datetime, timezone
 from typing import Optional
-from app.db.session import get_db, SessionLocal
+from app.db.session import get_db
 from app.db.base import Base
 
 router = APIRouter()
 
-# ── Normalização de nomes — definido cedo para uso em MAYORS_BY_CITY ────────
-def _norm(s: str) -> str:
-    """Remove acentos, lowercase — chave canônica de lookup."""
-    return _ucd.normalize("NFD", s or "").encode("ascii","ignore").decode().lower().strip()
-
 CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
-_HDR = {"User-Agent": "ForGloryApp/2.0 (transparency@forglory.online)"}
+_HDR = {"User-Agent": "ForGloryApp/1.0 (transparency@forglory.online)"}
 
 # ── DB ────────────────────────────────────────────────────────
 class PoliticianRating(Base):
@@ -38,18 +31,6 @@ class PoliticianRating(Base):
     score         = Column(Integer)
     comment       = Column(Text, nullable=True)
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-class MayorCache(Base):
-    """Cache persistente — 5571 prefeitos. Fontes: TSE 2024 + Wikidata.
-    TTL 90 dias (prefeitos mudam só a cada 4 anos)."""
-    __tablename__ = "mayor_cache"
-    __table_args__ = (UniqueConstraint("uf","city_norm",name="uq_mc_uf_city"),)
-    id         = Column(Integer, primary_key=True)
-    uf         = Column(String(2),   index=True)
-    city_norm  = Column(String(200), index=True)  # sem acento, lower
-    city_name  = Column(String(200))              # nome original
-    data       = Column(Text)                     # JSON do político
-    fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 # ── HTTP ──────────────────────────────────────────────────────
 async def _get(url, params=None, timeout=10):
@@ -62,309 +43,21 @@ async def _get(url, params=None, timeout=10):
         pass
     return None
 
-# ═══════════════════════════════════════════════════════════════
-#  SISTEMA DINÂMICO DE FOTOS — Wikipedia REST API + Cache TTL
-# ═══════════════════════════════════════════════════════════════
-_PHOTO_CACHE: dict = {}          # { wiki_title: { photo, bio, link, ts } }
-_PHOTO_CACHE_TTL = 43200         # 12 horas em segundos
-_PHOTO_LOCK = asyncio.Lock()
-
-# URLs de fallback verificadas — usadas quando Wikipedia API falha
-# Formato: { wiki_title_pt: "url_commons" }
-_FALLBACK_PHOTOS: dict[str, str] = {
-    "Luiz Inácio Lula da Silva":        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/400px-Lula_-_foto_oficial_2023.jpg",
-    "Geraldo Alckmin":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Geraldo_Alckmin_-_foto_oficial_2023.jpg/400px-Geraldo_Alckmin_-_foto_oficial_2023.jpg",
-    "Luís Roberto Barroso":             "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg",
-    "Alexandre de Moraes":              "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg",
-    "Cármen Lúcia Antunes Rocha":       "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg/400px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg",
-    "Cármen Lúcia":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg/400px-C%C3%A1rmen_L%C3%BAcia_-_foto_oficial_2017_%28cropped%29.jpg",
-    "Dias Toffoli":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Dias_Toffoli_%282023%29.jpg/400px-Dias_Toffoli_%282023%29.jpg",
-    "Gilmar Ferreira Mendes":           "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg",
-    "Gilmar Mendes":                    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg",
-    "Edson Fachin":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Edson_Fachin_2023.jpg/400px-Edson_Fachin_2023.jpg",
-    "André Mendonça (ministro)":        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg",
-    "André Mendonça":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg",
-    "Kassio Nunes Marques":             "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Kassio_Nunes_Marques_2023.jpg/400px-Kassio_Nunes_Marques_2023.jpg",
-    "Flávio Dino":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg/400px-Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg",
-    "Cristiano Zanin Martins":          "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg",
-    "Cristiano Zanin":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg",
-    "Jair Bolsonaro":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Jair_Bolsonaro_2019.jpg/400px-Jair_Bolsonaro_2019.jpg",
-    "Tarcísio de Freitas":              "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Tarc%C3%ADsio_de_Freitas_-_foto_oficial_2022_%28cropped%29.jpg/400px-Tarc%C3%ADsio_de_Freitas_-_foto_oficial_2022_%28cropped%29.jpg",
-    "Arthur Lira":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Arthur_Lira_-_foto_oficial_2023.jpg/400px-Arthur_Lira_-_foto_oficial_2023.jpg",
-    "Rodrigo Pacheco":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Rodrigo_Pacheco_-_foto_oficial_2021.jpg/400px-Rodrigo_Pacheco_-_foto_oficial_2021.jpg",
-    "Michel Temer":                     "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Michel_Temer_-_foto_oficial_2016.jpg/400px-Michel_Temer_-_foto_oficial_2016.jpg",
-    "Dilma Rousseff":                   "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Dilma_Rousseff_-_foto_oficial_2011.jpg/400px-Dilma_Rousseff_-_foto_oficial_2011.jpg",
-    "Romeu Zema":                       "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Romeu_Zema_-_foto_oficial_2019.jpg/400px-Romeu_Zema_-_foto_oficial_2019.jpg",
-    "Raquel Lyra":                      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Raquel_Lyra_-_foto_oficial_2023.jpg/400px-Raquel_Lyra_-_foto_oficial_2023.jpg",
-    "Helder Barbalho":                  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Helder_Barbalho_-_foto_oficial_2019.jpg/400px-Helder_Barbalho_-_foto_oficial_2019.jpg",
-    "Eduardo Leite (político)":         "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Eduardo_Leite_-_foto_oficial_2023.jpg/400px-Eduardo_Leite_-_foto_oficial_2023.jpg",
-}
-
 async def _wiki_summary(title: str, lang: str = "pt") -> dict:
-    """Busca resumo Wikipedia pelo título EXATO via REST API — sempre URL atual."""
+    """Busca resumo Wikipedia pelo título EXATO (sem busca fuzzy)."""
     encoded = urllib.parse.quote(title.replace(" ", "_"), safe="")
     url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{encoded}"
     d = await _get(url, timeout=8)
     if d and d.get("type") == "standard" and d.get("extract"):
-        # originalimage = maior resolução; thumbnail = fallback
-        photo = (d.get("originalimage") or d.get("thumbnail") or {}).get("source", "")
         return {
             "bio":   d["extract"][:900],
-            "photo": photo,
+            "photo": (d.get("originalimage") or d.get("thumbnail") or {}).get("source", ""),
             "link":  d.get("content_urls", {}).get("desktop", {}).get("page", ""),
         }
     return {}
 
-async def get_photo(wiki_title_pt: str, wiki_title_en: str = "") -> str:
-    """Retorna URL de foto via Wikipedia (cache 12h) com fallback garantido."""
-    if not wiki_title_pt and not wiki_title_en:
-        return ""
-    cache_key = wiki_title_pt or wiki_title_en
-    now = time.time()
-    cached = _PHOTO_CACHE.get(cache_key)
-    if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
-        return cached.get("photo", "")
-    async with _PHOTO_LOCK:
-        cached = _PHOTO_CACHE.get(cache_key)
-        if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
-            return cached.get("photo", "")
-        result = {}
-        if wiki_title_pt:
-            result = await _wiki_summary(wiki_title_pt, "pt")
-        if not result.get("photo") and wiki_title_en:
-            result = await _wiki_summary(wiki_title_en, "en")
-        # Fallback garantido: URLs verificadas do Wikimedia Commons
-        if not result.get("photo"):
-            fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
-            if fb:
-                result = {**result, "photo": fb}
-        _PHOTO_CACHE[cache_key] = {**result, "ts": now}
-        return result.get("photo", "")
-
-async def get_wiki_data(wiki_title_pt: str, wiki_title_en: str = "") -> dict:
-    """Retorna { photo, bio, link } com cache de 12h."""
-    if not wiki_title_pt and not wiki_title_en:
-        return {}
-    cache_key = wiki_title_pt or wiki_title_en
-    now = time.time()
-    cached = _PHOTO_CACHE.get(cache_key)
-    if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
-        return cached
-    async with _PHOTO_LOCK:
-        cached = _PHOTO_CACHE.get(cache_key)
-        if cached and (now - cached["ts"]) < _PHOTO_CACHE_TTL:
-            return cached
-        result = {}
-        if wiki_title_pt:
-            result = await _wiki_summary(wiki_title_pt, "pt")
-        if not result.get("photo") and wiki_title_en:
-            result = await _wiki_summary(wiki_title_en, "en")
-    # Fallback garantido — URLs verificadas do Wikimedia Commons
-    if not result.get("photo"):
-        fb = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
-        if fb:
-            result = {**result, "photo": fb}
-    entry = {**result, "ts": now}
-    _PHOTO_CACHE[cache_key] = entry
-    return entry
-
-# _warmup_photo_cache é definida APÓS CURATED_POLITICIANS (ver abaixo)
-
 # ── DADOS CURADOS — POLÍTICOS PRINCIPAIS ─────────────────────
 # Fonte: dados oficiais verificados manualmente
-# ══════════════════════════════════════════════════════════════════════════════
-#  BANCO DE PROCESSOS JUDICIAIS
-#  Fonte: STJ, STF, MPF, GAECO, TSE e jornalismo investigativo verificado.
-#  Chaves: nome completo || nome parlamentar || QID Wikidata
-#  Formato de cada processo:
-#    "Descrição do caso (órgão julgador, ano) — status atual"
-# ══════════════════════════════════════════════════════════════════════════════
-_CHARGES_DB: dict[str, list[str]] = {
-
-    # ── BOLSONARO, JAIR ────────────────────────────────────────────────────────
-    "Jair Bolsonaro": [
-        "Investigado pela PGR por tentativa de golpe de Estado — incluindo suposto plano de assassinato de Lula, Alckmin e Barroso (STF, Inq. 4.874, 2024) — indiciado pela PF em nov/2024; aguarda decisão do PGR sobre denúncia",
-        "Condenado pelo TSE por abuso de poder político ao usar reunião com embaixadores para atacar o sistema eleitoral (TSE, 2023) — inelegível até 2030",
-        "Condenado pelo TSE por abuso de poder nas redes sociais durante as eleições de 2022 (TSE, 2023) — inelegível até 2030",
-        "Investigado no STF por tentativa de fraude nos cartões de vacina da COVID-19 (STF, Inq. 4.831, 2023) — em apuração",
-        "Investigado no STF por suposta omissão diante de atos de terrorismo do 8 de Janeiro (STF, AP 1.298, 2023) — em apuração",
-        "Investigado pela CPI da Covid-19 por crimes contra a saúde pública durante a pandemia (Senado Federal, 2021) — relatório aprovado; PGR arquivou pedido de denúncia",
-        "Condenado em 1ª instância na Justiça do Trabalho por danos morais coletivos ao fazer declarações machistas contra jornalista (TRT-10, 2016)",
-    ],
-
-    # ── BOLSONARO, FLÁVIO ──────────────────────────────────────────────────────
-    "Flávio Bolsonaro": [
-        "Investigado pelo GAECO/MP-RJ pelo esquema das 'rachadinhas' — desvio de salários de funcionários fantasmas do gabinete na ALERJ (2007–2018) — STJ determinou reabertura do inquérito em 2020; MP-RJ apresentou denúncia em 2021; ação penal em curso no RJ",
-        "Investigado pelo COAF/MP-RJ por movimentações financeiras atípicas de R$ 1,2 milhão sem justificativa (2018–2019) — parte das investigações das rachadinhas",
-        "STF rejeitou transferir o processo para a Corte em 2021 (não há prerrogativa de foro como senador para fatos anteriores ao mandato) — processo permanece na 1ª instância do RJ",
-    ],
-
-    # ── BOLSONARO, CARLOS ──────────────────────────────────────────────────────
-    "Carlos Bolsonaro": [
-        "Investigado pelo GAECO/MP-RJ por suspeita de participação no esquema das rachadinhas no gabinete de Flávio Bolsonaro na ALERJ — uso de funcionários do gabinete para atividades particulares (2007–2018) — inquérito em andamento",
-        "Investigado pelo TCE-RJ por gastos irregulares de verba indenizatória na Câmara dos Vereadores do Rio de Janeiro (2022)",
-    ],
-
-    # ── BOLSONARO, EDUARDO ─────────────────────────────────────────────────────
-    "Eduardo Bolsonaro": [
-        "Investigado no STF pelo inquérito das fake news (Inq. 4.781) por suposta divulgação de informações falsas e ataques ao STF (2020–2022) — inquérito encerrado sem denúncia em 2023",
-        "Alvo de representação no Conselho de Ética da Câmara por declarações sobre fechamento do STF (2020) — arquivado",
-    ],
-
-    # ── LULA ──────────────────────────────────────────────────────────────────
-    "Luiz Inácio Lula da Silva": [
-        "Condenado em 3 instâncias (TRF-4, STJ) no caso do triplex do Guarujá por corrupção passiva e lavagem de dinheiro (Operação Lava Jato, 2017–2019) — STF anulou as condenações em 2021 por suspeição do ex-juiz Sergio Moro; STF reconheceu nulidade do processo por violação ao juiz natural (2023)",
-        "Condenado em 2 instâncias no caso do sítio de Atibaia por corrupção passiva e lavagem de dinheiro (Operação Lava Jato, 2019–2020) — STF anulou a condenação em 2023 pela mesma razão de suspeição de Moro",
-        "Ficha limpa: após anulações pelo STF, registros de condenações foram extintos; Lula voltou à elegibilidade em 2021",
-    ],
-
-    # ── TEMER ─────────────────────────────────────────────────────────────────
-    "Michel Temer": [
-        "Indiciado pela PF e denunciado pela PGR por corrupção passiva, obstrução de Justiça e organização criminosa — caso JBS/frigoríficos (2017) — Câmara dos Deputados derrubou duas denúncias pelo voto da maioria (2017)",
-        "Preso preventivamente em março de 2019 por suspeita de receber propina de empresas de infraestrutura portuária — solto dias depois por habeas corpus do STJ",
-        "Denunciado pela PGR por corrupção passiva no caso do Decreto dos Portos (2019) — ação penal em curso no STJ",
-        "Condenado pelo TRF-2 em 2023 por corrupção e lavagem de dinheiro no caso das usinas nucleares Angra 3 — recurso pendente no STJ",
-    ],
-
-    # ── DILMA ─────────────────────────────────────────────────────────────────
-    "Dilma Rousseff": [
-        "Sofreu processo de impeachment no Congresso Nacional por crime de responsabilidade fiscal — pedaladas fiscais (2016) — Senado votou pelo afastamento (61×20) mas permitiu que ela mantivesse os direitos políticos",
-        "Investigada na Operação Lava Jato como presidente da Petrobras durante o período dos contratos fraudulentos (2014–2016) — PGR não apresentou denúncia por falta de provas diretas",
-    ],
-
-    # ── MORAES ────────────────────────────────────────────────────────────────
-    "Alexandre de Moraes": [
-        "Alvo de representação na OAB por supostos excessos nas decisões monocráticas no STF — suspensão de redes sociais e bloqueio de contas sem decisão colegiada (2023–2024) — sem punição efetiva",
-        "Acusado formalmente pelo empresário Elon Musk (Twitter/X) de censura inconstitucional ao bloquear perfis no Brasil (2024) — STF manteve as decisões; Moraes abriu inquérito contra Musk",
-        "Acusado pelo partido Novo de parcialidade no julgamento do 8 de Janeiro por ter sido vítima dos atos — pedido de suspeição rejeitado pelo Plenário do STF (2023)",
-    ],
-
-    # ── BARROSO ───────────────────────────────────────────────────────────────
-    "Luís Roberto Barroso": [
-        "Alvo de suposto plano de assassinato investigado pela PF junto com Lula e Alckmin (2022) — como vítima, não réu",
-        "Questionado por ministros e parlamentares da direita por supostos excessos jurisdicionais em matéria eleitoral (2022–2024) — sem processo formal",
-    ],
-
-    # ── RENAN CALHEIROS ───────────────────────────────────────────────────────
-    "Renan Calheiros": [
-        "Absolvido pelo STF em ação penal por peculato — suposto uso de pensão alimentícia de lobista para pagar despesas pessoais (AP 565, 2016) — absolvido por prescrição em 2021",
-        "Investigado em múltiplos inquéritos da Lava Jato por corrupção passiva — denúncias rejeitadas pelo STF por insuficiência de provas (2017–2020)",
-        "Condenado em 1ª instância no RJ por difamação contra o promotor que o investigou (2018) — aguarda julgamento em 2ª instância",
-    ],
-
-    # ── SERGIO MORO ───────────────────────────────────────────────────────────
-    "Sergio Moro": [
-        "Declarado parcial e suspeito pelo STF por ter coordenado acusação e defesa no processo do ex-presidente Lula — mensagens do 'Vaza Jato' revelaram comunicação indevida com o MPF (2021)",
-        "Investigado pelo CNJ por suposta parcialidade sistêmica na condução dos processos da Lava Jato (2021) — processo disciplinar em andamento",
-        "Ação penal por improbidade administrativa ajuizada pelo PT no STJ (2022) — em tramitação",
-    ],
-
-    # ── RODRIGO PACHECO ───────────────────────────────────────────────────────
-    "Rodrigo Pacheco": [
-        "Investigado no STF por suspeita de uso de avião da FAB para fins particulares (2022) — PGR não encontrou irregularidade; inquérito arquivado",
-    ],
-
-    # ── ARTHUR LIRA ───────────────────────────────────────────────────────────
-    "Arthur Lira": [
-        "Investigado pelo STF no inquérito do mensalão do PSB-AL por suposta cobrança de propina de empreiteiras no Alagoas (Inq. 3.983, 2015–2020) — PGR pediu arquivamento; STF arquivou em 2020",
-        "Investigado pela PGR por suposto envolvimento em corrupção em contratos da Petrobras — incluído em delação premiada de executivo da UTC Engenharia (2016) — inquérito arquivado",
-    ],
-
-    # ── GLEISI HOFFMANN ───────────────────────────────────────────────────────
-    "Gleisi Hoffmann": [
-        "Denunciada pelo MPF por corrupção passiva e lavagem de dinheiro no caso JBS/Odebrecht — recebimento de R$ 1 milhão para campanha ao governo do Paraná (STF, AP 924, 2015) — absolvida pelo STF em 2020 por insuficiência de provas",
-    ],
-
-    # ── PAULO GUEDES ──────────────────────────────────────────────────────────
-    "Paulo Guedes": [
-        "Investigado pela CVM (Comissão de Valores Mobiliários) por suspeita de conflito de interesse por manter fundo de investimentos no exterior enquanto era Ministro da Economia (2021) — respondeu à CVM; caso sem punição",
-        "Investigado no TCU por irregularidades na gestão do Fundo de Amparo ao Trabalhador durante a pandemia (2020–2021)",
-    ],
-
-    # ── TASSO JEREISSATI ──────────────────────────────────────────────────────
-    "Tasso Jereissati": [
-        "Investigado pelo STF no âmbito da Operação Lava Jato por suposto recebimento de propina da Odebrecht para campanha eleitoral no Ceará (2016) — PGR pediu arquivamento; STF arquivou em 2019",
-    ],
-
-    # ── AÉCIO NEVES ───────────────────────────────────────────────────────────
-    "Aécio Neves": [
-        "Denunciado pelo MPF por corrupção passiva — gravação em que pedia R$ 2 milhões ao empresário Joesley Batista (JBS) (STF, 2017) — STF condenou por corrupção passiva em 2023; aguarda julgamento dos embargos de declaração",
-        "Investigado pelo STF por obstrução de Justiça — tentativa de interferir nas investigações da Lava Jato (Inq. 4.327, 2017) — em tramitação",
-    ],
-
-    # ── CHIQUINHO BRAZÃO / BRAZÃO ──────────────────────────────────────────────
-    "Chiquinho Brazão": [
-        "Preso preventivamente em março de 2024 como mandante do assassinato da vereadora Marielle Franco e do motorista Anderson Gomes (STF, AP 1.486, 2024) — ação penal em curso no STF",
-    ],
-    "Domingos Brazão": [
-        "Preso preventivamente em março de 2024 como co-mandante do assassinato de Marielle Franco e Anderson Gomes (STF, AP 1.486, 2024) — ação penal em curso no STF",
-    ],
-
-    # ── RONNIE LESSA ──────────────────────────────────────────────────────────
-    "Ronnie Lessa": [
-        "Executante confesso do assassinato da vereadora Marielle Franco e do motorista Anderson Gomes (24/03/2018) — preso em março de 2024; celebrou acordo de delação premiada com o MPF; julgamento pelo Tribunal do Júri em 2024",
-    ],
-
-    # ── ZEMA ──────────────────────────────────────────────────────────────────
-    "Romeu Zema": [
-        "Investigado pelo TCU por irregularidades no repasse de recursos federais para MG durante a pandemia (2020–2021)",
-        "Alvo de ação no STF por descumprimento de determinação judicial para pagamento de precatórios do estado de MG (2023) — em tramitação",
-    ],
-
-    # ── CIRO GOMES ────────────────────────────────────────────────────────────
-    "Ciro Gomes": [
-        "Réu em ação por calúnia e injúria movida pelo ex-presidente Lula após declarações durante a campanha eleitoral de 2018 (Justiça Federal do CE) — conciliação em 2021",
-        "Investigado pelo MP-CE por suposta irregularidade em concessões de postos de combustíveis durante gestão no governo do Ceará (1991–1994) — prescrito",
-    ],
-
-    # ── PAULO CÂMARA ──────────────────────────────────────────────────────────
-    "Paulo Câmara": [
-        "Investigado pelo MP-PE por irregularidades em contratos de tecnologia do estado de PE durante a pandemia (2020–2022) — em apuração",
-    ],
-
-    # ── WILSON WITZEL ─────────────────────────────────────────────────────────
-    "Wilson Witzel": [
-        "Sofreu processo de impeachment no estado do RJ por corrupção na compra de respiradores e hospitais de campanha durante a COVID-19 (2020) — afastado pelo STJ em agosto/2020; impeachment aprovado pela ALERJ em maio/2021",
-        "Denunciado pelo MP-RJ e MPF por corrupção passiva, lavagem de dinheiro e peculato (2021) — ação penal em curso",
-    ],
-
-    # ── GAROTINHO ─────────────────────────────────────────────────────────────
-    "Anthony Garotinho": [
-        "Preso duas vezes durante campanha eleitoral em 2016 por suspeita de compra de votos no RJ (Operação Chequinho) — solto por habeas corpus; condenado em 1ª instância por compra de votos (TRE-RJ, 2018); recursos pendentes no TSE",
-    ],
-
-    # ── MÁRCIO FRENCH / DEGENHARDT ────────────────────────────────────────────
-    "Waguinho": [
-        "Investigado pelo MP-RJ por suspeita de irregularidades em contratos municipais de saúde em Belford Roxo (2022) — em apuração",
-    ],
-
-    # ── MARCOS DO VAL ────────────────────────────────────────────────────────
-    "Marcos do Val": [
-        "Investigado pelo STF por suposto envolvimento em reunião para discutir um golpe de Estado após as eleições de 2022 — relatos de que apresentou plano para prender ministros do STF (Inq. 4.874, 2022–2023) — delação premiada rescindida pela PGR; status em apuração",
-    ],
-
-    # ── PAULO PIMENTA ─────────────────────────────────────────────────────────
-    "Wladimir Garotinho": [
-        "Investigado pelo GAECO/MP-RJ por suspeita de corrupção em contratos da Prefeitura de Campos dos Goytacazes (2023) — em apuração",
-    ],
-
-}  # fim _CHARGES_DB
-
-def _get_charges(name: str, full_name: str = "") -> list[str]:
-    """Retorna lista de processos para um político pelo nome.
-    Tenta nome parlamentar, nome completo e variações."""
-    if not name and not full_name: return []
-    for key in [name, full_name, name.split(" ")[0] + " " + name.split(" ")[-1] if name else ""]:
-        if key and key in _CHARGES_DB:
-            return _CHARGES_DB[key]
-    # Busca parcial — nome de família
-    if name:
-        sobrenome = name.split()[-1] if name.split() else ""
-        for k, v in _CHARGES_DB.items():
-            if sobrenome and sobrenome.lower() in k.lower() and len(sobrenome) > 4:
-                return v
-    return []
-
 # Salário presidente: Lei 13.752/2018 — R$ 30.934,70/mês
 # Salário ministro STF: R$ 46.366,19/mês (teto constitucional)
 # Salário dep/sen: R$ 46.366,19/mês
@@ -381,7 +74,7 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Lula_-_foto_oficial_2023.jpg/800px-Lula_-_foto_oficial_2023.jpg",
         "full_name": "Luiz Inácio Lula da Silva",
         "birth_date": "1945-10-27",
         "birth_place": "Caetés, Pernambuco",
@@ -389,7 +82,7 @@ CURATED_POLITICIANS = {
         "occupation": "Torneiro mecânico / Sindicalista",
         "email": "",
         "website": "https://www.gov.br/planalto/pt-br",
-        "wiki_title_pt": "Luiz Inácio Lula da Silva", "wiki_title_en": "Lula",
+        "wiki_title_pt": "Luiz Inácio Lula da Silva",
         "all_parties": ["PT"],
         "all_roles": [
             "Presidente da República (2023–presente)",
@@ -412,15 +105,7 @@ CURATED_POLITICIANS = {
             "beneficios_abdicados_info": "O Presidente pode abrir mão de benefícios adicionais como o uso exclusivo de aeronave em voos particulares. Lula declarou abrir mão do uso do Palácio do Jaburu.",
             "fonte": "https://www.gov.br/planejamento/pt-br/acesso-a-informacao/transparencia-e-prestacao-de-contas",
         },
-        "charges": [
-            "Condenado em 1ª instância (TRF-4) por corrupção e lavagem de dinheiro no caso do tríplex do Guarujá — sentença de 9 anos e 6 meses (jul/2017, Sérgio Moro); confirmada pelo TRF-4 com aumento para 12 anos (jan/2018)",
-            "Condenado em 1ª instância no caso do sítio em Atibaia — sentença de 12 anos e 11 meses (fev/2019); confirmada pelo TRF-4 (abr/2021)",
-            "Preso preventivamente em 07/04/2018 após STF negar HC, cumprindo 580 dias de prisão em Curitiba",
-            "STF anulou as condenações em 08/03/2021 (min. Edson Fachin), por incompetência da Vara Federal de Curitiba — Lula recuperou direitos políticos",
-            "Processos remetidos à Justiça Federal do DF e SP — instrução reiniciada (situação: em andamento, 2024)",
-            "Investigado na Operação Lava Jato em outros casos (Instituto Lula, palestras internacionais) — processos sem condenação transitada em julgado",
-            "NOTA: Plenário do STF confirmou parcialidade do ex-juiz Sérgio Moro nos julgamentos (jun/2021)",
-        ],
+        "charges": [],
         "votes": [],
         "expenses": [],
     },
@@ -434,14 +119,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Geraldo_Alckmin_-_foto_oficial_2023.jpg/800px-Geraldo_Alckmin_-_foto_oficial_2023.jpg",
         "full_name": "Geraldo José Rodrigues Alckmin Filho",
         "birth_date": "1952-11-11",
         "birth_place": "Pindamonhangaba, São Paulo",
         "education": "Medicina — Faculdade de Medicina de Taubaté",
         "occupation": "Médico / Político",
         "website": "https://www.gov.br/planalto/pt-br",
-        "wiki_title_pt": "Geraldo Alckmin", "wiki_title_en": "Geraldo Alckmin",
+        "wiki_title_pt": "Geraldo Alckmin",
         "all_parties": ["PSB", "PSDB (até 2022)"],
         "all_roles": [
             "Vice-Presidente da República (2023–presente)",
@@ -461,10 +146,7 @@ CURATED_POLITICIANS = {
             "beneficios_abdicados_info": "Alckmin não reside no Palácio do Jaburu — mora em residência particular em São Paulo.",
             "fonte": "https://www.gov.br/planejamento/pt-br",
         },
-        "charges": [
-            "Investigado na Operação Lava Jato por suposto recebimento de propina da Odebrecht em caixa dois para campanha de 2010",
-            "Denunciado pelo MPF no STJ em 2018 por crime eleitoral — STJ rejeitou a denúncia em 2019",
-        ],
+        "charges": [],
         "votes": [],
         "expenses": [],
     },
@@ -479,14 +161,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/800px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg",
         "full_name": "Luís Roberto Barroso",
         "birth_date": "1958-03-11",
         "birth_place": "Vassouras, Rio de Janeiro",
         "education": "Direito — UERJ; LLM e PhD — Yale Law School (EUA)",
         "occupation": "Jurista / Professor de Direito Constitucional",
         "website": "https://portal.stf.jus.br",
-        "wiki_title_pt": "Luís Roberto Barroso", "wiki_title_en": "Roberto Barroso",
+        "wiki_title_pt": "Luís Roberto Barroso",
         "all_parties": [],
         "all_roles": ["Presidente do STF (2023–presente)", "Ministro do STF (desde 2013)"],
         "all_education": ["Direito — UERJ", "LLM — Yale Law School", "PhD (Doutorado) — Yale Law School"],
@@ -517,14 +199,14 @@ CURATED_POLITICIANS = {
         "state": "Nacional",
         "country": "Brasil",
         "source": "wikidata",
-        "photo": "",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/800px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg",
         "full_name": "Alexandre de Moraes",
         "birth_date": "1968-08-13",
         "birth_place": "São Paulo, SP",
         "education": "Direito — USP; Doutorado em Direito Constitucional — USP",
         "occupation": "Jurista / Professor",
         "website": "https://portal.stf.jus.br",
-        "wiki_title_pt": "Alexandre de Moraes", "wiki_title_en": "Alexandre de Moraes",
+        "wiki_title_pt": "Alexandre de Moraes",
         "all_parties": [],
         "all_roles": [
             "Ministro do STF (desde 2017)",
@@ -554,13 +236,13 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q2948413": {
-        "id": "wd-Q2948413", "name": "Cármen Lúcia", "wiki_title_pt": "Cármen Lúcia Antunes Rocha", "wiki_title_en": "Carmen Lúcia", "display_name": "Cármen Lúcia",
+        "id": "wd-Q2948413", "name": "Cármen Lúcia", "display_name": "Cármen Lúcia",
         "role": "Ministra do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "Cármen Lúcia Antunes Rocha",
         "birth_date": "1954-04-05", "birth_place": "Montes Claros, MG",
         "education": "Direito — PUC Minas; Doutorado — UFMG",
         "occupation": "Jurista / Professora",
-        "wiki_title_pt": "Cármen Lúcia Antunes Rocha",
+        "wiki_title_pt": "Cármen Lúcia",
         "all_roles": ["Ministra do STF (desde 2006)", "Presidente do STF (2016–2018)", "Presidente do TSE (2016–2018)"],
         "all_education": ["Direito — PUC Minas", "Doutorado em Direito — UFMG"],
         "salary_info": {
@@ -589,14 +271,14 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q1516706": {
-        "id": "wd-Q1516706", "name": "Gilmar Mendes", "wiki_title_pt": "Gilmar Ferreira Mendes", "wiki_title_en": "Gilmar Mendes", "display_name": "Gilmar Mendes",
+        "id": "wd-Q1516706", "name": "Gilmar Mendes", "display_name": "Gilmar Mendes",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
-        "photo": "",
+        "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/800px-Gilmar_Mendes_%282023%29.jpg",
         "full_name": "Gilmar Ferreira Mendes",
         "birth_date": "1955-02-17", "birth_place": "Diamantino, MT",
         "education": "Direito — UnB; Doutorado — Universidade de Münster (Alemanha)",
         "occupation": "Jurista / Professor",
-        "wiki_title_pt": "Gilmar Ferreira Mendes",
+        "wiki_title_pt": "Gilmar Mendes",
         "all_roles": ["Ministro do STF (desde 2002)", "Presidente do STF (2008–2010)", "Advogado-Geral da União (2000–2002)"],
         "all_education": ["Direito — UnB", "Doutorado — Universidade de Münster (Alemanha)"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [{"nome": "Auxílio-Moradia", "valor": "R$ 4.377,73/mês", "descricao": ""}, {"nome": "Auxílio-Alimentação", "valor": "R$ 1.022,54/mês", "descricao": ""}], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
@@ -619,13 +301,13 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q106363617": {
-        "id": "wd-Q106363617", "name": "André Mendonça", "wiki_title_pt": "André Mendonça (ministro)", "wiki_title_en": "André Mendonça", "display_name": "André Mendonça",
+        "id": "wd-Q106363617", "name": "André Mendonça", "display_name": "André Mendonça",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "André Luís de Almeida Mendonça",
         "birth_date": "1977-03-24", "birth_place": "Goiânia, GO",
         "education": "Direito — UFG; Doutorado — UnB",
         "occupation": "Advogado / Procurador da República",
-        "wiki_title_pt": "André Mendonça (ministro)",
+        "wiki_title_pt": "André Mendonça",
         "all_roles": ["Ministro do STF (desde 2021)", "AGU (2019–2020)", "Ministro da Justiça (2020–2021)"],
         "all_education": ["Direito — UFG", "Doutorado em Direito — UnB"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
@@ -661,1775 +343,19 @@ CURATED_POLITICIANS = {
     },
 
     "wd-Q118812476": {
-        "id": "wd-Q118812476", "name": "Cristiano Zanin", "wiki_title_pt": "Cristiano Zanin Martins", "wiki_title_en": "Cristiano Zanin", "display_name": "Cristiano Zanin",
+        "id": "wd-Q118812476", "name": "Cristiano Zanin", "display_name": "Cristiano Zanin",
         "role": "Ministro do STF", "party": "", "state": "Nacional", "country": "Brasil", "source": "wikidata",
         "photo": "", "full_name": "Cristiano Zanin Martins",
         "birth_date": "1977-10-23", "birth_place": "Lins, SP",
         "education": "Direito — Universidade Metodista de Piracicaba; Doutorado — USP",
         "occupation": "Advogado criminalista",
-        "wiki_title_pt": "Cristiano Zanin Martins",
+        "wiki_title_pt": "Cristiano Zanin",
         "all_roles": ["Ministro do STF (desde 2023)", "Advogado de Lula no processo do Mensalão e Lava Jato (2004–2021)"],
         "all_education": ["Direito — Universidade Metodista de Piracicaba", "Doutorado — USP"],
         "salary_info": {"cargo": "Ministro do STF", "subsidio_mensal": 46366.19, "subsidio_desc": "Teto constitucional", "beneficios": [], "beneficios_abdicados_info": "", "fonte": "https://portal.stf.jus.br"},
         "charges": [], "votes": [], "expenses": [],
     },
-
-    # ════════════════ GOVERNADORES ════════════════
-    "wd-gov-SP": {
-        "id": "wd-gov-SP", "name": "Tarcísio de Freitas", "display_name": "Tarcísio",
-        "role": "Governador de São Paulo", "party": "Republicanos", "state": "SP",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Tarcísio Gomes de Freitas",
-        "birth_date": "1975-06-13", "birth_place": "Rio de Janeiro, RJ",
-        "education": "Academia Militar das Agulhas Negras; Engenharia Civil — IME",
-        "occupation": "Militar / Engenheiro / Político",
-        "wiki_title_pt": "Tarcísio de Freitas", "wiki_title_en": "Tarcísio de Freitas",
-        "all_roles": ["Governador de São Paulo (2023–presente)", "Ministro da Infraestrutura (2019–2022)"],
-        "salary_info": {"cargo": "Governador de São Paulo", "subsidio_mensal": 33836.86,
-            "subsidio_desc": "Subsídio do Governador do Estado de São Paulo", "beneficios": [],
-            "fonte": "https://www.transparencia.sp.gov.br"},
-        "charges": [
-            "Investigado pelo TCU por irregularidades em contratos de infraestrutura durante gestão no Ministério (2022) — sem condenação",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-RJ": {
-        "id": "wd-gov-RJ", "name": "Cláudio Castro", "display_name": "Cláudio Castro",
-        "role": "Governador do Rio de Janeiro", "party": "PL", "state": "RJ",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Cláudio Bomfim de Castro e Silva",
-        "birth_date": "1980-04-04", "birth_place": "Rio de Janeiro, RJ",
-        "education": "Administração de Empresas",
-        "wiki_title_pt": "Cláudio Castro (político)", "wiki_title_en": "Cláudio Castro (politician)",
-        "all_roles": ["Governador do Rio de Janeiro (2021–presente)", "Vice-Governador (2019–2021)", "Vereador Rio de Janeiro (2017–2019)"],
-        "salary_info": {"cargo": "Governador do Rio de Janeiro", "subsidio_mensal": 32411.36,
-            "subsidio_desc": "Subsídio do Governador do Estado do Rio de Janeiro", "beneficios": [],
-            "fonte": "https://www.transparencia.rj.gov.br"},
-        "charges": [
-            "Investigado pela CGE-RJ e MP por irregularidades em contratos de saúde durante a pandemia Covid-19 (2021) — inquérito em andamento",
-            "Alvo de representação no TCE-RJ por suspeita de sobrepreço em contratos de TI (2023)",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-MG": {
-        "id": "wd-gov-MG", "name": "Romeu Zema", "display_name": "Zema",
-        "role": "Governador de Minas Gerais", "party": "Novo", "state": "MG",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Romeu Rodrigues Zema Neto",
-        "birth_date": "1965-10-21", "birth_place": "Patrocínio, MG",
-        "education": "Agronomia — UFLA",
-        "wiki_title_pt": "Romeu Zema", "wiki_title_en": "Romeu Zema",
-        "all_roles": ["Governador de Minas Gerais (2019–presente)", "Empresário do setor agropecuário"],
-        "salary_info": {"cargo": "Governador de Minas Gerais", "subsidio_mensal": 32411.36,
-            "subsidio_desc": "Subsídio do Governador do Estado de Minas Gerais", "beneficios": [],
-            "fonte": "https://www.transparencia.mg.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-BA": {
-        "id": "wd-gov-BA", "name": "Jerônimo Rodrigues", "display_name": "Jerônimo",
-        "role": "Governador da Bahia", "party": "PT", "state": "BA",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Jerônimo Rodrigues dos Santos",
-        "birth_date": "1971-09-15", "birth_place": "Caetité, BA",
-        "education": "Agronomia — UFRB; Mestrado em Extensão Rural — UFV",
-        "wiki_title_pt": "Jerônimo Rodrigues", "wiki_title_en": "Jerônimo Rodrigues",
-        "all_roles": ["Governador da Bahia (2023–presente)", "Secretário de Educação da Bahia (2015–2022)"],
-        "salary_info": {"cargo": "Governador da Bahia", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio do Governador do Estado da Bahia", "beneficios": [],
-            "fonte": "https://www.transparencia.ba.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-RS": {
-        "id": "wd-gov-RS", "name": "Eduardo Leite", "display_name": "Eduardo Leite",
-        "role": "Governador do Rio Grande do Sul", "party": "PSDB", "state": "RS",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Eduardo Leite",
-        "birth_date": "1984-08-17", "birth_place": "Pelotas, RS",
-        "education": "Direito — UCPel",
-        "wiki_title_pt": "Eduardo Leite (político)", "wiki_title_en": "Eduardo Leite (politician)",
-        "all_roles": ["Governador do RS (2019–2022, 2023–presente)", "Prefeito de Pelotas (2013–2018)"],
-        "salary_info": {"cargo": "Governador do Rio Grande do Sul", "subsidio_mensal": 32411.36,
-            "subsidio_desc": "Subsídio do Governador do Estado do RS", "beneficios": [],
-            "fonte": "https://www.transparencia.rs.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-PR": {
-        "id": "wd-gov-PR", "name": "Carlos Ratinho Junior", "display_name": "Ratinho Junior",
-        "role": "Governador do Paraná", "party": "PSD", "state": "PR",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Carlos Roberto Massa Ratinho Junior",
-        "birth_date": "1981-07-14", "birth_place": "Curitiba, PR",
-        "education": "Educação Física — PUC-PR",
-        "wiki_title_pt": "Ratinho Junior", "wiki_title_en": "Carlos Ratinho Junior",
-        "all_roles": ["Governador do Paraná (2019–presente)", "Secretário de Desenvolvimento Social (2011–2018)"],
-        "salary_info": {"cargo": "Governador do Paraná", "subsidio_mensal": 32411.36,
-            "subsidio_desc": "Subsídio do Governador do Estado do Paraná", "beneficios": [],
-            "fonte": "https://www.transparencia.pr.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-PE": {
-        "id": "wd-gov-PE", "name": "Raquel Lyra", "display_name": "Raquel Lyra",
-        "role": "Governadora de Pernambuco", "party": "PSDB", "state": "PE",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Raquel Loureiro Lyra Lucena",
-        "birth_date": "1977-11-03", "birth_place": "Caruaru, PE",
-        "education": "Direito — ASCES",
-        "wiki_title_pt": "Raquel Lyra", "wiki_title_en": "Raquel Lyra",
-        "all_roles": ["Governadora de Pernambuco (2023–presente)", "Prefeita de Caruaru (2017–2022)"],
-        "salary_info": {"cargo": "Governadora de Pernambuco", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio do Governador do Estado de Pernambuco", "beneficios": [],
-            "fonte": "https://www.transparencia.pe.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-CE": {
-        "id": "wd-gov-CE", "name": "Elmano de Freitas", "display_name": "Elmano",
-        "role": "Governador do Ceará", "party": "PT", "state": "CE",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Elmano de Freitas da Costa",
-        "birth_date": "1975-03-26", "birth_place": "Fortaleza, CE",
-        "education": "Direito — UFC",
-        "wiki_title_pt": "Elmano de Freitas", "wiki_title_en": "Elmano de Freitas",
-        "all_roles": ["Governador do Ceará (2023–presente)", "Deputado Federal CE (2019–2022)"],
-        "salary_info": {"cargo": "Governador do Ceará", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio do Governador do Estado do Ceará", "beneficios": [],
-            "fonte": "https://www.cge.ce.gov.br"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-AM": {
-        "id": "wd-gov-AM", "name": "Wilson Lima", "display_name": "Wilson Lima",
-        "role": "Governador do Amazonas", "party": "União Brasil", "state": "AM",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Wilson Miranda Lima",
-        "birth_date": "1978-11-29", "birth_place": "Manaus, AM",
-        "education": "Jornalismo — UFAM",
-        "wiki_title_pt": "Wilson Lima (político)", "wiki_title_en": "Wilson Lima",
-        "all_roles": ["Governador do Amazonas (2019–presente)", "Apresentador de TV"],
-        "salary_info": {"cargo": "Governador do Amazonas", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio do Governador do Estado do Amazonas", "beneficios": [],
-            "fonte": "https://www.transparencia.am.gov.br"},
-        "charges": [
-            "Investigado pelo MP-AM e PGR por suspeita de irregularidades em contratos de saúde durante a pandemia Covid-19 (2020–2021)",
-            "Ação penal por fraude em licitações para compra de respiradores (2021) — em andamento no STJ",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-gov-PA": {
-        "id": "wd-gov-PA", "name": "Helder Barbalho", "display_name": "Helder Barbalho",
-        "role": "Governador do Pará", "party": "MDB", "state": "PA",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Helder Zahluth Barbalho",
-        "birth_date": "1980-02-24", "birth_place": "Belém, PA",
-        "education": "Direito — UNAMA",
-        "wiki_title_pt": "Helder Barbalho", "wiki_title_en": "Helder Barbalho",
-        "all_roles": ["Governador do Pará (2019–presente)", "Ministro da Integração Nacional (2012–2013)", "Deputado Federal PA (2007–2012)"],
-        "salary_info": {"cargo": "Governador do Pará", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio do Governador do Estado do Pará", "beneficios": [],
-            "fonte": "https://www.transparencia.pa.gov.br"},
-        "charges": [
-            "Investigado por suspeita de corrupção no âmbito da Operação Hydra (2020) — arquivado pelo STJ",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ════════════════ LÍDERES DO CONGRESSO ════════════════
-    "wd-Q10296965": {
-        "id": "wd-Q10296965", "name": "Arthur Lira", "display_name": "Arthur Lira",
-        "role": "Presidente da Câmara dos Deputados", "party": "PP", "state": "AL",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Arthur César Pereira de Lira",
-        "birth_date": "1970-07-12", "birth_place": "Belo Monte, AL",
-        "education": "Direito — UFAL",
-        "wiki_title_pt": "Arthur Lira", "wiki_title_en": "Arthur Lira",
-        "all_roles": ["Presidente da Câmara dos Deputados (2021–2025)", "Deputado Federal AL (1995–presente)"],
-        "salary_info": {"cargo": "Presidente da Câmara dos Deputados", "subsidio_mensal": 46366.19,
-            "subsidio_desc": "Subsídio + benefícios do Presidente da Câmara",
-            "beneficios": [{"nome": "Apartamento funcional", "valor": "Custeado pela Câmara", "descricao": "Moradia oficial em Brasília"}],
-            "fonte": "https://www.camara.leg.br/transparencia"},
-        "charges": [
-            "Condenado em 1ª instância por corrupção passiva e peculato no TRE-AL (2007) — condenação prescrita (STJ, 2016)",
-            "Investigado no âmbito do 'Orçamento Secreto' (emendas de relator) por supostas irregularidades na distribuição de recursos (2022)",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-Q55657773": {
-        "id": "wd-Q55657773", "name": "Rodrigo Pacheco", "display_name": "Rodrigo Pacheco",
-        "role": "Presidente do Senado Federal", "party": "PSD", "state": "MG",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Rodrigo Cunha Pacheco",
-        "birth_date": "1980-06-12", "birth_place": "Belo Horizonte, MG",
-        "education": "Direito — PUC Minas; Mestrado — UFMG",
-        "wiki_title_pt": "Rodrigo Pacheco", "wiki_title_en": "Rodrigo Pacheco",
-        "all_roles": ["Presidente do Senado Federal (2021–presente)", "Senador por MG (2019–presente)", "Deputado Federal MG (2007–2018)"],
-        "salary_info": {"cargo": "Presidente do Senado Federal", "subsidio_mensal": 46366.19,
-            "subsidio_desc": "Subsídio + benefícios do Presidente do Senado",
-            "beneficios": [{"nome": "Residência oficial", "valor": "Custeado pelo Senado", "descricao": "Moradia oficial em Brasília"}],
-            "fonte": "https://www.senado.leg.br/transparencia"},
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ════════════════ EX-PRESIDENTES (RELEVÂNCIA HISTÓRICA) ════════════════
-    "wd-Q193080": {
-        "id": "wd-Q193080", "name": "Jair Bolsonaro", "display_name": "Bolsonaro",
-        "role": "Ex-Presidente da República (2019–2022)", "party": "PL", "state": "RJ",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Jair Messias Bolsonaro",
-        "birth_date": "1955-03-21", "birth_place": "Glicério, SP",
-        "education": "Academia Militar das Agulhas Negras (AMAN)",
-        "occupation": "Militar / Político",
-        "wiki_title_pt": "Jair Bolsonaro", "wiki_title_en": "Jair Bolsonaro",
-        "all_roles": [
-            "Presidente da República (2019–2022)",
-            "Deputado Federal RJ (1991–2018)",
-            "Capitão do Exército Brasileiro (reformado)",
-        ],
-        "salary_info": {"cargo": "Ex-Presidente (pensão)", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Subsídio de ex-presidente + pensão militar",
-            "beneficios": [{"nome": "Segurança (GSI)", "valor": "Custeado pela União", "descricao": ""},
-                           {"nome": "Pensão de militar reformado", "valor": "Calculada pelo posto (Capitão)", "descricao": ""}],
-            "fonte": "https://www.gov.br/planalto"},
-        "charges": [
-            "Condenado pelo TSE à inelegibilidade por 8 anos (2023) por abuso do poder político e uso indevido de meios de comunicação na reunião com embaixadores (jun/2022)",
-            "Indiciado pela PF por tentativa de golpe de Estado e abolição violenta do Estado democrático de Direito (nov/2024)",
-            "Indiciado pela PF por homicídio e tentativa de homicídio no plano 'Green and Yellow Dagger' de assassinato do Presidente Lula, Vice Alckmin e Min. Barroso (nov/2024)",
-            "Investigado no inquérito do golpe (IQ 4878 — STF) por envolvimento em trama golpista pós-eleição 2022",
-            "Indiciado pela PF por falsificação de certificados de vacinação contra Covid-19 (nov/2023)",
-            "Investigado por desvio de joias presenteadas por autoridades estrangeiras ao Estado brasileiro (2023)",
-            "NOTA: Inelegível até 2030 por decisão do TSE",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-Q465088": {
-        "id": "wd-Q465088", "name": "Michel Temer", "display_name": "Michel Temer",
-        "role": "Ex-Presidente da República (2016–2018)", "party": "MDB", "state": "SP",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Michel Miguel Elias Temer Lulia",
-        "birth_date": "1940-09-23", "birth_place": "Tietê, SP",
-        "education": "Direito — PUC-SP; Doutorado — PUC-SP",
-        "wiki_title_pt": "Michel Temer", "wiki_title_en": "Michel Temer",
-        "all_roles": ["Presidente da República (2016–2018)", "Vice-Presidente (2011–2016)", "Presidente da Câmara (2009–2010, 2013–2014)"],
-        "salary_info": {"cargo": "Ex-Presidente (pensão)", "subsidio_mensal": 30934.70,
-            "subsidio_desc": "Pensão de ex-presidente da República",
-            "beneficios": [],
-            "fonte": "https://www.gov.br/planalto"},
-        "charges": [
-            "Preso preventivamente por 4 dias (mar/2019) — habeas corpus concedido pelo STJ",
-            "Acusado de corrupção passiva, lavagem de dinheiro e organização criminosa (Operação Lava Jato, 2017–2019)",
-            "Condenado pelo TRF-4 em 2023 a 8 anos e 6 meses por corrupção passiva e lavagem de dinheiro (caso Angra 3) — recurso pendente no STJ",
-            "Investigado no caso do porto de Santos (recebimento de propina da Rodrimar) — ação penal no TRF-3",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "wd-Q61167": {
-        "id": "wd-Q61167", "name": "Dilma Rousseff", "display_name": "Dilma Rousseff",
-        "role": "Ex-Presidenta da República (2011–2016)", "party": "PT", "state": "MG",
-        "country": "Brasil", "source": "wikidata",
-        "photo": "", "full_name": "Dilma Vana Rousseff",
-        "birth_date": "1947-12-14", "birth_place": "Belo Horizonte, MG",
-        "education": "Economia — UFRGS",
-        "wiki_title_pt": "Dilma Rousseff", "wiki_title_en": "Dilma Rousseff",
-        "all_roles": ["Presidenta da República (2011–2016)", "Ministra da Casa Civil (2005–2010)", "Ministra de Minas e Energia (2003–2005)"],
-        "salary_info": {"cargo": "Presidente do Novo Banco de Desenvolvimento (NDB)", "subsidio_mensal": 0,
-            "subsidio_desc": "Cargo no NDB — salário não divulgado publicamente. Perde direito à pensão por ter acumulado cargo.",
-            "beneficios": [],
-            "fonte": "https://www.ndb.int"},
-        "charges": [
-            "Sofreu impeachment aprovado pelo Senado em 31/08/2016 por crime de responsabilidade fiscal (pedaladas fiscais) — destituída da presidência",
-            "Investigada no âmbito da Lava Jato por suposta ciência de irregularidades na Petrobras quando era presidente do Conselho de Administração (2003–2010) — sem condenação criminal",
-            "TSE absolveu chapa Dilma/Temer de abuso de poder econômico em campanha de 2014 (2017)",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ════════════════════════════════════════════════════════════
-    #  PREFEITOS — ELEIÇÕES 2024
-    #  Fonte: TSE / portais de transparência municipais
-    #  Salários: Lei Orgânica de cada município (referência 2024)
-    # ════════════════════════════════════════════════════════════
-
-    # ── RIO DE JANEIRO ──────────────────────────────────────────
-    "mayor-rio-de-janeiro": {
-        "id": "mayor-rio-de-janeiro",
-        "name": "Eduardo Paes", "display_name": "Eduardo Paes",
-        "role": "Prefeito do Rio de Janeiro", "party": "PSD",
-        "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo da Costa Paes",
-        "birth_date": "1969-11-19", "birth_place": "Rio de Janeiro, RJ",
-        "education": "Direito — PUC-Rio; Mestrado em Urbanismo — Columbia University (EUA)",
-        "occupation": "Advogado / Político",
-        "website": "https://prefeitura.rio",
-        "wiki_title_pt": "Eduardo Paes", "wiki_title_en": "Eduardo Paes",
-        "all_parties": ["PSD", "PMDB (até 2017)"],
-        "all_roles": [
-            "Prefeito do Rio de Janeiro (2009–2016, 2021–presente)",
-            "Deputado Federal RJ (2003–2009)",
-            "Vereador do Rio de Janeiro (1993–2003)",
-        ],
-        "all_education": ["Direito — PUC-Rio", "Mestrado em Urbanismo — Columbia University (EUA)"],
-        "salary_info": {
-            "cargo": "Prefeito do Rio de Janeiro",
-            "subsidio_mensal": 34062.76,
-            "subsidio_desc": "Subsídio do Prefeito do Município do Rio de Janeiro (Lei Orgânica Municipal)",
-            "beneficios": [
-                {"nome": "Carro oficial", "valor": "Custeado pela Prefeitura", "descricao": "Veículo oficial com motorista"},
-                {"nome": "Segurança pessoal", "valor": "Custeado pela Prefeitura", "descricao": "Efetivo da Guarda Municipal"},
-            ],
-            "fonte": "https://transparencia.prefeitura.rio",
-        },
-        "charges": [
-            "Investigado pelo MP-RJ por suposto desvio de recursos em contratos de obras durante as gestões 2009–2016 (Porto Maravilha)",
-            "Citado em delações no âmbito da Operação Lava Jato por suposta propina da Odebrecht para obras olímpicas Rio 2016 — sem condenação",
-            "Investigado por irregularidades em contratos de BRT durante as gestões anteriores — inquérito arquivado",
-        ],
-        "votes": [], "expenses": [],
-    },
-    "mayor-niteroi": {
-        "id": "mayor-niteroi",
-        "name": "Rodrigo Neves", "display_name": "Rodrigo Neves",
-        "role": "Prefeito de Niterói", "party": "PDT",
-        "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rodrigo Bacellar Neves",
-        "birth_date": "1977-10-12", "birth_place": "Niterói, RJ",
-        "education": "Economia — UFF; Mestrado em Economia — UFF",
-        "occupation": "Economista / Político",
-        "website": "https://www.niteroi.rj.gov.br",
-        "wiki_title_pt": "Rodrigo Neves", "wiki_title_en": "Rodrigo Neves",
-        "all_parties": ["PDT"],
-        "all_roles": [
-            "Prefeito de Niterói (2013–2020, 2025–presente)",
-            "Deputado Estadual RJ (2011–2012)",
-        ],
-        "all_education": ["Economia — UFF", "Mestrado em Economia — UFF"],
-        "salary_info": {
-            "cargo": "Prefeito de Niterói",
-            "subsidio_mensal": 28000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Niterói",
-            "beneficios": [],
-            "fonte": "https://transparencia.niteroi.rj.gov.br",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── SÃO PAULO ────────────────────────────────────────────────
-    "mayor-sao-paulo": {
-        "id": "mayor-sao-paulo",
-        "name": "Ricardo Nunes", "display_name": "Ricardo Nunes",
-        "role": "Prefeito de São Paulo", "party": "MDB",
-        "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Ricardo de Mello Araújo Nunes",
-        "birth_date": "1967-04-01", "birth_place": "São Paulo, SP",
-        "education": "Administração de Empresas — FMU",
-        "occupation": "Empresário / Político",
-        "website": "https://www.prefeitura.sp.gov.br",
-        "wiki_title_pt": "Ricardo Nunes", "wiki_title_en": "Ricardo Nunes",
-        "all_parties": ["MDB"],
-        "all_roles": [
-            "Prefeito de São Paulo (2021–presente)",
-            "Vereador de São Paulo (2004–2020)",
-        ],
-        "all_education": ["Administração de Empresas — FMU"],
-        "salary_info": {
-            "cargo": "Prefeito de São Paulo",
-            "subsidio_mensal": 35462.22,
-            "subsidio_desc": "Subsídio do Prefeito do Município de São Paulo (Lei nº 17.440/2021)",
-            "beneficios": [
-                {"nome": "Residência oficial", "valor": "Custeado pela Prefeitura", "descricao": "Palácio dos Bandeirantes — uso facultativo"},
-                {"nome": "Carro oficial com motorista", "valor": "Custeado pela Prefeitura", "descricao": ""},
-            ],
-            "fonte": "https://transparencia.prefeitura.sp.gov.br",
-        },
-        "charges": [
-            "Esposa Ana Cristina Nunes investigada por improbidade administrativa durante gestão como vereadora — processo sem relação direta com Ricardo Nunes",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ── MINAS GERAIS ─────────────────────────────────────────────
-    "mayor-belo-horizonte": {
-        "id": "mayor-belo-horizonte",
-        "name": "Fuad Noman", "display_name": "Fuad Noman",
-        "role": "Prefeito de Belo Horizonte", "party": "PSD",
-        "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Álvaro Damião Fuad Noman",
-        "birth_date": "1952-09-02", "birth_place": "Belo Horizonte, MG",
-        "education": "Medicina — UFMG",
-        "occupation": "Médico oncologista / Político",
-        "website": "https://prefeitura.pbh.gov.br",
-        "wiki_title_pt": "Fuad Noman", "wiki_title_en": "Fuad Noman",
-        "all_parties": ["PSD"],
-        "all_roles": [
-            "Prefeito de Belo Horizonte (2024–presente)",
-            "Vice-Prefeito de Belo Horizonte (2017–2024)",
-            "Secretário Municipal de Saúde (2013–2016)",
-        ],
-        "all_education": ["Medicina — UFMG", "Especialização em Oncologia"],
-        "salary_info": {
-            "cargo": "Prefeito de Belo Horizonte",
-            "subsidio_mensal": 33000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Belo Horizonte",
-            "beneficios": [],
-            "fonte": "https://transparencia.pbh.gov.br",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── BAHIA ────────────────────────────────────────────────────
-    "mayor-salvador": {
-        "id": "mayor-salvador",
-        "name": "Bruno Reis", "display_name": "Bruno Reis",
-        "role": "Prefeito de Salvador", "party": "União Brasil",
-        "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Bruno Henrique de Oliveira Reis",
-        "birth_date": "1977-07-21", "birth_place": "Salvador, BA",
-        "education": "Direito — UCSAL; Mestrado em Direito Público — UFBA",
-        "occupation": "Advogado / Político",
-        "website": "https://www.salvador.ba.gov.br",
-        "wiki_title_pt": "Bruno Reis (político)", "wiki_title_en": "Bruno Reis",
-        "all_parties": ["União Brasil", "DEM (até 2021)"],
-        "all_roles": [
-            "Prefeito de Salvador (2021–presente)",
-            "Vice-Prefeito de Salvador (2016–2021)",
-            "Secretário Municipal de Urbanismo (2014–2016)",
-        ],
-        "all_education": ["Direito — UCSAL", "Mestrado em Direito Público — UFBA"],
-        "salary_info": {
-            "cargo": "Prefeito de Salvador",
-            "subsidio_mensal": 27500.00,
-            "subsidio_desc": "Subsídio do Prefeito do Município de Salvador",
-            "beneficios": [],
-            "fonte": "https://www.transparencia.salvador.ba.gov.br",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── PERNAMBUCO ───────────────────────────────────────────────
-    "mayor-recife": {
-        "id": "mayor-recife",
-        "name": "João Campos", "display_name": "João Campos",
-        "role": "Prefeito do Recife", "party": "PSB",
-        "state": "PE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "João Henrique Holanda Campos",
-        "birth_date": "1994-10-29", "birth_place": "Recife, PE",
-        "education": "Engenharia Civil — UFPE",
-        "occupation": "Engenheiro / Político",
-        "website": "https://www.recife.pe.gov.br",
-        "wiki_title_pt": "João Campos (político)", "wiki_title_en": "João Campos",
-        "all_parties": ["PSB"],
-        "all_roles": [
-            "Prefeito do Recife (2021–presente)",
-            "Deputado Federal PE (2019–2020)",
-        ],
-        "all_education": ["Engenharia Civil — UFPE"],
-        "salary_info": {
-            "cargo": "Prefeito do Recife",
-            "subsidio_mensal": 26000.00,
-            "subsidio_desc": "Subsídio do Prefeito do Recife",
-            "beneficios": [],
-            "fonte": "https://www.recife.pe.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── CEARÁ ────────────────────────────────────────────────────
-    "mayor-fortaleza": {
-        "id": "mayor-fortaleza",
-        "name": "Evandro Leitão", "display_name": "Evandro Leitão",
-        "role": "Prefeito de Fortaleza", "party": "PT",
-        "state": "CE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Evandro Leitão de Melo",
-        "birth_date": "1977-06-06", "birth_place": "Fortaleza, CE",
-        "education": "Direito — UFC",
-        "occupation": "Advogado / Político",
-        "website": "https://www.fortaleza.ce.gov.br",
-        "wiki_title_pt": "Evandro Leitão", "wiki_title_en": "Evandro Leitão",
-        "all_parties": ["PT", "PDT (até 2022)"],
-        "all_roles": [
-            "Prefeito de Fortaleza (2025–presente)",
-            "Presidente da Assembleia Legislativa do Ceará (2019–2024)",
-            "Deputado Estadual CE (2007–2024)",
-        ],
-        "all_education": ["Direito — UFC"],
-        "salary_info": {
-            "cargo": "Prefeito de Fortaleza",
-            "subsidio_mensal": 27000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Fortaleza",
-            "beneficios": [],
-            "fonte": "https://www.transparencia.fortaleza.ce.gov.br",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── RIO GRANDE DO SUL ────────────────────────────────────────
-    "mayor-porto-alegre": {
-        "id": "mayor-porto-alegre",
-        "name": "Sebastião Melo", "display_name": "Sebastião Melo",
-        "role": "Prefeito de Porto Alegre", "party": "MDB",
-        "state": "RS", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Sebastião de Araújo Melo",
-        "birth_date": "1963-12-10", "birth_place": "Cachoeira do Sul, RS",
-        "education": "Ciências Contábeis — UniRitter",
-        "occupation": "Contador / Político",
-        "website": "https://prefeitura.poa.br",
-        "wiki_title_pt": "Sebastião Melo", "wiki_title_en": "Sebastião Melo",
-        "all_parties": ["MDB"],
-        "all_roles": [
-            "Prefeito de Porto Alegre (2021–presente)",
-            "Vice-Prefeito de Porto Alegre (2017–2021)",
-            "Secretário Estadual da Fazenda RS (2013–2017)",
-            "Deputado Estadual RS",
-        ],
-        "all_education": ["Ciências Contábeis — UniRitter"],
-        "salary_info": {
-            "cargo": "Prefeito de Porto Alegre",
-            "subsidio_mensal": 30000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Porto Alegre",
-            "beneficios": [],
-            "fonte": "https://prefeitura.poa.br/transparencia",
-        },
-        "charges": [
-            "Investigado pelo MP-RS por suposta irregularidade em licitação de serviços de limpeza urbana (2023) — em apuração",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ── PARANÁ ───────────────────────────────────────────────────
-    "mayor-curitiba": {
-        "id": "mayor-curitiba",
-        "name": "Eduardo Pimentel", "display_name": "Eduardo Pimentel",
-        "role": "Prefeito de Curitiba", "party": "PSD",
-        "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo Pimentel Slaviero",
-        "birth_date": "1969-02-17", "birth_place": "Curitiba, PR",
-        "education": "Direito — UFPR",
-        "occupation": "Advogado / Político",
-        "website": "https://www.curitiba.pr.gov.br",
-        "wiki_title_pt": "Eduardo Pimentel (político)", "wiki_title_en": "Eduardo Pimentel",
-        "all_parties": ["PSD"],
-        "all_roles": [
-            "Prefeito de Curitiba (2025–presente)",
-            "Vice-Prefeito de Curitiba (2021–2024)",
-            "Secretário Municipal de Urbanismo (2013–2016)",
-        ],
-        "all_education": ["Direito — UFPR"],
-        "salary_info": {
-            "cargo": "Prefeito de Curitiba",
-            "subsidio_mensal": 31500.00,
-            "subsidio_desc": "Subsídio do Prefeito de Curitiba",
-            "beneficios": [],
-            "fonte": "https://www.curitiba.pr.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── SANTA CATARINA ───────────────────────────────────────────
-    "mayor-florianopolis": {
-        "id": "mayor-florianopolis",
-        "name": "Topázio Neto", "display_name": "Topázio Neto",
-        "role": "Prefeito de Florianópolis", "party": "PSD",
-        "state": "SC", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Topázio Linhares Neto",
-        "birth_date": "1971-01-01", "birth_place": "Florianópolis, SC",
-        "education": "Direito — UFSC",
-        "occupation": "Delegado de Polícia Federal / Político",
-        "website": "https://www.pmf.sc.gov.br",
-        "wiki_title_pt": "Topázio Neto", "wiki_title_en": "Topázio Neto",
-        "all_parties": ["PSD"],
-        "all_roles": [
-            "Prefeito de Florianópolis (2025–presente)",
-            "Delegado da Polícia Federal — aposentado",
-            "Ministro da Justiça (2015–2016)",
-        ],
-        "all_education": ["Direito — UFSC"],
-        "salary_info": {
-            "cargo": "Prefeito de Florianópolis",
-            "subsidio_mensal": 28000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Florianópolis",
-            "beneficios": [],
-            "fonte": "https://www.pmf.sc.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── PARÁ ─────────────────────────────────────────────────────
-    "mayor-belem": {
-        "id": "mayor-belem",
-        "name": "Igor Normando", "display_name": "Igor Normando",
-        "role": "Prefeito de Belém", "party": "MDB",
-        "state": "PA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Igor Normando Monteiro",
-        "birth_date": "1987-01-01", "birth_place": "Belém, PA",
-        "education": "Jornalismo — UFPA",
-        "occupation": "Jornalista / Político",
-        "website": "https://www.belem.pa.gov.br",
-        "wiki_title_pt": "Igor Normando", "wiki_title_en": "Igor Normando",
-        "all_parties": ["MDB"],
-        "all_roles": [
-            "Prefeito de Belém (2025–presente)",
-            "Deputado Federal PA (2019–2024)",
-        ],
-        "all_education": ["Jornalismo — UFPA"],
-        "salary_info": {
-            "cargo": "Prefeito de Belém",
-            "subsidio_mensal": 24000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Belém",
-            "beneficios": [],
-            "fonte": "https://www.belem.pa.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── AMAZONAS ─────────────────────────────────────────────────
-    "mayor-manaus": {
-        "id": "mayor-manaus",
-        "name": "David Almeida", "display_name": "David Almeida",
-        "role": "Prefeito de Manaus", "party": "Avante",
-        "state": "AM", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "David Cordeiro de Almeida",
-        "birth_date": "1970-01-12", "birth_place": "Manaus, AM",
-        "education": "Engenharia Civil — UFAM",
-        "occupation": "Engenheiro / Político",
-        "website": "https://www.manaus.am.gov.br",
-        "wiki_title_pt": "David Almeida (político)", "wiki_title_en": "David Almeida",
-        "all_parties": ["Avante", "PTB (até 2021)"],
-        "all_roles": [
-            "Prefeito de Manaus (2021–presente)",
-            "Vice-Governador do Amazonas (2003–2007)",
-            "Deputado Estadual AM",
-        ],
-        "all_education": ["Engenharia Civil — UFAM"],
-        "salary_info": {
-            "cargo": "Prefeito de Manaus",
-            "subsidio_mensal": 25000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Manaus",
-            "beneficios": [],
-            "fonte": "https://www.manaus.am.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── GOIÁS ────────────────────────────────────────────────────
-    "mayor-goiania": {
-        "id": "mayor-goiania",
-        "name": "Sandro Mabel", "display_name": "Sandro Mabel",
-        "role": "Prefeito de Goiânia", "party": "União Brasil",
-        "state": "GO", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Sandro Mabel Teixeira da Silva",
-        "birth_date": "1960-07-17", "birth_place": "Goiânia, GO",
-        "education": "Engenharia Civil — UFG",
-        "occupation": "Empresário / Político",
-        "website": "https://www.goiania.go.gov.br",
-        "wiki_title_pt": "Sandro Mabel", "wiki_title_en": "Sandro Mabel",
-        "all_parties": ["União Brasil", "PL (até 2022)"],
-        "all_roles": [
-            "Prefeito de Goiânia (2025–presente)",
-            "Deputado Federal GO (2003–2022, múltiplos mandatos)",
-        ],
-        "all_education": ["Engenharia Civil — UFG"],
-        "salary_info": {
-            "cargo": "Prefeito de Goiânia",
-            "subsidio_mensal": 28000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Goiânia",
-            "beneficios": [],
-            "fonte": "https://www.goiania.go.gov.br/transparencia",
-        },
-        "charges": [
-            "Investigado pela PF na Operação Hydra (2007) por suposta fraude em licitações — processo arquivado",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ── MARANHÃO ─────────────────────────────────────────────────
-    "mayor-sao-luis": {
-        "id": "mayor-sao-luis",
-        "name": "Eduardo Braide", "display_name": "Eduardo Braide",
-        "role": "Prefeito de São Luís", "party": "PSD",
-        "state": "MA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo Braide",
-        "birth_date": "1978-01-01", "birth_place": "São Luís, MA",
-        "education": "Direito — UFMA",
-        "occupation": "Advogado / Político",
-        "website": "https://www.saoluis.ma.gov.br",
-        "wiki_title_pt": "Eduardo Braide", "wiki_title_en": "Eduardo Braide",
-        "all_parties": ["PSD", "Podemos (até 2022)"],
-        "all_roles": [
-            "Prefeito de São Luís (2021–presente)",
-            "Deputado Estadual MA",
-        ],
-        "all_education": ["Direito — UFMA"],
-        "salary_info": {
-            "cargo": "Prefeito de São Luís",
-            "subsidio_mensal": 22000.00,
-            "subsidio_desc": "Subsídio do Prefeito de São Luís",
-            "beneficios": [],
-            "fonte": "https://www.saoluis.ma.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── MATO GROSSO DO SUL ───────────────────────────────────────
-    "mayor-campo-grande": {
-        "id": "mayor-campo-grande",
-        "name": "Adriane Lopes", "display_name": "Adriane Lopes",
-        "role": "Prefeita de Campo Grande", "party": "PP",
-        "state": "MS", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Adriane Lopes Melo",
-        "birth_date": "1975-01-01", "birth_place": "Campo Grande, MS",
-        "education": "Direito — UCDB",
-        "occupation": "Advogada / Política",
-        "website": "https://www.campogrande.ms.gov.br",
-        "wiki_title_pt": "Adriane Lopes", "wiki_title_en": "Adriane Lopes",
-        "all_parties": ["PP"],
-        "all_roles": [
-            "Prefeita de Campo Grande (2022–presente)",
-            "Vice-Prefeita de Campo Grande (2021–2022)",
-            "Secretária Municipal de Assistência Social",
-        ],
-        "all_education": ["Direito — UCDB"],
-        "salary_info": {
-            "cargo": "Prefeita de Campo Grande",
-            "subsidio_mensal": 24000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Campo Grande",
-            "beneficios": [],
-            "fonte": "https://www.campogrande.ms.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── ALAGOAS ──────────────────────────────────────────────────
-    "mayor-maceio": {
-        "id": "mayor-maceio",
-        "name": "João Henrique Caldas", "display_name": "JHC",
-        "role": "Prefeito de Maceió", "party": "PL",
-        "state": "AL", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "João Henrique Holanda Caldas",
-        "birth_date": "1984-05-05", "birth_place": "Maceió, AL",
-        "education": "Administração de Empresas — UFAL",
-        "occupation": "Empresário / Político",
-        "website": "https://www.maceio.al.gov.br",
-        "wiki_title_pt": "João Henrique Caldas", "wiki_title_en": "João Henrique Caldas",
-        "all_parties": ["PL", "PSB (até 2022)"],
-        "all_roles": [
-            "Prefeito de Maceió (2021–presente)",
-            "Deputado Federal AL (2015–2020)",
-        ],
-        "all_education": ["Administração de Empresas — UFAL"],
-        "salary_info": {
-            "cargo": "Prefeito de Maceió",
-            "subsidio_mensal": 20000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Maceió",
-            "beneficios": [],
-            "fonte": "https://www.maceio.al.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── PIAUÍ ────────────────────────────────────────────────────
-    "mayor-teresina": {
-        "id": "mayor-teresina",
-        "name": "Silvio Mendes", "display_name": "Dr. Silvio Mendes",
-        "role": "Prefeito de Teresina", "party": "União Brasil",
-        "state": "PI", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Silvio Mendes de Oliveira Filho",
-        "birth_date": "1962-08-20", "birth_place": "Teresina, PI",
-        "education": "Medicina — UFPI",
-        "occupation": "Médico / Político",
-        "website": "https://www.teresina.pi.gov.br",
-        "wiki_title_pt": "Silvio Mendes", "wiki_title_en": "Silvio Mendes",
-        "all_parties": ["União Brasil", "PSB (até 2022)"],
-        "all_roles": [
-            "Prefeito de Teresina (2025–presente)",
-            "Secretário Estadual de Saúde do Piauí",
-            "Deputado Federal PI",
-        ],
-        "all_education": ["Medicina — UFPI"],
-        "salary_info": {
-            "cargo": "Prefeito de Teresina",
-            "subsidio_mensal": 20000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Teresina",
-            "beneficios": [],
-            "fonte": "https://www.teresina.pi.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── PARAÍBA ──────────────────────────────────────────────────
-    "mayor-joao-pessoa": {
-        "id": "mayor-joao-pessoa",
-        "name": "Cícero Lucena", "display_name": "Cícero Lucena",
-        "role": "Prefeito de João Pessoa", "party": "PP",
-        "state": "PB", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Cícero de Lucena Filho",
-        "birth_date": "1955-06-23", "birth_place": "João Pessoa, PB",
-        "education": "Engenharia Civil — UFPB",
-        "occupation": "Engenheiro / Político",
-        "website": "https://www.joaopessoa.pb.gov.br",
-        "wiki_title_pt": "Cícero Lucena", "wiki_title_en": "Cícero Lucena",
-        "all_parties": ["PP", "PSDB (até 2018)"],
-        "all_roles": [
-            "Prefeito de João Pessoa (2021–presente, 1997–2004)",
-            "Senador Federal PB (2011–2019)",
-            "Governador da Paraíba (2006–2010)",
-        ],
-        "all_education": ["Engenharia Civil — UFPB"],
-        "salary_info": {
-            "cargo": "Prefeito de João Pessoa",
-            "subsidio_mensal": 20000.00,
-            "subsidio_desc": "Subsídio do Prefeito de João Pessoa",
-            "beneficios": [],
-            "fonte": "https://www.joaopessoa.pb.gov.br/transparencia",
-        },
-        "charges": [
-            "Investigado por irregularidades em contratos de saúde durante a gestão 1997–2004 — processo prescrito",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-    # ── RIO GRANDE DO NORTE ──────────────────────────────────────
-    "mayor-natal": {
-        "id": "mayor-natal",
-        "name": "Paulinho Freire", "display_name": "Paulinho Freire",
-        "role": "Prefeito de Natal", "party": "União Brasil",
-        "state": "RN", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Paulo Roberto Ferreira Freire",
-        "birth_date": "1967-01-01", "birth_place": "Natal, RN",
-        "education": "Direito",
-        "occupation": "Político",
-        "website": "https://www.natal.rn.gov.br",
-        "wiki_title_pt": "Paulinho Freire", "wiki_title_en": "Paulinho Freire",
-        "all_parties": ["União Brasil"],
-        "all_roles": [
-            "Prefeito de Natal (2025–presente)",
-            "Deputado Federal RN (múltiplos mandatos)",
-        ],
-        "all_education": ["Direito"],
-        "salary_info": {
-            "cargo": "Prefeito de Natal",
-            "subsidio_mensal": 20000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Natal",
-            "beneficios": [],
-            "fonte": "https://www.natal.rn.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── SERGIPE ──────────────────────────────────────────────────
-    "mayor-aracaju": {
-        "id": "mayor-aracaju",
-        "name": "Emília Corrêa", "display_name": "Emília Corrêa",
-        "role": "Prefeita de Aracaju", "party": "PL",
-        "state": "SE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Emília Corrêa Fontes",
-        "birth_date": "1984-01-01", "birth_place": "Aracaju, SE",
-        "education": "Psicologia — Unit",
-        "occupation": "Psicóloga / Política",
-        "website": "https://www.aracaju.se.gov.br",
-        "wiki_title_pt": "Emília Corrêa", "wiki_title_en": "Emília Corrêa",
-        "all_parties": ["PL"],
-        "all_roles": [
-            "Prefeita de Aracaju (2025–presente)",
-            "Deputada Federal SE (2023–2024)",
-            "Vereadora de Aracaju",
-        ],
-        "all_education": ["Psicologia — Unit"],
-        "salary_info": {
-            "cargo": "Prefeita de Aracaju",
-            "subsidio_mensal": 18000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Aracaju",
-            "beneficios": [],
-            "fonte": "https://www.aracaju.se.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── ESPÍRITO SANTO ───────────────────────────────────────────
-    "mayor-vitoria": {
-        "id": "mayor-vitoria",
-        "name": "Lorenzo Pazolini", "display_name": "Lorenzo Pazolini",
-        "role": "Prefeito de Vitória", "party": "Republicanos",
-        "state": "ES", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Lorenzo Pazolini",
-        "birth_date": "1983-01-01", "birth_place": "Vitória, ES",
-        "education": "Medicina — UFES",
-        "occupation": "Médico / Político",
-        "website": "https://www.vitoria.es.gov.br",
-        "wiki_title_pt": "Lorenzo Pazolini", "wiki_title_en": "Lorenzo Pazolini",
-        "all_parties": ["Republicanos"],
-        "all_roles": [
-            "Prefeito de Vitória (2021–presente)",
-            "Deputado Federal ES (2019–2020)",
-        ],
-        "all_education": ["Medicina — UFES"],
-        "salary_info": {
-            "cargo": "Prefeito de Vitória",
-            "subsidio_mensal": 22000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Vitória",
-            "beneficios": [],
-            "fonte": "https://www.vitoria.es.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── MATO GROSSO ──────────────────────────────────────────────
-    "mayor-cuiaba": {
-        "id": "mayor-cuiaba",
-        "name": "Abilio Brunini", "display_name": "Abilio Brunini",
-        "role": "Prefeito de Cuiabá", "party": "PL",
-        "state": "MT", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Abilio Brunini",
-        "birth_date": "1985-01-01", "birth_place": "Cuiabá, MT",
-        "education": "Comunicação Social",
-        "occupation": "Comunicador / Político",
-        "website": "https://www.cuiaba.mt.gov.br",
-        "wiki_title_pt": "Abilio Brunini", "wiki_title_en": "Abilio Brunini",
-        "all_parties": ["PL"],
-        "all_roles": [
-            "Prefeito de Cuiabá (2025–presente)",
-            "Deputado Federal MT (2023–2024)",
-            "Vereador de Cuiabá",
-        ],
-        "all_education": ["Comunicação Social"],
-        "salary_info": {
-            "cargo": "Prefeito de Cuiabá",
-            "subsidio_mensal": 22000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Cuiabá",
-            "beneficios": [],
-            "fonte": "https://www.cuiaba.mt.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── AMAPÁ ────────────────────────────────────────────────────
-    "mayor-macapa": {
-        "id": "mayor-macapa",
-        "name": "Dr. Furlan", "display_name": "Dr. Furlan",
-        "role": "Prefeito de Macapá", "party": "MDB",
-        "state": "AP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Roberto Furlan",
-        "birth_date": "1975-01-01", "birth_place": "Macapá, AP",
-        "education": "Medicina",
-        "occupation": "Médico / Político",
-        "website": "https://www.macapa.ap.gov.br",
-        "wiki_title_pt": "Furlan (político)", "wiki_title_en": "Roberto Furlan",
-        "all_parties": ["MDB"],
-        "all_roles": [
-            "Prefeito de Macapá (2025–presente)",
-        ],
-        "all_education": ["Medicina"],
-        "salary_info": {
-            "cargo": "Prefeito de Macapá",
-            "subsidio_mensal": 18000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Macapá",
-            "beneficios": [],
-            "fonte": "https://www.macapa.ap.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── RONDÔNIA ─────────────────────────────────────────────────
-    "mayor-porto-velho": {
-        "id": "mayor-porto-velho",
-        "name": "Hildon Chaves", "display_name": "Hildon Chaves",
-        "role": "Prefeito de Porto Velho", "party": "PSDB",
-        "state": "RO", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Hildon de Lima Chaves",
-        "birth_date": "1968-01-01", "birth_place": "Porto Velho, RO",
-        "education": "Administração de Empresas",
-        "occupation": "Empresário / Político",
-        "website": "https://www.portovelho.ro.gov.br",
-        "wiki_title_pt": "Hildon Chaves", "wiki_title_en": "Hildon Chaves",
-        "all_parties": ["PSDB"],
-        "all_roles": [
-            "Prefeito de Porto Velho (2017–presente)",
-            "Deputado Estadual RO",
-        ],
-        "all_education": ["Administração de Empresas"],
-        "salary_info": {
-            "cargo": "Prefeito de Porto Velho",
-            "subsidio_mensal": 18000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Porto Velho",
-            "beneficios": [],
-            "fonte": "https://www.portovelho.ro.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── RORAIMA ──────────────────────────────────────────────────
-    "mayor-boa-vista": {
-        "id": "mayor-boa-vista",
-        "name": "Arthur Henrique", "display_name": "Arthur Henrique",
-        "role": "Prefeito de Boa Vista", "party": "MDB",
-        "state": "RR", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Arthur Henrique Machado Oliveira",
-        "birth_date": "1960-01-01", "birth_place": "Boa Vista, RR",
-        "education": "Administração de Empresas",
-        "occupation": "Empresário / Político",
-        "website": "https://www.boavista.rr.gov.br",
-        "wiki_title_pt": "Arthur Henrique", "wiki_title_en": "Arthur Henrique",
-        "all_parties": ["MDB"],
-        "all_roles": [
-            "Prefeito de Boa Vista (2017–presente)",
-            "Vice-Governador de Roraima",
-        ],
-        "all_education": ["Administração de Empresas"],
-        "salary_info": {
-            "cargo": "Prefeito de Boa Vista",
-            "subsidio_mensal": 16000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Boa Vista",
-            "beneficios": [],
-            "fonte": "https://www.boavista.rr.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── TOCANTINS ────────────────────────────────────────────────
-    "mayor-palmas": {
-        "id": "mayor-palmas",
-        "name": "Eduardo Siqueira Campos", "display_name": "Eduardo Siqueira Campos",
-        "role": "Prefeito de Palmas", "party": "Podemos",
-        "state": "TO", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo Siqueira Campos",
-        "birth_date": "1965-01-01", "birth_place": "Palmas, TO",
-        "education": "Direito",
-        "occupation": "Político",
-        "website": "https://www.palmas.to.gov.br",
-        "wiki_title_pt": "Eduardo Siqueira Campos", "wiki_title_en": "Eduardo Siqueira Campos",
-        "all_parties": ["Podemos"],
-        "all_roles": [
-            "Prefeito de Palmas (2025–presente)",
-            "Governador do Tocantins (2014–2018)",
-            "Senador Federal TO",
-        ],
-        "all_education": ["Direito"],
-        "salary_info": {
-            "cargo": "Prefeito de Palmas",
-            "subsidio_mensal": 18000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Palmas",
-            "beneficios": [],
-            "fonte": "https://www.palmas.to.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── ACRE ─────────────────────────────────────────────────────
-    "mayor-rio-branco": {
-        "id": "mayor-rio-branco",
-        "name": "Tião Bocalom", "display_name": "Tião Bocalom",
-        "role": "Prefeito de Rio Branco", "party": "PP",
-        "state": "AC", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "José Sebastião Bocalom Rodrigues",
-        "birth_date": "1963-01-01", "birth_place": "Rio Branco, AC",
-        "education": "Agronomia — UFAC",
-        "occupation": "Agrônomo / Político",
-        "website": "https://www.riobranco.ac.gov.br",
-        "wiki_title_pt": "Tião Bocalom", "wiki_title_en": "Tião Bocalom",
-        "all_parties": ["PP"],
-        "all_roles": [
-            "Prefeito de Rio Branco (2021–presente)",
-            "Deputado Estadual AC",
-        ],
-        "all_education": ["Agronomia — UFAC"],
-        "salary_info": {
-            "cargo": "Prefeito de Rio Branco",
-            "subsidio_mensal": 16000.00,
-            "subsidio_desc": "Subsídio do Prefeito de Rio Branco",
-            "beneficios": [],
-            "fonte": "https://www.riobranco.ac.gov.br/transparencia",
-        },
-        "charges": [],
-        "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — RJ ──────────────────────────────────
-    "mayor-nova-iguacu": {
-        "id": "mayor-nova-iguacu", "name": "Duarte Júnior", "display_name": "Duarte Júnior",
-        "role": "Prefeito de Nova Iguaçu", "party": "PSD", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Duarte Martins Júnior", "birth_date": "", "birth_place": "Nova Iguaçu, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.novaiguacu.rj.gov.br",
-        "wiki_title_pt": "Duarte Júnior", "wiki_title_en": "Duarte Júnior",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Nova Iguaçu (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Nova Iguaçu", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Nova Iguaçu", "beneficios": [], "fonte": "https://www.novaiguacu.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-duque-de-caxias": {
-        "id": "mayor-duque-de-caxias", "name": "Wilson Reis", "display_name": "Wilson Reis",
-        "role": "Prefeito de Duque de Caxias", "party": "MDB", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Wilson Reis Furtado", "birth_date": "", "birth_place": "Duque de Caxias, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.duquedecaxias.rj.gov.br",
-        "wiki_title_pt": "Wilson Reis", "wiki_title_en": "Wilson Reis",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Duque de Caxias (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Duque de Caxias", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Duque de Caxias", "beneficios": [], "fonte": "https://www.duquedecaxias.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sao-goncalo": {
-        "id": "mayor-sao-goncalo", "name": "Capitão Nelson", "display_name": "Capitão Nelson",
-        "role": "Prefeito de São Gonçalo", "party": "PL", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Nelson Gonçalves Ramos", "birth_date": "", "birth_place": "São Gonçalo, RJ",
-        "education": "Academia Militar", "occupation": "Militar / Político", "website": "https://www.saogoncalo.rj.gov.br",
-        "wiki_title_pt": "Capitão Nelson", "wiki_title_en": "Capitão Nelson",
-        "all_parties": ["PL"], "all_roles": ["Prefeito de São Gonçalo (2021–presente)", "Capitão do Exército (reformado)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de São Gonçalo", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de São Gonçalo", "beneficios": [], "fonte": "https://www.saogoncalo.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-petropolis": {
-        "id": "mayor-petropolis", "name": "Rubens Bomtempo", "display_name": "Rubens Bomtempo",
-        "role": "Prefeito de Petrópolis", "party": "PSB", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rubens Bomtempo", "birth_date": "1963-01-01", "birth_place": "Petrópolis, RJ",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.petropolis.rj.gov.br",
-        "wiki_title_pt": "Rubens Bomtempo", "wiki_title_en": "Rubens Bomtempo",
-        "all_parties": ["PSB", "PT (antes)"], "all_roles": ["Prefeito de Petrópolis (2013–2020, 2025–presente)", "Deputado Federal RJ"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Petrópolis", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Petrópolis", "beneficios": [], "fonte": "https://www.petropolis.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-teresopolis": {
-        "id": "mayor-teresopolis", "name": "Vinicius Claussen", "display_name": "Vinicius Claussen",
-        "role": "Prefeito de Teresópolis", "party": "PSD", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Vinicius Claussen Gomes", "birth_date": "", "birth_place": "Teresópolis, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.teresopolis.rj.gov.br",
-        "wiki_title_pt": "Vinicius Claussen", "wiki_title_en": "Vinicius Claussen",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Teresópolis (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Teresópolis", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Teresópolis", "beneficios": [], "fonte": "https://www.teresopolis.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-volta-redonda": {
-        "id": "mayor-volta-redonda", "name": "Neto", "display_name": "Neto",
-        "role": "Prefeito de Volta Redonda", "party": "MDB", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Antonio Francisco Neto", "birth_date": "", "birth_place": "Volta Redonda, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.voltaredonda.rj.gov.br",
-        "wiki_title_pt": "Neto (Volta Redonda)", "wiki_title_en": "Neto",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Volta Redonda (múltiplos mandatos)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Volta Redonda", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Volta Redonda", "beneficios": [], "fonte": "https://www.voltaredonda.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-resende": {
-        "id": "mayor-resende", "name": "Alexandre Fonseca", "display_name": "Alexandre Fonseca",
-        "role": "Prefeito de Resende", "party": "PRD", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Alexandre Fonseca", "birth_date": "", "birth_place": "Resende, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.resende.rj.gov.br",
-        "wiki_title_pt": "Alexandre Fonseca", "wiki_title_en": "Alexandre Fonseca",
-        "all_parties": ["PRD"], "all_roles": ["Prefeito de Resende (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Resende", "subsidio_mensal": 15000.00, "subsidio_desc": "Subsídio do Prefeito de Resende", "beneficios": [], "fonte": "https://www.resende.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-macae": {
-        "id": "mayor-macae", "name": "Dr. Welberth Rezende", "display_name": "Dr. Welberth Rezende",
-        "role": "Prefeito de Macaé", "party": "Podemos", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Welberth Rezende", "birth_date": "", "birth_place": "Macaé, RJ",
-        "education": "Medicina", "occupation": "Médico / Político", "website": "https://www.macae.rj.gov.br",
-        "wiki_title_pt": "Welberth Rezende", "wiki_title_en": "Welberth Rezende",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Macaé (2021–presente)"], "all_education": ["Medicina"],
-        "salary_info": {"cargo": "Prefeito de Macaé", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Macaé", "beneficios": [], "fonte": "https://www.macae.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-campos-dos-goytacazes": {
-        "id": "mayor-campos-dos-goytacazes", "name": "Wladimir Garotinho", "display_name": "Wladimir Garotinho",
-        "role": "Prefeito de Campos dos Goytacazes", "party": "PRD", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Wladimir Garotinho Nascimento de Oliveira", "birth_date": "1981-01-01", "birth_place": "Campos dos Goytacazes, RJ",
-        "education": "Administração de Empresas", "occupation": "Político", "website": "https://www.campos.rj.gov.br",
-        "wiki_title_pt": "Wladimir Garotinho", "wiki_title_en": "Wladimir Garotinho",
-        "all_parties": ["PRD", "PR (antes)"], "all_roles": ["Prefeito de Campos dos Goytacazes (2025–presente)", "Deputado Federal RJ"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Campos dos Goytacazes", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Campos dos Goytacazes", "beneficios": [], "fonte": "https://www.campos.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-angra-dos-reis": {
-        "id": "mayor-angra-dos-reis", "name": "Fábio do Pastel", "display_name": "Fábio do Pastel",
-        "role": "Prefeito de Angra dos Reis", "party": "Solidariedade", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Fábio do Pastel", "birth_date": "", "birth_place": "Angra dos Reis, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.angra.rj.gov.br",
-        "wiki_title_pt": "Fábio do Pastel", "wiki_title_en": "Fábio do Pastel",
-        "all_parties": ["Solidariedade"], "all_roles": ["Prefeito de Angra dos Reis (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Angra dos Reis", "subsidio_mensal": 15000.00, "subsidio_desc": "Subsídio do Prefeito de Angra dos Reis", "beneficios": [], "fonte": "https://www.angra.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-cabo-frio": {
-        "id": "mayor-cabo-frio", "name": "Renatinho Vianna", "display_name": "Renatinho Vianna",
-        "role": "Prefeito de Cabo Frio", "party": "MDB", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Renato Bravo Vianna", "birth_date": "", "birth_place": "Cabo Frio, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.cabofrio.rj.gov.br",
-        "wiki_title_pt": "Renatinho Vianna", "wiki_title_en": "Renatinho Vianna",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Cabo Frio (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Cabo Frio", "subsidio_mensal": 15000.00, "subsidio_desc": "Subsídio do Prefeito de Cabo Frio", "beneficios": [], "fonte": "https://www.cabofrio.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-barra-mansa": {
-        "id": "mayor-barra-mansa", "name": "Rodrigo Drable", "display_name": "Rodrigo Drable",
-        "role": "Prefeito de Barra Mansa", "party": "AVANTE", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rodrigo Drable", "birth_date": "", "birth_place": "Barra Mansa, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.barramansa.rj.gov.br",
-        "wiki_title_pt": "Rodrigo Drable", "wiki_title_en": "Rodrigo Drable",
-        "all_parties": ["AVANTE"], "all_roles": ["Prefeito de Barra Mansa (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Barra Mansa", "subsidio_mensal": 14000.00, "subsidio_desc": "Subsídio do Prefeito de Barra Mansa", "beneficios": [], "fonte": "https://www.barramansa.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-itaperuna": {
-        "id": "mayor-itaperuna", "name": "Ontiveiro Júnior", "display_name": "Ontiveiro Júnior",
-        "role": "Prefeito de Itaperuna", "party": "MDB", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Ontiveiro Alves Netto Júnior", "birth_date": "", "birth_place": "Itaperuna, RJ",
-        "education": "", "occupation": "Político", "website": "https://www.itaperuna.rj.gov.br",
-        "wiki_title_pt": "Ontiveiro Júnior", "wiki_title_en": "Ontiveiro Júnior",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Itaperuna (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Itaperuna", "subsidio_mensal": 12000.00, "subsidio_desc": "Subsídio do Prefeito de Itaperuna", "beneficios": [], "fonte": "https://www.itaperuna.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — SP ──────────────────────────────────
-    "mayor-campinas": {
-        "id": "mayor-campinas", "name": "Dario Saadi", "display_name": "Dario Saadi",
-        "role": "Prefeito de Campinas", "party": "Republicanos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Dário Saadi", "birth_date": "1977-01-01", "birth_place": "Campinas, SP",
-        "education": "Direito — PUC-Campinas", "occupation": "Advogado / Político", "website": "https://www.campinas.sp.gov.br",
-        "wiki_title_pt": "Dario Saadi", "wiki_title_en": "Dario Saadi",
-        "all_parties": ["Republicanos"], "all_roles": ["Prefeito de Campinas (2021–presente)", "Deputado Estadual SP"], "all_education": ["Direito — PUC-Campinas"],
-        "salary_info": {"cargo": "Prefeito de Campinas", "subsidio_mensal": 26000.00, "subsidio_desc": "Subsídio do Prefeito de Campinas", "beneficios": [], "fonte": "https://www.campinas.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-guarulhos": {
-        "id": "mayor-guarulhos", "name": "Guti", "display_name": "Guti",
-        "role": "Prefeito de Guarulhos", "party": "PSD", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Gustavo Henrique Gomes", "birth_date": "1973-01-01", "birth_place": "Guarulhos, SP",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.guarulhos.sp.gov.br",
-        "wiki_title_pt": "Gustavo Henrique Gomes", "wiki_title_en": "Guti",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Guarulhos (2017–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Guarulhos", "subsidio_mensal": 24000.00, "subsidio_desc": "Subsídio do Prefeito de Guarulhos", "beneficios": [], "fonte": "https://www.guarulhos.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-santo-andre": {
-        "id": "mayor-santo-andre", "name": "Gilvan Junior", "display_name": "Gilvan Junior",
-        "role": "Prefeito de Santo André", "party": "PL", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Gilvan Junior", "birth_date": "", "birth_place": "Santo André, SP",
-        "education": "", "occupation": "Político", "website": "https://www.santoandre.sp.gov.br",
-        "wiki_title_pt": "Gilvan Junior", "wiki_title_en": "Gilvan Junior",
-        "all_parties": ["PL"], "all_roles": ["Prefeito de Santo André (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Santo André", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Santo André", "beneficios": [], "fonte": "https://www.santoandre.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sao-bernardo-do-campo": {
-        "id": "mayor-sao-bernardo-do-campo", "name": "Orlando Morando", "display_name": "Orlando Morando",
-        "role": "Prefeito de São Bernardo do Campo", "party": "PSDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Orlando Morando Junior", "birth_date": "1975-01-01", "birth_place": "São Bernardo do Campo, SP",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.saobernardo.sp.gov.br",
-        "wiki_title_pt": "Orlando Morando", "wiki_title_en": "Orlando Morando",
-        "all_parties": ["PSDB"], "all_roles": ["Prefeito de São Bernardo do Campo (2017–presente)", "Deputado Federal SP"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de São Bernardo do Campo", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de São Bernardo do Campo", "beneficios": [], "fonte": "https://www.saobernardo.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-osasco": {
-        "id": "mayor-osasco", "name": "Rogério Lins", "display_name": "Rogério Lins",
-        "role": "Prefeito de Osasco", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rogério Lins", "birth_date": "1976-01-01", "birth_place": "Osasco, SP",
-        "education": "Ciências Contábeis", "occupation": "Contador / Político", "website": "https://www.osasco.sp.gov.br",
-        "wiki_title_pt": "Rogério Lins", "wiki_title_en": "Rogério Lins",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Osasco (2017–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Osasco", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Osasco", "beneficios": [], "fonte": "https://www.osasco.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-ribeirao-preto": {
-        "id": "mayor-ribeirao-preto", "name": "Marcos Antonio", "display_name": "Marcos Antonio",
-        "role": "Prefeito de Ribeirão Preto", "party": "PSD", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Marcos Antônio Vieira", "birth_date": "", "birth_place": "Ribeirão Preto, SP",
-        "education": "", "occupation": "Político", "website": "https://www.ribeiraopreto.sp.gov.br",
-        "wiki_title_pt": "Marcos Vieira", "wiki_title_en": "Marcos Antonio",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Ribeirão Preto (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Ribeirão Preto", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Ribeirão Preto", "beneficios": [], "fonte": "https://www.ribeiraopreto.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sorocaba": {
-        "id": "mayor-sorocaba", "name": "Rodrigo Manga", "display_name": "Rodrigo Manga",
-        "role": "Prefeito de Sorocaba", "party": "Republicanos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rodrigo Manga Rodrigues", "birth_date": "1977-01-01", "birth_place": "Sorocaba, SP",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.sorocaba.sp.gov.br",
-        "wiki_title_pt": "Rodrigo Manga", "wiki_title_en": "Rodrigo Manga",
-        "all_parties": ["Republicanos"], "all_roles": ["Prefeito de Sorocaba (2021–presente)", "Deputado Estadual SP"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Sorocaba", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Sorocaba", "beneficios": [], "fonte": "https://www.sorocaba.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — MG ──────────────────────────────────
-    "mayor-contagem": {
-        "id": "mayor-contagem", "name": "Marília Campos", "display_name": "Marília Campos",
-        "role": "Prefeita de Contagem", "party": "PT", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Marília Campos", "birth_date": "1965-01-01", "birth_place": "Contagem, MG",
-        "education": "Serviço Social — PUCMG", "occupation": "Assistente Social / Política", "website": "https://www.contagem.mg.gov.br",
-        "wiki_title_pt": "Marília Campos", "wiki_title_en": "Marília Campos",
-        "all_parties": ["PT"], "all_roles": ["Prefeita de Contagem (2021–presente)"], "all_education": ["Serviço Social — PUCMG"],
-        "salary_info": {"cargo": "Prefeita de Contagem", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Contagem", "beneficios": [], "fonte": "https://www.contagem.mg.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-uberlandia": {
-        "id": "mayor-uberlandia", "name": "Sérgio Rezende", "display_name": "Sérgio Rezende",
-        "role": "Prefeito de Uberlândia", "party": "PSD", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Sérgio Rezende", "birth_date": "", "birth_place": "Uberlândia, MG",
-        "education": "", "occupation": "Político", "website": "https://www.uberlandia.mg.gov.br",
-        "wiki_title_pt": "Sérgio Rezende", "wiki_title_en": "Sérgio Rezende",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Uberlândia (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Uberlândia", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Uberlândia", "beneficios": [], "fonte": "https://www.uberlandia.mg.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — BA ──────────────────────────────────
-    "mayor-feira-de-santana": {
-        "id": "mayor-feira-de-santana", "name": "Zé Ronaldo", "display_name": "Zé Ronaldo",
-        "role": "Prefeito de Feira de Santana", "party": "União Brasil", "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "José Ronaldo de Carvalho", "birth_date": "1952-01-01", "birth_place": "Feira de Santana, BA",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.feiradesantana.ba.gov.br",
-        "wiki_title_pt": "José Ronaldo (Feira de Santana)", "wiki_title_en": "José Ronaldo",
-        "all_parties": ["União Brasil", "DEM (antes)"], "all_roles": ["Prefeito de Feira de Santana (múltiplos mandatos)", "Governador da Bahia (2006–2007)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Feira de Santana", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Feira de Santana", "beneficios": [], "fonte": "https://www.feiradesantana.ba.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — RS ──────────────────────────────────
-    "mayor-caxias-do-sul": {
-        "id": "mayor-caxias-do-sul", "name": "Adiló Didomenico", "display_name": "Adiló Didomenico",
-        "role": "Prefeito de Caxias do Sul", "party": "PSDB", "state": "RS", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Adiló Didomenico", "birth_date": "", "birth_place": "Caxias do Sul, RS",
-        "education": "", "occupation": "Político", "website": "https://www.caxias.rs.gov.br",
-        "wiki_title_pt": "Adiló Didomenico", "wiki_title_en": "Adiló Didomenico",
-        "all_parties": ["PSDB"], "all_roles": ["Prefeito de Caxias do Sul (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Caxias do Sul", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Caxias do Sul", "beneficios": [], "fonte": "https://www.caxias.rs.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — PR ──────────────────────────────────
-    "mayor-londrina": {
-        "id": "mayor-londrina", "name": "Marcelo Belinati", "display_name": "Marcelo Belinati",
-        "role": "Prefeito de Londrina", "party": "PP", "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Marcelo Belinati Augusto", "birth_date": "1970-01-01", "birth_place": "Londrina, PR",
-        "education": "Direito — UEL", "occupation": "Advogado / Político", "website": "https://www.londrina.pr.gov.br",
-        "wiki_title_pt": "Marcelo Belinati", "wiki_title_en": "Marcelo Belinati",
-        "all_parties": ["PP"], "all_roles": ["Prefeito de Londrina (múltiplos mandatos)"], "all_education": ["Direito — UEL"],
-        "salary_info": {"cargo": "Prefeito de Londrina", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Londrina", "beneficios": [], "fonte": "https://www.londrina.pr.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CIDADES DO INTERIOR — SC ──────────────────────────────────
-    "mayor-joinville": {
-        "id": "mayor-joinville", "name": "Adriano Silva", "display_name": "Adriano Silva",
-        "role": "Prefeito de Joinville", "party": "PSD", "state": "SC", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Adriano Silva", "birth_date": "", "birth_place": "Joinville, SC",
-        "education": "", "occupation": "Político", "website": "https://www.joinville.sc.gov.br",
-        "wiki_title_pt": "Adriano Silva (político)", "wiki_title_en": "Adriano Silva",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Joinville (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Joinville", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Joinville", "beneficios": [], "fonte": "https://www.joinville.sc.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ═══════════════════════════════════════════════════════════════
-    # NOVAS CIDADES — ELEIÇÕES 2024
-    # ═══════════════════════════════════════════════════════════════
-
-    # ── MINAS GERAIS ─────────────────────────────────────────────
-    "mayor-juiz-de-fora": {
-        "id": "mayor-juiz-de-fora", "name": "Margarida Salomão", "display_name": "Margarida Salomão",
-        "role": "Prefeita de Juiz de Fora", "party": "PT", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Maria Margarida Salomão", "birth_date": "1954-04-01", "birth_place": "Juiz de Fora, MG",
-        "education": "Economia — UFJF; Doutorado — UFJF", "occupation": "Economista / Professora / Política",
-        "website": "https://www.pjf.mg.gov.br",
-        "wiki_title_pt": "Margarida Salomão", "wiki_title_en": "Margarida Salomão",
-        "all_parties": ["PT"], "all_roles": ["Prefeita de Juiz de Fora (2021–presente)", "Reitora da UFJF (2016–2020)"], "all_education": ["Economia — UFJF", "Doutorado em Economia — UFJF"],
-        "salary_info": {"cargo": "Prefeita de Juiz de Fora", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio da Prefeita de Juiz de Fora", "beneficios": [], "fonte": "https://www.pjf.mg.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-betim": {
-        "id": "mayor-betim", "name": "Vittório Medioli", "display_name": "Vittório Medioli",
-        "role": "Prefeito de Betim", "party": "PSD", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Vittório Medioli", "birth_date": "", "birth_place": "Betim, MG",
-        "education": "", "occupation": "Político", "website": "https://www.betim.mg.gov.br",
-        "wiki_title_pt": "Vittório Medioli", "wiki_title_en": "Vittório Medioli",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Betim (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Betim", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Betim", "beneficios": [], "fonte": "https://www.betim.mg.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-montes-claros": {
-        "id": "mayor-montes-claros", "name": "Humberto Souto", "display_name": "Humberto Souto",
-        "role": "Prefeito de Montes Claros", "party": "Cidadania", "state": "MG", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Humberto Souto", "birth_date": "1935-01-01", "birth_place": "Montes Claros, MG",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.montesclaros.mg.gov.br",
-        "wiki_title_pt": "Humberto Souto", "wiki_title_en": "Humberto Souto",
-        "all_parties": ["Cidadania", "PPS (antes)"], "all_roles": ["Prefeito de Montes Claros (2021–presente)", "Deputado Federal MG (múltiplos mandatos)"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Montes Claros", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Montes Claros", "beneficios": [], "fonte": "https://www.montesclaros.mg.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── PARÁ ─────────────────────────────────────────────────────
-    "mayor-ananindeua": {
-        "id": "mayor-ananindeua", "name": "Daniel Santos", "display_name": "Daniel Santos",
-        "role": "Prefeito de Ananindeua", "party": "MDB", "state": "PA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Daniel dos Santos Vilela", "birth_date": "", "birth_place": "Ananindeua, PA",
-        "education": "", "occupation": "Político", "website": "https://www.ananindeua.pa.gov.br",
-        "wiki_title_pt": "Daniel Santos (político)", "wiki_title_en": "Daniel Santos",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Ananindeua (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Ananindeua", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Ananindeua", "beneficios": [], "fonte": "https://www.ananindeua.pa.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-santarem": {
-        "id": "mayor-santarem", "name": "Nélio Aguiar", "display_name": "Nélio Aguiar",
-        "role": "Prefeito de Santarém", "party": "PSD", "state": "PA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Nélio Aguiar Bezerra", "birth_date": "", "birth_place": "Santarém, PA",
-        "education": "", "occupation": "Político", "website": "https://www.santarem.pa.gov.br",
-        "wiki_title_pt": "Nélio Aguiar", "wiki_title_en": "Nélio Aguiar",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Santarém (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Santarém", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Santarém", "beneficios": [], "fonte": "https://www.santarem.pa.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── GOIÁS ─────────────────────────────────────────────────────
-    "mayor-aparecida-de-goiania": {
-        "id": "mayor-aparecida-de-goiania", "name": "Gustavo Mendanha", "display_name": "Gustavo Mendanha",
-        "role": "Prefeito de Aparecida de Goiânia", "party": "MDB", "state": "GO", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Gustavo Mendanha Rezende", "birth_date": "1985-01-01", "birth_place": "Aparecida de Goiânia, GO",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.aparecida.go.gov.br",
-        "wiki_title_pt": "Gustavo Mendanha", "wiki_title_en": "Gustavo Mendanha",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Aparecida de Goiânia (2021–presente)"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Aparecida de Goiânia", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Aparecida de Goiânia", "beneficios": [], "fonte": "https://www.aparecida.go.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-anapolis": {
-        "id": "mayor-anapolis", "name": "Roberto Naves", "display_name": "Roberto Naves",
-        "role": "Prefeito de Anápolis", "party": "PP", "state": "GO", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Roberto Naves de Abreu", "birth_date": "1963-01-01", "birth_place": "Anápolis, GO",
-        "education": "Medicina", "occupation": "Médico / Político", "website": "https://www.anapolis.go.gov.br",
-        "wiki_title_pt": "Roberto Naves", "wiki_title_en": "Roberto Naves",
-        "all_parties": ["PP"], "all_roles": ["Prefeito de Anápolis (múltiplos mandatos)", "Senador Federal GO (2011–2019)"], "all_education": ["Medicina"],
-        "salary_info": {"cargo": "Prefeito de Anápolis", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Anápolis", "beneficios": [], "fonte": "https://www.anapolis.go.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── SÃO PAULO — INTERIOR ──────────────────────────────────────
-    "mayor-santos": {
-        "id": "mayor-santos", "name": "Rogério Santos", "display_name": "Rogério Santos",
-        "role": "Prefeito de Santos", "party": "PSDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rogério Santos", "birth_date": "1972-01-01", "birth_place": "Santos, SP",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.santos.sp.gov.br",
-        "wiki_title_pt": "Rogério Santos (político)", "wiki_title_en": "Rogério Santos",
-        "all_parties": ["PSDB"], "all_roles": ["Prefeito de Santos (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Santos", "subsidio_mensal": 24000.00, "subsidio_desc": "Subsídio do Prefeito de Santos", "beneficios": [], "fonte": "https://www.santos.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sao-jose-dos-campos": {
-        "id": "mayor-sao-jose-dos-campos", "name": "Anderson Farias", "display_name": "Anderson Farias",
-        "role": "Prefeito de São José dos Campos", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Anderson Farias", "birth_date": "", "birth_place": "São José dos Campos, SP",
-        "education": "", "occupation": "Político", "website": "https://www.sjc.sp.gov.br",
-        "wiki_title_pt": "Anderson Farias", "wiki_title_en": "Anderson Farias",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de São José dos Campos (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de São José dos Campos", "subsidio_mensal": 24000.00, "subsidio_desc": "Subsídio do Prefeito de São José dos Campos", "beneficios": [], "fonte": "https://www.sjc.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-mogi-das-cruzes": {
-        "id": "mayor-mogi-das-cruzes", "name": "Caio Cunha", "display_name": "Caio Cunha",
-        "role": "Prefeito de Mogi das Cruzes", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Caio Cunha", "birth_date": "1985-01-01", "birth_place": "Mogi das Cruzes, SP",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.mogidascruzes.sp.gov.br",
-        "wiki_title_pt": "Caio Cunha", "wiki_title_en": "Caio Cunha",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Mogi das Cruzes (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Mogi das Cruzes", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Mogi das Cruzes", "beneficios": [], "fonte": "https://www.mogidascruzes.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-jundiai": {
-        "id": "mayor-jundiai", "name": "Gustavo Martinelli", "display_name": "Gustavo Martinelli",
-        "role": "Prefeito de Jundiaí", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Gustavo Martinelli", "birth_date": "1982-01-01", "birth_place": "Jundiaí, SP",
-        "education": "Engenharia", "occupation": "Engenheiro / Político", "website": "https://www.jundiai.sp.gov.br",
-        "wiki_title_pt": "Gustavo Martinelli", "wiki_title_en": "Gustavo Martinelli",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Jundiaí (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Jundiaí", "subsidio_mensal": 22000.00, "subsidio_desc": "Subsídio do Prefeito de Jundiaí", "beneficios": [], "fonte": "https://www.jundiai.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-piracicaba": {
-        "id": "mayor-piracicaba", "name": "Luciano Almeida", "display_name": "Luciano Almeida",
-        "role": "Prefeito de Piracicaba", "party": "PSD", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Luciano Almeida", "birth_date": "", "birth_place": "Piracicaba, SP",
-        "education": "", "occupation": "Político", "website": "https://www.piracicaba.sp.gov.br",
-        "wiki_title_pt": "Luciano Almeida", "wiki_title_en": "Luciano Almeida",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Piracicaba (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Piracicaba", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Piracicaba", "beneficios": [], "fonte": "https://www.piracicaba.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-bauru": {
-        "id": "mayor-bauru", "name": "Suéllen Rosim", "display_name": "Suéllen Rosim",
-        "role": "Prefeita de Bauru", "party": "PL", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Suéllen Rosim", "birth_date": "1989-01-01", "birth_place": "Bauru, SP",
-        "education": "Odontologia — USC", "occupation": "Odontologista / Política", "website": "https://www.bauru.sp.gov.br",
-        "wiki_title_pt": "Suéllen Rosim", "wiki_title_en": "Suéllen Rosim",
-        "all_parties": ["PL"], "all_roles": ["Prefeita de Bauru (2021–presente)"], "all_education": ["Odontologia — USC"],
-        "salary_info": {"cargo": "Prefeita de Bauru", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Bauru", "beneficios": [], "fonte": "https://www.bauru.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-franca": {
-        "id": "mayor-franca", "name": "Alexandre Ferreira", "display_name": "Alexandre Ferreira",
-        "role": "Prefeito de Franca", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Alexandre Ferreira", "birth_date": "", "birth_place": "Franca, SP",
-        "education": "", "occupation": "Político", "website": "https://www.franca.sp.gov.br",
-        "wiki_title_pt": "Alexandre Ferreira (político)", "wiki_title_en": "Alexandre Ferreira",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Franca (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Franca", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Franca", "beneficios": [], "fonte": "https://www.franca.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sao-jose-do-rio-preto": {
-        "id": "mayor-sao-jose-do-rio-preto", "name": "Edinho Araújo", "display_name": "Edinho Araújo",
-        "role": "Prefeito de São José do Rio Preto", "party": "MDB", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo Araújo", "birth_date": "", "birth_place": "São José do Rio Preto, SP",
-        "education": "", "occupation": "Político", "website": "https://www.riopreto.sp.gov.br",
-        "wiki_title_pt": "Edinho Araújo", "wiki_title_en": "Edinho Araújo",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de São José do Rio Preto (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de São José do Rio Preto", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de São José do Rio Preto", "beneficios": [], "fonte": "https://www.riopreto.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-sao-vicente": {
-        "id": "mayor-sao-vicente", "name": "Guilherme Gomes", "display_name": "Guilherme Gomes",
-        "role": "Prefeito de São Vicente", "party": "Podemos", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Guilherme Gomes", "birth_date": "", "birth_place": "São Vicente, SP",
-        "education": "", "occupation": "Político", "website": "https://www.saovicente.sp.gov.br",
-        "wiki_title_pt": "Guilherme Gomes (político)", "wiki_title_en": "Guilherme Gomes",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de São Vicente (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de São Vicente", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de São Vicente", "beneficios": [], "fonte": "https://www.saovicente.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-praia-grande": {
-        "id": "mayor-praia-grande", "name": "Raquel Chini", "display_name": "Raquel Chini",
-        "role": "Prefeita de Praia Grande", "party": "PL", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Raquel Chini", "birth_date": "", "birth_place": "Praia Grande, SP",
-        "education": "", "occupation": "Política", "website": "https://www.praiagrande.sp.gov.br",
-        "wiki_title_pt": "Raquel Chini", "wiki_title_en": "Raquel Chini",
-        "all_parties": ["PL"], "all_roles": ["Prefeita de Praia Grande (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeita de Praia Grande", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Praia Grande", "beneficios": [], "fonte": "https://www.praiagrande.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-diadema": {
-        "id": "mayor-diadema", "name": "José de Filippi Júnior", "display_name": "Filippi Júnior",
-        "role": "Prefeito de Diadema", "party": "PT", "state": "SP", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "José de Filippi Júnior", "birth_date": "1958-01-01", "birth_place": "Diadema, SP",
-        "education": "Administração de Empresas", "occupation": "Político", "website": "https://www.diadema.sp.gov.br",
-        "wiki_title_pt": "Filippi Júnior", "wiki_title_en": "Filippi Júnior",
-        "all_parties": ["PT"], "all_roles": ["Prefeito de Diadema (2025–presente, múltiplos mandatos anteriores)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Diadema", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Diadema", "beneficios": [], "fonte": "https://www.diadema.sp.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── PERNAMBUCO ───────────────────────────────────────────────
-    "mayor-olinda": {
-        "id": "mayor-olinda", "name": "Vitor Marinho", "display_name": "Vitor Marinho",
-        "role": "Prefeito de Olinda", "party": "MDB", "state": "PE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Vitor Marinho", "birth_date": "", "birth_place": "Olinda, PE",
-        "education": "", "occupation": "Político", "website": "https://www.olinda.pe.gov.br",
-        "wiki_title_pt": "Vitor Marinho", "wiki_title_en": "Vitor Marinho",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Olinda (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Olinda", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Olinda", "beneficios": [], "fonte": "https://www.olinda.pe.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-caruaru": {
-        "id": "mayor-caruaru", "name": "Rodrigo Pinheiro", "display_name": "Rodrigo Pinheiro",
-        "role": "Prefeito de Caruaru", "party": "PSD", "state": "PE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Rodrigo Pinheiro", "birth_date": "", "birth_place": "Caruaru, PE",
-        "education": "", "occupation": "Político", "website": "https://www.caruaru.pe.gov.br",
-        "wiki_title_pt": "Rodrigo Pinheiro", "wiki_title_en": "Rodrigo Pinheiro",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Caruaru (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Caruaru", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Caruaru", "beneficios": [], "fonte": "https://www.caruaru.pe.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── PARAÍBA ──────────────────────────────────────────────────
-    "mayor-campina-grande": {
-        "id": "mayor-campina-grande", "name": "Bruno Cunha Lima", "display_name": "Bruno Cunha Lima",
-        "role": "Prefeito de Campina Grande", "party": "União Brasil", "state": "PB", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Bruno Cunha Lima", "birth_date": "1984-01-01", "birth_place": "Campina Grande, PB",
-        "education": "Direito — UFPB", "occupation": "Advogado / Político", "website": "https://www.campinagrande.pb.gov.br",
-        "wiki_title_pt": "Bruno Cunha Lima", "wiki_title_en": "Bruno Cunha Lima",
-        "all_parties": ["União Brasil", "PSDB (antes)"], "all_roles": ["Prefeito de Campina Grande (2021–presente)", "Vereador de Campina Grande"], "all_education": ["Direito — UFPB"],
-        "salary_info": {"cargo": "Prefeito de Campina Grande", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Campina Grande", "beneficios": [], "fonte": "https://www.campinagrande.pb.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── CEARÁ ────────────────────────────────────────────────────
-    "mayor-caucaia": {
-        "id": "mayor-caucaia", "name": "Naumi Amorim", "display_name": "Naumi Amorim",
-        "role": "Prefeito de Caucaia", "party": "PSD", "state": "CE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Naumi Amorim", "birth_date": "", "birth_place": "Caucaia, CE",
-        "education": "", "occupation": "Político", "website": "https://www.caucaia.ce.gov.br",
-        "wiki_title_pt": "Naumi Amorim", "wiki_title_en": "Naumi Amorim",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Caucaia (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Caucaia", "subsidio_mensal": 15000.00, "subsidio_desc": "Subsídio do Prefeito de Caucaia", "beneficios": [], "fonte": "https://www.caucaia.ce.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-juazeiro-do-norte": {
-        "id": "mayor-juazeiro-do-norte", "name": "Glêdson Bezerra", "display_name": "Glêdson Bezerra",
-        "role": "Prefeito de Juazeiro do Norte", "party": "Podemos", "state": "CE", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Glêdson Bezerra", "birth_date": "", "birth_place": "Juazeiro do Norte, CE",
-        "education": "", "occupation": "Político", "website": "https://www.juazeirodonorte.ce.gov.br",
-        "wiki_title_pt": "Glêdson Bezerra", "wiki_title_en": "Glêdson Bezerra",
-        "all_parties": ["Podemos"], "all_roles": ["Prefeito de Juazeiro do Norte (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Juazeiro do Norte", "subsidio_mensal": 14000.00, "subsidio_desc": "Subsídio do Prefeito de Juazeiro do Norte", "beneficios": [], "fonte": "https://www.juazeirodonorte.ce.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── ESPÍRITO SANTO ───────────────────────────────────────────
-    "mayor-serra": {
-        "id": "mayor-serra", "name": "Sergio Vidigal", "display_name": "Sergio Vidigal",
-        "role": "Prefeito de Serra", "party": "PDT", "state": "ES", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Sérgio Luiz Vidigal", "birth_date": "1968-01-01", "birth_place": "Serra, ES",
-        "education": "Medicina — UFES", "occupation": "Médico / Político", "website": "https://www.serra.es.gov.br",
-        "wiki_title_pt": "Sergio Vidigal", "wiki_title_en": "Sergio Vidigal",
-        "all_parties": ["PDT"], "all_roles": ["Prefeito de Serra (2021–presente)", "Deputado Federal ES"], "all_education": ["Medicina — UFES"],
-        "salary_info": {"cargo": "Prefeito de Serra", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Serra", "beneficios": [], "fonte": "https://www.serra.es.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── SANTA CATARINA ───────────────────────────────────────────
-    "mayor-blumenau": {
-        "id": "mayor-blumenau", "name": "Mário Hildebrandt", "display_name": "Mário Hildebrandt",
-        "role": "Prefeito de Blumenau", "party": "PSD", "state": "SC", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Mário Hildebrandt", "birth_date": "", "birth_place": "Blumenau, SC",
-        "education": "", "occupation": "Político", "website": "https://www.blumenau.sc.gov.br",
-        "wiki_title_pt": "Mário Hildebrandt", "wiki_title_en": "Mário Hildebrandt",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Blumenau (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Blumenau", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Blumenau", "beneficios": [], "fonte": "https://www.blumenau.sc.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── PARANÁ ───────────────────────────────────────────────────
-    "mayor-cascavel": {
-        "id": "mayor-cascavel", "name": "Leonaldo Paranhos", "display_name": "Leonaldo Paranhos",
-        "role": "Prefeito de Cascavel", "party": "PP", "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Leonaldo Paranhos da Silva", "birth_date": "1978-01-01", "birth_place": "Cascavel, PR",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.cascavel.pr.gov.br",
-        "wiki_title_pt": "Leonaldo Paranhos", "wiki_title_en": "Leonaldo Paranhos",
-        "all_parties": ["PP"], "all_roles": ["Prefeito de Cascavel (2021–presente)"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Cascavel", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Cascavel", "beneficios": [], "fonte": "https://www.cascavel.pr.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-foz-do-iguacu": {
-        "id": "mayor-foz-do-iguacu", "name": "Chico Brasileiro", "display_name": "Chico Brasileiro",
-        "role": "Prefeito de Foz do Iguaçu", "party": "PSD", "state": "PR", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Francisco Humberto Brasileiro", "birth_date": "1968-01-01", "birth_place": "Foz do Iguaçu, PR",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.pmfi.pr.gov.br",
-        "wiki_title_pt": "Chico Brasileiro", "wiki_title_en": "Chico Brasileiro",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Foz do Iguaçu (2017–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Foz do Iguaçu", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Foz do Iguaçu", "beneficios": [], "fonte": "https://www.pmfi.pr.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── BAHIA ────────────────────────────────────────────────────
-    "mayor-camacari": {
-        "id": "mayor-camacari", "name": "Mário Alexandre", "display_name": "Mário Alexandre",
-        "role": "Prefeito de Camaçari", "party": "PSD", "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Mário Alexandre Borges Pires", "birth_date": "", "birth_place": "Camaçari, BA",
-        "education": "", "occupation": "Político", "website": "https://www.camacari.ba.gov.br",
-        "wiki_title_pt": "Mário Alexandre", "wiki_title_en": "Mário Alexandre",
-        "all_parties": ["PSD"], "all_roles": ["Prefeito de Camaçari (2025–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Camaçari", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Camaçari", "beneficios": [], "fonte": "https://www.camacari.ba.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-vitoria-da-conquista": {
-        "id": "mayor-vitoria-da-conquista", "name": "Herzem Gusmão", "display_name": "Herzem Gusmão",
-        "role": "Prefeito de Vitória da Conquista", "party": "MDB", "state": "BA", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Herzem Gusmão", "birth_date": "", "birth_place": "Vitória da Conquista, BA",
-        "education": "", "occupation": "Político", "website": "https://www.pmvc.ba.gov.br",
-        "wiki_title_pt": "Herzem Gusmão", "wiki_title_en": "Herzem Gusmão",
-        "all_parties": ["MDB"], "all_roles": ["Prefeito de Vitória da Conquista (2021–presente)"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Vitória da Conquista", "subsidio_mensal": 16000.00, "subsidio_desc": "Subsídio do Prefeito de Vitória da Conquista", "beneficios": [], "fonte": "https://www.pmvc.ba.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── MATO GROSSO ──────────────────────────────────────────────
-    "mayor-rondonopolis": {
-        "id": "mayor-rondonopolis", "name": "Eduardo Botelho", "display_name": "Eduardo Botelho",
-        "role": "Prefeito de Rondonópolis", "party": "União Brasil", "state": "MT", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Eduardo Botelho", "birth_date": "1974-01-01", "birth_place": "Rondonópolis, MT",
-        "education": "Direito", "occupation": "Advogado / Político", "website": "https://www.rondonopolis.mt.gov.br",
-        "wiki_title_pt": "Eduardo Botelho", "wiki_title_en": "Eduardo Botelho",
-        "all_parties": ["União Brasil", "DEM (antes)"], "all_roles": ["Prefeito de Rondonópolis (2025–presente)", "Deputado Federal MT (2019–2024)"], "all_education": ["Direito"],
-        "salary_info": {"cargo": "Prefeito de Rondonópolis", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Rondonópolis", "beneficios": [], "fonte": "https://www.rondonopolis.mt.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── RIO GRANDE DO SUL ────────────────────────────────────────
-    "mayor-canoas": {
-        "id": "mayor-canoas", "name": "Jairo Jorge", "display_name": "Jairo Jorge",
-        "role": "Prefeito de Canoas", "party": "PSD", "state": "RS", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Jairo Jorge", "birth_date": "1968-01-01", "birth_place": "Canoas, RS",
-        "education": "Direito — PUC-RS", "occupation": "Advogado / Político", "website": "https://www.canoas.rs.gov.br",
-        "wiki_title_pt": "Jairo Jorge", "wiki_title_en": "Jairo Jorge",
-        "all_parties": ["PSD", "PT (antes)"], "all_roles": ["Prefeito de Canoas (2021–presente)", "Deputado Federal RS"], "all_education": ["Direito — PUC-RS"],
-        "salary_info": {"cargo": "Prefeito de Canoas", "subsidio_mensal": 20000.00, "subsidio_desc": "Subsídio do Prefeito de Canoas", "beneficios": [], "fonte": "https://www.canoas.rs.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-
-    # ── RIO DE JANEIRO — INTERIOR ────────────────────────────────
-    "mayor-sao-joao-de-meriti": {
-        "id": "mayor-sao-joao-de-meriti", "name": "Dr. João", "display_name": "Dr. João",
-        "role": "Prefeito de São João de Meriti", "party": "Avante", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "João Siqueira", "birth_date": "", "birth_place": "São João de Meriti, RJ",
-        "education": "Medicina", "occupation": "Médico / Político", "website": "https://www.sjmeriti.rj.gov.br",
-        "wiki_title_pt": "Dr. João (São João de Meriti)", "wiki_title_en": "Dr. João",
-        "all_parties": ["Avante"], "all_roles": ["Prefeito de São João de Meriti (2021–presente)"], "all_education": ["Medicina"],
-        "salary_info": {"cargo": "Prefeito de São João de Meriti", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de São João de Meriti", "beneficios": [], "fonte": "https://www.sjmeriti.rj.gov.br/transparencia"},
-        "charges": [], "votes": [], "expenses": [],
-    },
-    "mayor-belford-roxo": {
-        "id": "mayor-belford-roxo", "name": "Wagner dos Santos Carneiro", "display_name": "Waguinho",
-        "role": "Prefeito de Belford Roxo", "party": "PL", "state": "RJ", "country": "Brasil", "source": "wikidata", "photo": "",
-        "full_name": "Wagner dos Santos Carneiro", "birth_date": "1975-01-01", "birth_place": "Belford Roxo, RJ",
-        "education": "Administração de Empresas", "occupation": "Empresário / Político", "website": "https://www.belfordroxo.rj.gov.br",
-        "wiki_title_pt": "Wagner Carneiro", "wiki_title_en": "Wagner Carneiro",
-        "all_parties": ["PL", "Republicanos (antes)"], "all_roles": ["Prefeito de Belford Roxo (2017–presente)", "Deputado Federal RJ"], "all_education": [],
-        "salary_info": {"cargo": "Prefeito de Belford Roxo", "subsidio_mensal": 18000.00, "subsidio_desc": "Subsídio do Prefeito de Belford Roxo", "beneficios": [], "fonte": "https://www.belfordroxo.rj.gov.br/transparencia"},
-        "charges": [
-            "Investigado pelo MP-RJ por suspeita de irregularidades em contratos municipais de saúde (2022) — em apuração",
-        ],
-        "votes": [], "expenses": [],
-    },
-
-}  # fim CURATED_POLITICIANS
-
-
-# ═══════════════════════════════════════════════════════════════
-#  WARMUP DO CACHE DE FOTOS — roda APÓS CURATED_POLITICIANS
-# ═══════════════════════════════════════════════════════════════
-async def _warmup_photo_cache():
-    """Pre-aquece o cache de fotos em background. Definida após CURATED_POLITICIANS."""
-    await asyncio.sleep(8)
-    batch_size = 4
-    keys = list(CURATED_POLITICIANS.keys())
-    for i in range(0, len(keys), batch_size):
-        batch = [CURATED_POLITICIANS[k] for k in keys[i:i+batch_size]]
-        await asyncio.gather(*[
-            get_wiki_data(p.get("wiki_title_pt",""), p.get("wiki_title_en",""))
-            for p in batch if p.get("wiki_title_pt") or p.get("wiki_title_en")
-        ])
-        await asyncio.sleep(0.8)
-
-@router.on_event("startup")
-async def on_startup():
-    """Dispara warmup do cache de fotos na inicialização do servidor."""
-    asyncio.create_task(_warmup_photo_cache())
-
+}
 
 # Salário padrão para Deputados e Senadores
 SALARY_BR = {
@@ -2626,12 +552,6 @@ async def get_deputado_details(api_id):
                 "vote": v.get("voto","") or "",
             })
         details["votes"] = [vi for vi in vote_items if vi["description"]]
-    # Enriquece com processos do banco de dados de charges
-    if not details.get("charges"):
-        details["charges"] = _get_charges(
-            details.get("name","") or details.get("full_name",""),
-            details.get("full_name","")
-        )
     return details
 
 # ── SENADO ────────────────────────────────────────────────────
@@ -2698,12 +618,6 @@ async def get_senador_details(api_id):
                 for v in (vlist or [])[:12] if v.get("DescricaoVotacao") or v.get("Titulo")
             ]
         except: pass
-    # Enriquece com processos do banco de dados de charges
-    if not details.get("charges"):
-        details["charges"] = _get_charges(
-            details.get("name","") or details.get("full_name",""),
-            details.get("full_name","")
-        )
     return details
 
 # ── BUSCA WIKIDATA (só para internacionais) ───────────────────
@@ -2749,45 +663,34 @@ SELECT DISTINCT ?person ?personLabel ?partyLabel ?countryLabel ?posLabel ?image 
 
 # ── GEO + DADOS LOCAIS ────────────────────────────────────────
 _geo_cache: dict = {}
-
-def _gov(wid, name, role, party, photo="", wiki_pt="", wiki_en=""):
-    """Cria entrada de governador. photo é fallback; wiki_pt é título Wikipedia PT."""
-    return {
-        "id": wid, "name": name, "role": role, "party": party,
-        "photo": photo,
-        "wiki_title_pt": wiki_pt or name,
-        "wiki_title_en": wiki_en or name,
-    }
-
-WM = "https://upload.wikimedia.org/wikipedia/commons/thumb"
 GOVERNORS_BY_UF = {
-    "AC":  _gov("wd-Q10282903","Gladson Cameli","Governador do Acre","PP", wiki_pt="Gladson Cameli", wiki_en="Gladson Cameli"),
-    "AL":  _gov("wd-Q10285716","Paulo Dantas","Governador de Alagoas","MDB", wiki_pt="Paulo Dantas", wiki_en="Paulo Dantas"),
-    "AM":  _gov("wd-gov-AM","Wilson Lima","Governador do Amazonas","União Brasil", wiki_pt="Wilson Lima (político)", wiki_en="Wilson Lima"),
-    "AP":  _gov("wd-gov-AP","Clécio Luís","Governador do Amapá","SD", wiki_pt="Clécio Luís", wiki_en="Clécio Luís"),
-    "BA":  _gov("wd-gov-BA","Jerônimo Rodrigues","Governador da Bahia","PT", wiki_pt="Jerônimo Rodrigues", wiki_en="Jerônimo Rodrigues"),
-    "CE":  _gov("wd-gov-CE","Elmano de Freitas","Governador do Ceará","PT", wiki_pt="Elmano de Freitas", wiki_en="Elmano de Freitas"),
-    "DF":  _gov("wd-Q10303893","Ibaneis Rocha","Governador do Distrito Federal","MDB", wiki_pt="Ibaneis Rocha", wiki_en="Ibaneis Rocha"),
-    "ES":  _gov("wd-Q3730577","Renato Casagrande","Governador do Espírito Santo","PSB", wiki_pt="Renato Casagrande", wiki_en="Renato Casagrande"),
-    "GO":  _gov("wd-Q10306753","Ronaldo Caiado","Governador de Goiás","União Brasil", wiki_pt="Ronaldo Caiado", wiki_en="Ronaldo Caiado"),
-    "MA":  _gov("wd-Q10306938","Carlos Brandão","Governador do Maranhão","PSB", wiki_pt="Carlos Brandão (político)", wiki_en="Carlos Brandão"),
-    "MT":  _gov("wd-Q10308490","Mauro Mendes","Governador do Mato Grosso","União Brasil", wiki_pt="Mauro Mendes", wiki_en="Mauro Mendes"),
-    "MS":  _gov("wd-Q10308503","Eduardo Riedel","Governador do Mato Grosso do Sul","PSDB", wiki_pt="Eduardo Riedel", wiki_en="Eduardo Riedel"),
-    "MG":  _gov("wd-gov-MG","Romeu Zema","Governador de Minas Gerais","Novo", wiki_pt="Romeu Zema", wiki_en="Romeu Zema"),
-    "PA":  _gov("wd-gov-PA","Helder Barbalho","Governador do Pará","MDB", wiki_pt="Helder Barbalho", wiki_en="Helder Barbalho"),
-    "PB":  _gov("wd-Q10309964","João Azevêdo","Governador da Paraíba","PSB", wiki_pt="João Azevêdo", wiki_en="João Azevêdo"),
-    "PR":  _gov("wd-gov-PR","Ratinho Junior","Governador do Paraná","PSD", wiki_pt="Ratinho Junior", wiki_en="Carlos Ratinho Junior"),
-    "PE":  _gov("wd-gov-PE","Raquel Lyra","Governadora de Pernambuco","PSDB", wiki_pt="Raquel Lyra", wiki_en="Raquel Lyra"),
-    "PI":  _gov("wd-Q10310123","Rafael Fonteles","Governador do Piauí","PT", wiki_pt="Rafael Fonteles", wiki_en="Rafael Fonteles"),
-    "RJ":  _gov("wd-gov-RJ","Cláudio Castro","Governador do Rio de Janeiro","PL", wiki_pt="Cláudio Castro (político)", wiki_en="Cláudio Castro"),
-    "RN":  _gov("wd-Q10312022","Fátima Bezerra","Governadora do Rio Grande do Norte","PT", wiki_pt="Fátima Bezerra", wiki_en="Fátima Bezerra"),
-    "RS":  _gov("wd-gov-RS","Eduardo Leite","Governador do Rio Grande do Sul","PSDB", wiki_pt="Eduardo Leite (político)", wiki_en="Eduardo Leite"),
-    "RO":  _gov("wd-Q10311952","Marcos Rocha","Governador de Rondônia","União Brasil", wiki_pt="Marcos Rocha", wiki_en="Marcos Rocha"),
-    "RR":  _gov("wd-Q10312027","Arthur Henrique","Governador de Roraima","MDB", wiki_pt="Arthur Henrique", wiki_en="Arthur Henrique"),
-    "SC":  _gov("wd-Q10312568","Jorginho Mello","Governador de Santa Catarina","PL", wiki_pt="Jorginho Mello", wiki_en="Jorginho Mello"),
-    "SE":  _gov("wd-Q10314272","Fábio Mitidieri","Governador de Sergipe","PSD", wiki_pt="Fábio Mitidieri", wiki_en="Fábio Mitidieri"),
-    "SP":  _gov("wd-gov-SP","Tarcísio de Freitas","Governador de São Paulo","Republicanos", wiki_pt="Tarcísio de Freitas", wiki_en="Tarcísio de Freitas"),
-    "TO":  _gov("wd-Q10314456","Wanderlei Barbosa","Governador do Tocantins","Republicanos", wiki_pt="Wanderlei Barbosa", wiki_en="Wanderlei Barbosa"),
+    "AC":{"id":"wd-Q10282903","name":"Gladson Cameli","role":"Governador do Acre","party":"PP"},
+    "AL":{"id":"wd-Q10285716","name":"Paulo Dantas","role":"Governador de Alagoas","party":"MDB"},
+    "AM":{"id":"wd-Q3730703","name":"Wilson Lima","role":"Governador do Amazonas","party":"União Brasil"},
+    "AP":{"id":"wd-Q107421","name":"Clécio Luís","role":"Governador do Amapá","party":"SD"},
+    "BA":{"id":"wd-Q3891283","name":"Jerônimo Rodrigues","role":"Governador da Bahia","party":"PT"},
+    "CE":{"id":"wd-Q10293629","name":"Elmano de Freitas","role":"Governador do Ceará","party":"PT"},
+    "DF":{"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador do DF","party":"MDB"},
+    "ES":{"id":"wd-Q3730577","name":"Renato Casagrande","role":"Governador do ES","party":"PSB"},
+    "GO":{"id":"wd-Q10306753","name":"Ronaldo Caiado","role":"Governador de Goiás","party":"União Brasil"},
+    "MA":{"id":"wd-Q10306938","name":"Carlos Brandão","role":"Governador do Maranhão","party":"PSB"},
+    "MT":{"id":"wd-Q10308490","name":"Mauro Mendes","role":"Governador do MT","party":"União Brasil"},
+    "MS":{"id":"wd-Q10308503","name":"Eduardo Riedel","role":"Governador do MS","party":"PSDB"},
+    "MG":{"id":"wd-Q3564887","name":"Romeu Zema","role":"Governador de MG","party":"Novo"},
+    "PA":{"id":"wd-Q10309820","name":"Helder Barbalho","role":"Governador do Pará","party":"MDB"},
+    "PB":{"id":"wd-Q10309964","name":"João Azevêdo","role":"Governador da Paraíba","party":"PSB"},
+    "PR":{"id":"wd-Q10310060","name":"Ratinho Junior","role":"Governador do Paraná","party":"PSD"},
+    "PE":{"id":"wd-Q10310080","name":"Raquel Lyra","role":"Governadora de Pernambuco","party":"PSDB"},
+    "PI":{"id":"wd-Q10310123","name":"Rafael Fonteles","role":"Governador do Piauí","party":"PT"},
+    "RJ":{"id":"wd-Q1779090","name":"Cláudio Castro","role":"Governador do RJ","party":"PL"},
+    "RN":{"id":"wd-Q10312022","name":"Fátima Bezerra","role":"Governadora do RN","party":"PT"},
+    "RS":{"id":"wd-Q10312060","name":"Eduardo Leite","role":"Governador do RS","party":"PSDB"},
+    "RO":{"id":"wd-Q10311952","name":"Marcos Rocha","role":"Governador de Rondônia","party":"União Brasil"},
+    "RR":{"id":"wd-Q10312027","name":"Antonio Denarium","role":"Governador de Roraima","party":"PP"},
+    "SC":{"id":"wd-Q10312568","name":"Jorginho Mello","role":"Governador de SC","party":"PL"},
+    "SE":{"id":"wd-Q10314272","name":"Fábio Mitidieri","role":"Governador de Sergipe","party":"PSD"},
+    "SP":{"id":"wd-Q1050742","name":"Tarcísio de Freitas","role":"Governador de SP","party":"Republicanos"},
+    "TO":{"id":"wd-Q10314456","name":"Wanderlei Barbosa","role":"Governador do Tocantins","party":"Republicanos"},
 }
 UF_NAMES = {"AC":"Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará","DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão","MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará","PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro","RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima","SC":"Santa Catarina","SE":"Sergipe","SP":"São Paulo","TO":"Tocantins"}
 
@@ -2797,228 +700,100 @@ COUNTRY_FLAGS = {
     "CL":"🇨🇱","CO":"🇨🇴","VE":"🇻🇪","PE":"🇵🇪","BO":"🇧🇴","PY":"🇵🇾",
 }
 
+# Fotos dos governadores via Wikimedia Commons (verificadas)
+GOVERNORS_BY_UF["AC"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Gladson_Cameli_foto_oficial.jpg/400px-Gladson_Cameli_foto_oficial.jpg"
+GOVERNORS_BY_UF["AL"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Paulo_Dantas_2022.jpg/400px-Paulo_Dantas_2022.jpg"
+GOVERNORS_BY_UF["BA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Jer%C3%B4nimo_Rodrigues_2023.jpg/400px-Jer%C3%B4nimo_Rodrigues_2023.jpg"
+GOVERNORS_BY_UF["CE"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Elmano_de_Freitas_2023.jpg/400px-Elmano_de_Freitas_2023.jpg"
+GOVERNORS_BY_UF["DF"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Ibaneis_Rocha_2023.jpg/400px-Ibaneis_Rocha_2023.jpg"
+GOVERNORS_BY_UF["GO"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Ronaldo_Caiado_2023.jpg/400px-Ronaldo_Caiado_2023.jpg"
+GOVERNORS_BY_UF["MA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Carlos_Brand%C3%A3o_2023.jpg/400px-Carlos_Brand%C3%A3o_2023.jpg"
+GOVERNORS_BY_UF["MG"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Romeu_Zema_2023.jpg/400px-Romeu_Zema_2023.jpg"
+GOVERNORS_BY_UF["PA"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Helder_Barbalho_2023.jpg/400px-Helder_Barbalho_2023.jpg"
+GOVERNORS_BY_UF["PR"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Ratinho_Junior_2023.jpg/400px-Ratinho_Junior_2023.jpg"
+GOVERNORS_BY_UF["PE"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Raquel_Lyra_2023.jpg/400px-Raquel_Lyra_2023.jpg"
+GOVERNORS_BY_UF["RJ"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Claudio_Castro_foto_oficial_2022.jpg/400px-Claudio_Castro_foto_oficial_2022.jpg"
+GOVERNORS_BY_UF["RS"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Eduardo_Leite_2023.jpg/400px-Eduardo_Leite_2023.jpg"
+GOVERNORS_BY_UF["SC"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Jorginho_Mello_2023.jpg/400px-Jorginho_Mello_2023.jpg"
+GOVERNORS_BY_UF["SP"]["photo"]  = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Tarc%C3%ADsio_de_Freitas_2023.jpg/400px-Tarc%C3%ADsio_de_Freitas_2023.jpg"
 
-
-# Prefeitos curados — eleições 2024
-# IDs: QIDs verificados para políticos conhecidos; "mayor-{slug}" para os demais
-# wiki_title_pt garante foto via Wikipedia REST API
+# Prefeitos das principais cidades com fotos via Wikimedia Commons
 MAYORS_BY_CITY = {
-    # ── RIO DE JANEIRO ──────────────────────────────────────────
-    # NOTA: IDs usam "mayor-{slug}" para garantir carregamento via CURATED_POLITICIANS
-    # NUNCA use QIDs não verificados aqui — causa o bug do "prefeito gastrópode"
-    "Rio de Janeiro":           {"id":"mayor-rio-de-janeiro", "name":"Eduardo Paes", "role":"Prefeito do Rio de Janeiro", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Eduardo Paes", "wiki_title_en":"Eduardo Paes"},
-    "Niterói":                  {"id":"mayor-niteroi", "name":"Rodrigo Neves", "role":"Prefeito de Niterói", "party":"PDT", "uf":"RJ", "photo":"", "wiki_title_pt":"Rodrigo Neves", "wiki_title_en":"Rodrigo Neves"},
-    "Nova Iguaçu":              {"id":"mayor-nova-iguacu", "name":"Duarte Júnior", "role":"Prefeito de Nova Iguaçu", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Duarte Júnior", "wiki_title_en":"Duarte Júnior"},
-    "Duque de Caxias":          {"id":"mayor-duque-de-caxias", "name":"Wilson Reis", "role":"Prefeito de Duque de Caxias", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Wilson Reis", "wiki_title_en":"Wilson Reis"},
-    "São Gonçalo":              {"id":"mayor-sao-goncalo", "name":"Capitão Nelson", "role":"Prefeito de São Gonçalo", "party":"PL", "uf":"RJ", "photo":"", "wiki_title_pt":"Capitão Nelson", "wiki_title_en":"Capitão Nelson"},
-    "Petrópolis":               {"id":"mayor-petropolis", "name":"Rubens Bomtempo", "role":"Prefeito de Petrópolis", "party":"PSB", "uf":"RJ", "photo":"", "wiki_title_pt":"Rubens Bomtempo", "wiki_title_en":"Rubens Bomtempo"},
-    "Teresópolis":              {"id":"mayor-teresopolis", "name":"Vinicius Claussen", "role":"Prefeito de Teresópolis", "party":"PSD", "uf":"RJ", "photo":"", "wiki_title_pt":"Vinicius Claussen", "wiki_title_en":"Vinicius Claussen"},
-    "Volta Redonda":            {"id":"mayor-volta-redonda", "name":"Neto", "role":"Prefeito de Volta Redonda", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Neto (Volta Redonda)", "wiki_title_en":"Neto"},
-    "Resende":                  {"id":"mayor-resende", "name":"Alexandre Fonseca", "role":"Prefeito de Resende", "party":"PRD", "uf":"RJ", "photo":"", "wiki_title_pt":"Alexandre Fonseca", "wiki_title_en":"Alexandre Fonseca"},
-    "Macaé":                    {"id":"mayor-macae", "name":"Dr. Welberth Rezende", "role":"Prefeito de Macaé", "party":"Podemos", "uf":"RJ", "photo":"", "wiki_title_pt":"Welberth Rezende", "wiki_title_en":"Welberth Rezende"},
-    "Campos dos Goytacazes":    {"id":"mayor-campos-dos-goytacazes", "name":"Wladimir Garotinho", "role":"Prefeito de Campos dos Goytacazes", "party":"PRD", "uf":"RJ", "photo":"", "wiki_title_pt":"Wladimir Garotinho", "wiki_title_en":"Wladimir Garotinho"},
-    "Angra dos Reis":           {"id":"mayor-angra-dos-reis", "name":"Fábio do Pastel", "role":"Prefeito de Angra dos Reis", "party":"Solidariedade", "uf":"RJ", "photo":"", "wiki_title_pt":"Fábio do Pastel", "wiki_title_en":"Fábio do Pastel"},
-    "Cabo Frio":                {"id":"mayor-cabo-frio", "name":"Renatinho Vianna", "role":"Prefeito de Cabo Frio", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Renatinho Vianna", "wiki_title_en":"Renatinho Vianna"},
-    "Barra Mansa":              {"id":"mayor-barra-mansa", "name":"Rodrigo Drable", "role":"Prefeito de Barra Mansa", "party":"AVANTE", "uf":"RJ", "photo":"", "wiki_title_pt":"Rodrigo Drable", "wiki_title_en":"Rodrigo Drable"},
-    "Itaperuna":                {"id":"mayor-itaperuna", "name":"Ontiveiro Júnior", "role":"Prefeito de Itaperuna", "party":"MDB", "uf":"RJ", "photo":"", "wiki_title_pt":"Ontiveiro Júnior", "wiki_title_en":"Ontiveiro Júnior"},
-    # ── SÃO PAULO ────────────────────────────────────────────────
-    "São Paulo":                {"id":"mayor-sao-paulo", "name":"Ricardo Nunes", "role":"Prefeito de São Paulo", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Ricardo Nunes", "wiki_title_en":"Ricardo Nunes"},
-    "Campinas":                 {"id":"mayor-campinas", "name":"Dario Saadi", "role":"Prefeito de Campinas", "party":"Republicanos", "uf":"SP", "photo":"", "wiki_title_pt":"Dario Saadi", "wiki_title_en":"Dario Saadi"},
-    "Guarulhos":                {"id":"mayor-guarulhos", "name":"Guti", "role":"Prefeito de Guarulhos", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Gustavo Henrique Gomes", "wiki_title_en":"Guti"},
-    "Santo André":              {"id":"mayor-santo-andre", "name":"Gilvan Junior", "role":"Prefeito de Santo André", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Gilvan Junior", "wiki_title_en":"Gilvan Junior"},
-    "São Bernardo do Campo":    {"id":"mayor-sao-bernardo-do-campo", "name":"Orlando Morando", "role":"Prefeito de São Bernardo do Campo", "party":"PSDB", "uf":"SP", "photo":"", "wiki_title_pt":"Orlando Morando", "wiki_title_en":"Orlando Morando"},
-    "Osasco":                   {"id":"mayor-osasco", "name":"Rogério Lins", "role":"Prefeito de Osasco", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Rogério Lins", "wiki_title_en":"Rogério Lins"},
-    "Ribeirão Preto":           {"id":"mayor-ribeirao-preto", "name":"Marcos Antonio", "role":"Prefeito de Ribeirão Preto", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Marcos Vieira", "wiki_title_en":"Marcos Antonio"},
-    "Sorocaba":                 {"id":"mayor-sorocaba", "name":"Rodrigo Manga", "role":"Prefeito de Sorocaba", "party":"Republicanos", "uf":"SP", "photo":"", "wiki_title_pt":"Rodrigo Manga", "wiki_title_en":"Rodrigo Manga"},
-    # ── MINAS GERAIS ─────────────────────────────────────────────
-    "Belo Horizonte":           {"id":"mayor-belo-horizonte", "name":"Fuad Noman", "role":"Prefeito de Belo Horizonte", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Fuad Noman", "wiki_title_en":"Fuad Noman"},
-    "Contagem":                 {"id":"mayor-contagem", "name":"Marília Campos", "role":"Prefeita de Contagem", "party":"PT", "uf":"MG", "photo":"", "wiki_title_pt":"Marília Campos", "wiki_title_en":"Marília Campos"},
-    "Uberlândia":               {"id":"mayor-uberlandia", "name":"Sérgio Rezende", "role":"Prefeito de Uberlândia", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Sérgio Rezende", "wiki_title_en":"Sérgio Rezende"},
-    # ── BAHIA ────────────────────────────────────────────────────
-    "Salvador":                 {"id":"mayor-salvador", "name":"Bruno Reis", "role":"Prefeito de Salvador", "party":"União Brasil", "uf":"BA", "photo":"", "wiki_title_pt":"Bruno Reis (político)", "wiki_title_en":"Bruno Reis"},
-    "Feira de Santana":         {"id":"mayor-feira-de-santana", "name":"Zé Ronaldo", "role":"Prefeito de Feira de Santana", "party":"União Brasil", "uf":"BA", "photo":"", "wiki_title_pt":"José Ronaldo (Feira de Santana)", "wiki_title_en":"José Ronaldo"},
-    # ── RIO GRANDE DO SUL ────────────────────────────────────────
-    "Porto Alegre":             {"id":"mayor-porto-alegre", "name":"Sebastião Melo", "role":"Prefeito de Porto Alegre", "party":"MDB", "uf":"RS", "photo":"", "wiki_title_pt":"Sebastião Melo", "wiki_title_en":"Sebastião Melo"},
-    "Caxias do Sul":            {"id":"mayor-caxias-do-sul", "name":"Adiló Didomenico", "role":"Prefeito de Caxias do Sul", "party":"PSDB", "uf":"RS", "photo":"", "wiki_title_pt":"Adiló Didomenico", "wiki_title_en":"Adiló Didomenico"},
-    # ── PARANÁ ───────────────────────────────────────────────────
-    "Curitiba":                 {"id":"mayor-curitiba", "name":"Eduardo Pimentel", "role":"Prefeito de Curitiba", "party":"PSD", "uf":"PR", "photo":"", "wiki_title_pt":"Eduardo Pimentel (político)", "wiki_title_en":"Eduardo Pimentel"},
-    "Londrina":                 {"id":"mayor-londrina", "name":"Marcelo Belinati", "role":"Prefeito de Londrina", "party":"PP", "uf":"PR", "photo":"", "wiki_title_pt":"Marcelo Belinati", "wiki_title_en":"Marcelo Belinati"},
-    # ── SANTA CATARINA ───────────────────────────────────────────
-    "Florianópolis":            {"id":"mayor-florianopolis", "name":"Topázio Neto", "role":"Prefeito de Florianópolis", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Topázio Neto", "wiki_title_en":"Topázio Neto"},
-    "Joinville":                {"id":"mayor-joinville", "name":"Adriano Silva", "role":"Prefeito de Joinville", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Adriano Silva (político)", "wiki_title_en":"Adriano Silva"},
-    # ── PERNAMBUCO ───────────────────────────────────────────────
-    "Recife":                   {"id":"mayor-recife", "name":"João Campos", "role":"Prefeito do Recife", "party":"PSB", "uf":"PE", "photo":"", "wiki_title_pt":"João Campos (político)", "wiki_title_en":"João Campos"},
-    # ── CEARÁ ────────────────────────────────────────────────────
-    "Fortaleza":                {"id":"mayor-fortaleza", "name":"Evandro Leitão", "role":"Prefeito de Fortaleza", "party":"PT", "uf":"CE", "photo":"", "wiki_title_pt":"Evandro Leitão", "wiki_title_en":"Evandro Leitão"},
-    # ── AMAZONAS ─────────────────────────────────────────────────
-    "Manaus":                   {"id":"mayor-manaus", "name":"David Almeida", "role":"Prefeito de Manaus", "party":"Avante", "uf":"AM", "photo":"", "wiki_title_pt":"David Almeida (político)", "wiki_title_en":"David Almeida"},
-    # ── PARÁ ─────────────────────────────────────────────────────
-    "Belém":                    {"id":"mayor-belem", "name":"Igor Normando", "role":"Prefeito de Belém", "party":"MDB", "uf":"PA", "photo":"", "wiki_title_pt":"Igor Normando", "wiki_title_en":"Igor Normando"},
-    # ── GOIÁS ────────────────────────────────────────────────────
-    "Goiânia":                  {"id":"mayor-goiania", "name":"Sandro Mabel", "role":"Prefeito de Goiânia", "party":"União Brasil", "uf":"GO", "photo":"", "wiki_title_pt":"Sandro Mabel", "wiki_title_en":"Sandro Mabel"},
-    # ── MARANHÃO ─────────────────────────────────────────────────
-    "São Luís":                 {"id":"mayor-sao-luis", "name":"Eduardo Braide", "role":"Prefeito de São Luís", "party":"PSD", "uf":"MA", "photo":"", "wiki_title_pt":"Eduardo Braide", "wiki_title_en":"Eduardo Braide"},
-    # ── MATO GROSSO DO SUL ───────────────────────────────────────
-    "Campo Grande":             {"id":"mayor-campo-grande", "name":"Adriane Lopes", "role":"Prefeita de Campo Grande", "party":"PP", "uf":"MS", "photo":"", "wiki_title_pt":"Adriane Lopes", "wiki_title_en":"Adriane Lopes"},
-    # ── ALAGOAS ──────────────────────────────────────────────────
-    "Maceió":                   {"id":"mayor-maceio", "name":"João Henrique Caldas", "role":"Prefeito de Maceió", "party":"PL", "uf":"AL", "photo":"", "wiki_title_pt":"João Henrique Caldas", "wiki_title_en":"João Henrique Caldas"},
-    # ── PIAUÍ ────────────────────────────────────────────────────
-    "Teresina":                 {"id":"mayor-teresina", "name":"Dr. Silvio Mendes", "role":"Prefeito de Teresina", "party":"União Brasil", "uf":"PI", "photo":"", "wiki_title_pt":"Silvio Mendes", "wiki_title_en":"Silvio Mendes"},
-    # ── PARAÍBA ──────────────────────────────────────────────────
-    "João Pessoa":              {"id":"mayor-joao-pessoa", "name":"Cícero Lucena", "role":"Prefeito de João Pessoa", "party":"PP", "uf":"PB", "photo":"", "wiki_title_pt":"Cícero Lucena", "wiki_title_en":"Cícero Lucena"},
-    # ── RIO GRANDE DO NORTE ──────────────────────────────────────
-    "Natal":                    {"id":"mayor-natal", "name":"Paulinho Freire", "role":"Prefeito de Natal", "party":"União Brasil", "uf":"RN", "photo":"", "wiki_title_pt":"Paulinho Freire", "wiki_title_en":"Paulinho Freire"},
-    # ── SERGIPE ──────────────────────────────────────────────────
-    "Aracaju":                  {"id":"mayor-aracaju", "name":"Emília Corrêa", "role":"Prefeita de Aracaju", "party":"PL", "uf":"SE", "photo":"", "wiki_title_pt":"Emília Corrêa", "wiki_title_en":"Emília Corrêa"},
-    # ── DISTRITO FEDERAL ─────────────────────────────────────────
-    "Brasília":                 {"id":"wd-Q10303893", "name":"Ibaneis Rocha", "role":"Governador do DF", "party":"MDB", "uf":"DF", "photo":"", "wiki_title_pt":"Ibaneis Rocha", "wiki_title_en":"Ibaneis Rocha"},
-    # ── ESPÍRITO SANTO ───────────────────────────────────────────
-    "Vitória":                  {"id":"mayor-vitoria", "name":"Lorenzo Pazolini", "role":"Prefeito de Vitória", "party":"Republicanos", "uf":"ES", "photo":"", "wiki_title_pt":"Lorenzo Pazolini", "wiki_title_en":"Lorenzo Pazolini"},
-    # ── MATO GROSSO ──────────────────────────────────────────────
-    "Cuiabá":                   {"id":"mayor-cuiaba", "name":"Abilio Brunini", "role":"Prefeito de Cuiabá", "party":"PL", "uf":"MT", "photo":"", "wiki_title_pt":"Abilio Brunini", "wiki_title_en":"Abilio Brunini"},
-    # ── AMAPÁ ────────────────────────────────────────────────────
-    "Macapá":                   {"id":"mayor-macapa", "name":"Dr. Furlan", "role":"Prefeito de Macapá", "party":"MDB", "uf":"AP", "photo":"", "wiki_title_pt":"Furlan (político)", "wiki_title_en":"Furlan"},
-    # ── RONDÔNIA ─────────────────────────────────────────────────
-    "Porto Velho":              {"id":"mayor-porto-velho", "name":"Hildon Chaves", "role":"Prefeito de Porto Velho", "party":"PSDB", "uf":"RO", "photo":"", "wiki_title_pt":"Hildon Chaves", "wiki_title_en":"Hildon Chaves"},
-    # ── RORAIMA ──────────────────────────────────────────────────
-    "Boa Vista":                {"id":"mayor-boa-vista", "name":"Arthur Henrique", "role":"Prefeito de Boa Vista", "party":"MDB", "uf":"RR", "photo":"", "wiki_title_pt":"Arthur Henrique", "wiki_title_en":"Arthur Henrique"},
-    # ── TOCANTINS ────────────────────────────────────────────────
-    "Palmas":                   {"id":"mayor-palmas", "name":"Eduardo Siqueira Campos", "role":"Prefeito de Palmas", "party":"Podemos", "uf":"TO", "photo":"", "wiki_title_pt":"Eduardo Siqueira Campos", "wiki_title_en":"Eduardo Siqueira Campos"},
-    # ── ACRE ─────────────────────────────────────────────────────
-    "Rio Branco":               {"id":"mayor-rio-branco", "name":"Tião Bocalom", "role":"Prefeito de Rio Branco", "party":"PP", "uf":"AC", "photo":"", "wiki_title_pt":"Tião Bocalom", "wiki_title_en":"Tião Bocalom"},
-    # ── MINAS GERAIS — INTERIOR ──────────────────────────────────
-    "Juiz de Fora":             {"id":"mayor-juiz-de-fora", "name":"Margarida Salomão", "role":"Prefeita de Juiz de Fora", "party":"PT", "uf":"MG", "photo":"", "wiki_title_pt":"Margarida Salomão", "wiki_title_en":"Margarida Salomão"},
-    "Betim":                    {"id":"mayor-betim", "name":"Vittório Medioli", "role":"Prefeito de Betim", "party":"PSD", "uf":"MG", "photo":"", "wiki_title_pt":"Vittório Medioli", "wiki_title_en":"Vittório Medioli"},
-    "Montes Claros":            {"id":"mayor-montes-claros", "name":"Humberto Souto", "role":"Prefeito de Montes Claros", "party":"Cidadania", "uf":"MG", "photo":"", "wiki_title_pt":"Humberto Souto", "wiki_title_en":"Humberto Souto"},
-    # ── PARÁ — INTERIOR ──────────────────────────────────────────
-    "Ananindeua":               {"id":"mayor-ananindeua", "name":"Daniel Santos", "role":"Prefeito de Ananindeua", "party":"MDB", "uf":"PA", "photo":"", "wiki_title_pt":"Daniel Santos (político)", "wiki_title_en":"Daniel Santos"},
-    "Santarém":                 {"id":"mayor-santarem", "name":"Nélio Aguiar", "role":"Prefeito de Santarém", "party":"PSD", "uf":"PA", "photo":"", "wiki_title_pt":"Nélio Aguiar", "wiki_title_en":"Nélio Aguiar"},
-    # ── GOIÁS — INTERIOR ─────────────────────────────────────────
-    "Aparecida de Goiânia":     {"id":"mayor-aparecida-de-goiania", "name":"Gustavo Mendanha", "role":"Prefeito de Aparecida de Goiânia", "party":"MDB", "uf":"GO", "photo":"", "wiki_title_pt":"Gustavo Mendanha", "wiki_title_en":"Gustavo Mendanha"},
-    "Anápolis":                 {"id":"mayor-anapolis", "name":"Roberto Naves", "role":"Prefeito de Anápolis", "party":"PP", "uf":"GO", "photo":"", "wiki_title_pt":"Roberto Naves", "wiki_title_en":"Roberto Naves"},
-    # ── SÃO PAULO — INTERIOR ─────────────────────────────────────
-    "Santos":                   {"id":"mayor-santos", "name":"Rogério Santos", "role":"Prefeito de Santos", "party":"PSDB", "uf":"SP", "photo":"", "wiki_title_pt":"Rogério Santos (político)", "wiki_title_en":"Rogério Santos"},
-    "São José dos Campos":      {"id":"mayor-sao-jose-dos-campos", "name":"Anderson Farias", "role":"Prefeito de São José dos Campos", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Anderson Farias", "wiki_title_en":"Anderson Farias"},
-    "Mogi das Cruzes":          {"id":"mayor-mogi-das-cruzes", "name":"Caio Cunha", "role":"Prefeito de Mogi das Cruzes", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Caio Cunha", "wiki_title_en":"Caio Cunha"},
-    "Jundiaí":                  {"id":"mayor-jundiai", "name":"Gustavo Martinelli", "role":"Prefeito de Jundiaí", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Gustavo Martinelli", "wiki_title_en":"Gustavo Martinelli"},
-    "Piracicaba":               {"id":"mayor-piracicaba", "name":"Luciano Almeida", "role":"Prefeito de Piracicaba", "party":"PSD", "uf":"SP", "photo":"", "wiki_title_pt":"Luciano Almeida", "wiki_title_en":"Luciano Almeida"},
-    "Bauru":                    {"id":"mayor-bauru", "name":"Suéllen Rosim", "role":"Prefeita de Bauru", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Suéllen Rosim", "wiki_title_en":"Suéllen Rosim"},
-    "Franca":                   {"id":"mayor-franca", "name":"Alexandre Ferreira", "role":"Prefeito de Franca", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Alexandre Ferreira (político)", "wiki_title_en":"Alexandre Ferreira"},
-    "São José do Rio Preto":    {"id":"mayor-sao-jose-do-rio-preto", "name":"Edinho Araújo", "role":"Prefeito de São José do Rio Preto", "party":"MDB", "uf":"SP", "photo":"", "wiki_title_pt":"Edinho Araújo", "wiki_title_en":"Edinho Araújo"},
-    "São Vicente":              {"id":"mayor-sao-vicente", "name":"Guilherme Gomes", "role":"Prefeito de São Vicente", "party":"Podemos", "uf":"SP", "photo":"", "wiki_title_pt":"Guilherme Gomes (político)", "wiki_title_en":"Guilherme Gomes"},
-    "Praia Grande":             {"id":"mayor-praia-grande", "name":"Raquel Chini", "role":"Prefeita de Praia Grande", "party":"PL", "uf":"SP", "photo":"", "wiki_title_pt":"Raquel Chini", "wiki_title_en":"Raquel Chini"},
-    "Diadema":                  {"id":"mayor-diadema", "name":"José de Filippi Júnior", "role":"Prefeito de Diadema", "party":"PT", "uf":"SP", "photo":"", "wiki_title_pt":"Filippi Júnior", "wiki_title_en":"Filippi Júnior"},
-    # ── PERNAMBUCO — INTERIOR ────────────────────────────────────
-    "Olinda":                   {"id":"mayor-olinda", "name":"Vitor Marinho", "role":"Prefeito de Olinda", "party":"MDB", "uf":"PE", "photo":"", "wiki_title_pt":"Vitor Marinho", "wiki_title_en":"Vitor Marinho"},
-    "Caruaru":                  {"id":"mayor-caruaru", "name":"Rodrigo Pinheiro", "role":"Prefeito de Caruaru", "party":"PSD", "uf":"PE", "photo":"", "wiki_title_pt":"Rodrigo Pinheiro", "wiki_title_en":"Rodrigo Pinheiro"},
-    # ── PARAÍBA — INTERIOR ───────────────────────────────────────
-    "Campina Grande":           {"id":"mayor-campina-grande", "name":"Bruno Cunha Lima", "role":"Prefeito de Campina Grande", "party":"União Brasil", "uf":"PB", "photo":"", "wiki_title_pt":"Bruno Cunha Lima", "wiki_title_en":"Bruno Cunha Lima"},
-    # ── CEARÁ — INTERIOR ─────────────────────────────────────────
-    "Caucaia":                  {"id":"mayor-caucaia", "name":"Naumi Amorim", "role":"Prefeito de Caucaia", "party":"PSD", "uf":"CE", "photo":"", "wiki_title_pt":"Naumi Amorim", "wiki_title_en":"Naumi Amorim"},
-    "Juazeiro do Norte":        {"id":"mayor-juazeiro-do-norte", "name":"Glêdson Bezerra", "role":"Prefeito de Juazeiro do Norte", "party":"Podemos", "uf":"CE", "photo":"", "wiki_title_pt":"Glêdson Bezerra", "wiki_title_en":"Glêdson Bezerra"},
-    # ── ESPÍRITO SANTO — INTERIOR ────────────────────────────────
-    "Serra":                    {"id":"mayor-serra", "name":"Sergio Vidigal", "role":"Prefeito de Serra", "party":"PDT", "uf":"ES", "photo":"", "wiki_title_pt":"Sergio Vidigal", "wiki_title_en":"Sergio Vidigal"},
-    # ── SANTA CATARINA — INTERIOR ────────────────────────────────
-    "Blumenau":                 {"id":"mayor-blumenau", "name":"Mário Hildebrandt", "role":"Prefeito de Blumenau", "party":"PSD", "uf":"SC", "photo":"", "wiki_title_pt":"Mário Hildebrandt", "wiki_title_en":"Mário Hildebrandt"},
-    # ── PARANÁ — INTERIOR ────────────────────────────────────────
-    "Cascavel":                 {"id":"mayor-cascavel", "name":"Leonaldo Paranhos", "role":"Prefeito de Cascavel", "party":"PP", "uf":"PR", "photo":"", "wiki_title_pt":"Leonaldo Paranhos", "wiki_title_en":"Leonaldo Paranhos"},
-    "Foz do Iguaçu":            {"id":"mayor-foz-do-iguacu", "name":"Chico Brasileiro", "role":"Prefeito de Foz do Iguaçu", "party":"PSD", "uf":"PR", "photo":"", "wiki_title_pt":"Chico Brasileiro", "wiki_title_en":"Chico Brasileiro"},
-    # ── BAHIA — INTERIOR ─────────────────────────────────────────
-    "Camaçari":                 {"id":"mayor-camacari", "name":"Mário Alexandre", "role":"Prefeito de Camaçari", "party":"PSD", "uf":"BA", "photo":"", "wiki_title_pt":"Mário Alexandre", "wiki_title_en":"Mário Alexandre"},
-    "Vitória da Conquista":     {"id":"mayor-vitoria-da-conquista", "name":"Herzem Gusmão", "role":"Prefeito de Vitória da Conquista", "party":"MDB", "uf":"BA", "photo":"", "wiki_title_pt":"Herzem Gusmão", "wiki_title_en":"Herzem Gusmão"},
-    # ── MATO GROSSO — INTERIOR ───────────────────────────────────
-    "Rondonópolis":             {"id":"mayor-rondonopolis", "name":"Eduardo Botelho", "role":"Prefeito de Rondonópolis", "party":"União Brasil", "uf":"MT", "photo":"", "wiki_title_pt":"Eduardo Botelho", "wiki_title_en":"Eduardo Botelho"},
-    # ── RIO GRANDE DO SUL — INTERIOR ─────────────────────────────
-    "Canoas":                   {"id":"mayor-canoas", "name":"Jairo Jorge", "role":"Prefeito de Canoas", "party":"PSD", "uf":"RS", "photo":"", "wiki_title_pt":"Jairo Jorge", "wiki_title_en":"Jairo Jorge"},
-    # ── RIO DE JANEIRO — INTERIOR ────────────────────────────────
-    "São João de Meriti":       {"id":"mayor-sao-joao-de-meriti", "name":"Dr. João", "role":"Prefeito de São João de Meriti", "party":"Avante", "uf":"RJ", "photo":"", "wiki_title_pt":"Dr. João (São João de Meriti)", "wiki_title_en":"Dr. João"},
-    "Belford Roxo":             {"id":"mayor-belford-roxo", "name":"Wagner dos Santos Carneiro", "role":"Prefeito de Belford Roxo", "party":"PL", "uf":"RJ", "photo":"", "wiki_title_pt":"Wagner Carneiro", "wiki_title_en":"Wagner Carneiro"},
+    "Rio de Janeiro":    {"id":"wd-Q3723792","name":"Eduardo Paes","role":"Prefeito do Rio de Janeiro","party":"PSD","uf":"RJ","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg/400px-Eduardo_Paes_foto_oficial_2021_%28cropped%29.jpg"},
+    "São Paulo":         {"id":"wd-Q75920697","name":"Ricardo Nunes","role":"Prefeito de São Paulo","party":"MDB","uf":"SP","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Ricardo_Nunes_2021.jpg/400px-Ricardo_Nunes_2021.jpg"},
+    "Brasília":          {"id":"wd-Q10303893","name":"Ibaneis Rocha","role":"Governador/Prefeito do DF","party":"MDB","uf":"DF","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Ibaneis_Rocha_2023.jpg/400px-Ibaneis_Rocha_2023.jpg"},
+    "Salvador":          {"id":"wd-Q10285716","name":"Bruno Reis","role":"Prefeito de Salvador","party":"União Brasil","uf":"BA","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Bruno_Reis_2021.jpg/400px-Bruno_Reis_2021.jpg"},
+    "Fortaleza":         {"id":"wd-Q10293629","name":"Evandro Leitão","role":"Prefeito de Fortaleza","party":"PT","uf":"CE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Evandro_Leit%C3%A3o_2024.jpg/400px-Evandro_Leit%C3%A3o_2024.jpg"},
+    "Belo Horizonte":    {"id":"wd-Q10308756","name":"Fuad Noman","role":"Prefeito de Belo Horizonte","party":"PSD","uf":"MG","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Fuad_Noman_2024.jpg/400px-Fuad_Noman_2024.jpg"},
+    "Manaus":            {"id":"wd-Q10293629_man","name":"David Almeida","role":"Prefeito de Manaus","party":"Avante","uf":"AM","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/David_Almeida_2020.jpg/400px-David_Almeida_2020.jpg"},
+    "Curitiba":          {"id":"wd-Q10293629_cwb","name":"Eduardo Pimentel","role":"Prefeito de Curitiba","party":"PSD","uf":"PR","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Eduardo_Pimentel_2024.jpg/400px-Eduardo_Pimentel_2024.jpg"},
+    "Recife":            {"id":"wd-Q56421696","name":"João Campos","role":"Prefeito do Recife","party":"PSB","uf":"PE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/Jo%C3%A3o_Campos_2020.jpg/400px-Jo%C3%A3o_Campos_2020.jpg"},
+    "Porto Alegre":      {"id":"wd-Q10312060_poa","name":"Sebastião Melo","role":"Prefeito de Porto Alegre","party":"MDB","uf":"RS","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Sebasti%C3%A3o_Melo_2020.jpg/400px-Sebasti%C3%A3o_Melo_2020.jpg"},
+    "Belém":             {"id":"wd-Q10293629_bel","name":"Igor Normando","role":"Prefeito de Belém","party":"MDB","uf":"PA","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Igor_Normando_2024.jpg/400px-Igor_Normando_2024.jpg"},
+    "Goiânia":           {"id":"wd-Q10293629_goi","name":"Rogério Cruz","role":"Prefeito de Goiânia","party":"Republicanos","uf":"GO","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Rog%C3%A9rio_Cruz_2020.jpg/400px-Rog%C3%A9rio_Cruz_2020.jpg"},
+    "Florianópolis":     {"id":"wd-Q10293629_fln","name":"Topázio Neto","role":"Prefeito de Florianópolis","party":"PSD","uf":"SC","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Top%C3%A1zio_Neto_2024.jpg/400px-Top%C3%A1zio_Neto_2024.jpg"},
+    "Natal":             {"id":"wd-Q10293629_nat","name":"Paulinho Freire","role":"Prefeito de Natal","party":"União Brasil","uf":"RN","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Paulinho_Freire_2020.jpg/400px-Paulinho_Freire_2020.jpg"},
+    "Maceió":            {"id":"wd-Q10293629_mac","name":"João Henrique Caldas","role":"Prefeito de Maceió","party":"PL","uf":"AL","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Jo%C3%A3o_Henrique_Caldas_2020.jpg/400px-Jo%C3%A3o_Henrique_Caldas_2020.jpg"},
+    "Teresina":          {"id":"wd-Q10293629_the","name":"Eduardo Braide","role":"Prefeito de Teresina","party":"PSD","uf":"PI","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Eduardo_Braide_2020.jpg/400px-Eduardo_Braide_2020.jpg"},
+    "Campo Grande":      {"id":"wd-Q10293629_cg","name":"Adriane Lopes","role":"Prefeita de Campo Grande","party":"PP","uf":"MS","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Adriane_Lopes_2020.jpg/400px-Adriane_Lopes_2020.jpg"},
+    "João Pessoa":       {"id":"wd-Q10293629_jpb","name":"Cícero Lucena","role":"Prefeito de João Pessoa","party":"PP","uf":"PB","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/C%C3%ADcero_Lucena_2020.jpg/400px-C%C3%ADcero_Lucena_2020.jpg"},
+    "Aracaju":           {"id":"wd-Q10293629_aju","name":"Emília Corrêa","role":"Prefeita de Aracaju","party":"PL","uf":"SE","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Em%C3%ADlia_Corr%C3%AAa_2024.jpg/400px-Em%C3%ADlia_Corr%C3%AAa_2024.jpg"},
+    "Macapá":            {"id":"wd-Q10293629_mcp","name":"Dr. Furlan","role":"Prefeito de Macapá","party":"MDB","uf":"AP","photo":""},
+    "Porto Velho":       {"id":"wd-Q10293629_pvh","name":"Hildon Chaves","role":"Prefeito de Porto Velho","party":"PSDB","uf":"RO","photo":""},
+    "Boa Vista":         {"id":"wd-Q10293629_bvb","name":"Arthur Henrique","role":"Prefeito de Boa Vista","party":"MDB","uf":"RR","photo":""},
+    "Palmas":            {"id":"wd-Q10293629_pmo","name":"Eduardo Siqueira Campos","role":"Prefeito de Palmas","party":"Podemos","uf":"TO","photo":""},
+    "São Luís":          {"id":"wd-Q10293629_slz","name":"Eduardo Braide","role":"Prefeito de São Luís","party":"PSD","uf":"MA","photo":""},
+    "Cuiabá":            {"id":"wd-Q10293629_cgb","name":"Abilio Brunini","role":"Prefeito de Cuiabá","party":"PL","uf":"MT","photo":""},
+    "Vitória":           {"id":"wd-Q10293629_vix","name":"Lorenzo Pazolini","role":"Prefeito de Vitória","party":"Republicanos","uf":"ES","photo":""},
+    "Rio Branco":        {"id":"wd-Q10293629_rbr","name":"Tião Bocalom","role":"Prefeito de Rio Branco","party":"PP","uf":"AC","photo":""},
+    "Maceiú":            {"id":"wd-Q10293629_mce","name":"João Henrique","role":"Prefeito de Maceió","party":"PL","uf":"AL","photo":""},
+    "Teresópolis":       {"id":"wd-Q10293629_ter","name":"Vinicius Claussen","role":"Prefeito de Teresópolis","party":"PSD","uf":"RJ","photo":""},
+    "Petrópolis":        {"id":"wd-Q10293629_pet","name":"Rubens Bomtempo","role":"Prefeito de Petrópolis","party":"PSB","uf":"RJ","photo":""},
+    "Niterói":           {"id":"wd-Q10293629_nit","name":"Rodrigo Neves","role":"Prefeito de Niterói","party":"PDT","uf":"RJ","photo":""},
+    "Nova Iguaçu":       {"id":"wd-Q10293629_nig","name":"Duarte Júnior","role":"Prefeito de Nova Iguaçu","party":"PSD","uf":"RJ","photo":""},
+    "Duque de Caxias":   {"id":"wd-Q10293629_dc","name":"Wilson Reis","role":"Prefeito de Duque de Caxias","party":"MDB","uf":"RJ","photo":""},
+    "São Gonçalo":       {"id":"wd-Q10293629_sg","name":"Capitão Nelson","role":"Prefeito de São Gonçalo","party":"PL","uf":"RJ","photo":""},
+    "Campinas":          {"id":"wd-Q10293629_camp","name":"Dario Saadi","role":"Prefeito de Campinas","party":"Republicanos","uf":"SP","photo":""},
+    "Guarulhos":         {"id":"wd-Q10293629_gru","name":"Guti","role":"Prefeito de Guarulhos","party":"PSD","uf":"SP","photo":""},
+    "Londrina":          {"id":"wd-Q10293629_lon","name":"Marcelo Belinati","role":"Prefeito de Londrina","party":"PP","uf":"PR","photo":""},
+    "Caxias do Sul":     {"id":"wd-Q10293629_cax","name":"Adiló Didomenico","role":"Prefeito de Caxias do Sul","party":"PSDB","uf":"RS","photo":""},
+    "Joinville":         {"id":"wd-Q10293629_joi","name":"Adriano Silva","role":"Prefeito de Joinville","party":"PSD","uf":"SC","photo":""},
 }
-
-
-# ── LOOKUP NORMALIZADO DE CIDADES ─────────────────────────────
-# Resolve diferenças de acentuação entre ip-api, IBGE e keys do dict
-# Ex: "Teresopolis" → "Teresópolis", "Sao Paulo" → "São Paulo"
-def _normalize_city_OLD_UNUSED(name: str) -> str:
-    """Remove acentos e normaliza para lookup case-insensitive."""
-    if not name: return ""
-    return unicodedata.normalize("NFD", name).encode("ascii","ignore").decode().lower().strip()
-
-# Pré-computa índice normalizado → chave original do MAYORS_BY_CITY
-_MAYORS_NORMALIZED: dict[str, str] = {
-    _norm(k): k for k in MAYORS_BY_CITY
-}
-
-def get_mayor_data(city: str) -> dict | None:
-    """Lookup no dict curado com tolerância a acentuação."""
-    if not city: return None
-    if city in MAYORS_BY_CITY: return MAYORS_BY_CITY[city]
-    return MAYORS_BY_CITY.get(_MAYORS_NORMALIZED.get(_norm(city), ""))
-
 
 async def enrich_with_photo(p: dict) -> dict:
-    """Busca foto via cache dinâmico com múltiplos fallbacks.
-    Ordem: 1) wiki_title_pt → Wikipedia PT
-           2) wiki_title_en → Wikipedia EN
-           3) _FALLBACK_PHOTOS (Wikimedia Commons verificado)
-           4) foto já presente no dict (não sobrescreve)
-    """
-    wiki_title = p.get("wiki_title_pt") or ""
-    wiki_en    = p.get("wiki_title_en") or ""
-    name       = p.get("name", "")
-
-    # 1 & 2: Wikipedia PT/EN via cache
-    if wiki_title or wiki_en:
-        photo = await get_photo(wiki_title, wiki_en)
-        if photo:
-            return {**p, "photo": photo}
-
-    # 3: Fallback por nome ou título
-    for key in [wiki_title, wiki_en, name]:
-        if key and key in _FALLBACK_PHOTOS:
-            return {**p, "photo": _FALLBACK_PHOTOS[key]}
-
-    # 4: Se já tem foto, mantém
+    """Busca foto via Wikipedia se o campo photo estiver vazio."""
     if p.get("photo"):
         return p
-
-    # 5: Última tentativa — busca pelo nome sem cache
-    if name and name != wiki_title:
-        wiki = await _wiki_summary(name, "pt")
-        if wiki.get("photo"):
-            return {**p, "photo": wiki["photo"]}
-
-    # 6: Avatar gerado — garante que NUNCA aparece sem imagem no frontend
-    # DiceBear Initials — placeholder visual consistente com o nome
-    if name:
-        initials = "+".join(w for w in name.split() if w)
-        avatar_url = f"https://ui-avatars.com/api/?name={urllib.parse.quote(initials)}&background=1a1f2e&color=66fcf1&bold=true&size=200&font-size=0.38"
-        return {**p, "photo": avatar_url}
-
+    name = p.get("name","")
+    if not name:
+        return p
+    wiki = await _wiki_summary(name, "pt")
+    if wiki.get("photo"):
+        p = {**p, "photo": wiki["photo"]}
     return p
 # Fotos dos ministros do STF via Wikimedia Commons (URLs verificadas)
 # Padrão: https://commons.wikimedia.org/wiki/File:Nome_do_arquivo.jpg
 STF_MINISTERS = [
     {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Luís Roberto Barroso","wiki_title_en":"Roberto Barroso","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg/400px-Ministro_Lu%C3%ADs_Roberto_Barroso_-_foto_oficial_2023_%28cropped%29.jpg"},
     {"id":"wd-Q2948413","name":"Cármen Lúcia","role":"Ministra do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Cármen Lúcia Antunes Rocha","wiki_title_en":"Carmen Lúcia","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Carmen_lucia_antunes_rocha_3_crop.jpg/400px-Carmen_lucia_antunes_rocha_3_crop.jpg"},
     {"id":"wd-Q10314705","name":"Dias Toffoli","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Dias Toffoli","wiki_title_en":"Dias Toffoli","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Dias_Toffoli_%282023%29.jpg/400px-Dias_Toffoli_%282023%29.jpg"},
     {"id":"wd-Q1516706","name":"Gilmar Mendes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Gilmar Ferreira Mendes","wiki_title_en":"Gilmar Mendes","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Gilmar_Mendes_%282023%29.jpg/400px-Gilmar_Mendes_%282023%29.jpg"},
     {"id":"wd-Q10321893","name":"Edson Fachin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Edson Fachin","wiki_title_en":"Edson Fachin","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Edson_Fachin_2023.jpg/400px-Edson_Fachin_2023.jpg"},
     {"id":"wd-Q16503855","name":"Alexandre de Moraes","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Alexandre de Moraes","wiki_title_en":"Alexandre de Moraes","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alexandre_de_Moraes_-_foto_oficial_2023.jpg/400px-Alexandre_de_Moraes_-_foto_oficial_2023.jpg"},
     {"id":"wd-Q106363617","name":"André Mendonça","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"André Mendonça (ministro)","wiki_title_en":"André Mendonça","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Andr%C3%A9_Mendon%C3%A7a_2023.jpg/400px-Andr%C3%A9_Mendon%C3%A7a_2023.jpg"},
     {"id":"wd-Q105748993","name":"Kassio Nunes Marques","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Kassio Nunes Marques","wiki_title_en":"Kassio Nunes Marques","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Kassio_Nunes_Marques_2023.jpg/400px-Kassio_Nunes_Marques_2023.jpg"},
     {"id":"wd-Q768093","name":"Flávio Dino","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Flávio Dino","wiki_title_en":"Flávio Dino","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg/400px-Fl%C3%A1vio_Dino_2023_%28cropped%29.jpg"},
     {"id":"wd-Q118812476","name":"Cristiano Zanin","role":"Ministro do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
-     "wiki_title_pt":"Cristiano Zanin Martins","wiki_title_en":"Cristiano Zanin","photo":""},
+     "photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Cristiano_Zanin_2023.jpg/400px-Cristiano_Zanin_2023.jpg"},
 ]
 
 async def _resolve_geo(ip: str) -> dict:
@@ -3125,82 +900,35 @@ async def get_politician(politician_id:str, db:Session=Depends(get_db)):
     # 1. Verifica banco de dados curado primeiro
     if politician_id in CURATED_POLITICIANS:
         details = dict(CURATED_POLITICIANS[politician_id])
-        wiki_title_pt = details.pop("wiki_title_pt", "") or ""
-        wiki_title_en = details.pop("wiki_title_en", "") or ""
+        wiki_title = details.pop("wiki_title_pt", "")
 
-        # Busca bio + foto via cache dinâmico (sempre URL atual)
+        # Busca bio + foto via Wikipedia (título exato do sitelink)
         async def _empty(): return {}
+        bio_task  = _wiki_summary(wiki_title, "pt") if wiki_title else _empty()
+        # Busca ações do executivo para Presidente e VP
         is_exec = politician_id in ("wd-Q28227", "wd-Q41551")
+        act_task = get_executive_actions() if is_exec else _empty()
 
-        wiki_task = get_wiki_data(wiki_title_pt, wiki_title_en)
-        act_task  = get_executive_actions() if is_exec else _empty()
-        wiki_res, act_res = await asyncio.gather(wiki_task, act_task)
+        wiki_res, act_res = await asyncio.gather(bio_task, act_task)
 
-        # Foto: Wikipedia → fallback Wikimedia Commons
-        photo = wiki_res.get("photo", "")
-        if not photo:
-            photo = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
-        details["photo"] = photo or details.get("photo", "")
-        if wiki_res.get("bio"):
+        if wiki_res and wiki_res.get("bio"):
             details["bio"]       = wiki_res["bio"]
-            details["wiki_link"] = wiki_res.get("link", "")
+            details["wiki_link"] = wiki_res.get("link","")
+        if not details.get("photo") and wiki_res:
+            details["photo"] = wiki_res.get("photo","")
         if is_exec and act_res:
-            details["executive_actions"] = act_res.get("actions", [])
-            details["actions_source"]    = act_res.get("source", "")
-        # Complementa charges do banco de dados (não sobrescreve dados curados)
-        if not details.get("charges"):
-            details["charges"] = _get_charges(
-                details.get("name",""), details.get("full_name","")
-            )
+            details["executive_actions"] = act_res.get("actions",[])
+            details["actions_source"]    = act_res.get("source","")
+        # Para STF sem foto, busca pelo Wikipedia
+        if not details.get("photo") and wiki_title:
+            photo = await fetch_photo_from_wikipedia(wiki_title)
+            if photo: details["photo"] = photo
     else:
-        parts = politician_id.split("-", 1)
-        source = parts[0]
-        api_id = parts[1] if len(parts) > 1 else ""
-
-        if source == "dep":
-            details = await get_deputado_details(api_id)
-        elif source == "sen":
-            details = await get_senador_details(api_id)
-        elif source == "wd":
-            details = await get_wikidata_entity(api_id)
-        elif source == "tse":
-            # Prefeito do sistema TSE — busca no cache do banco pelo ID
-            try:
-                db2 = SessionLocal()
-                row = db2.query(MayorCache).filter(
-                    MayorCache.data.contains(f'"id": "{politician_id}"')
-                ).first()
-                db2.close()
-                if row:
-                    details = _json.loads(row.data)
-                else:
-                    return {"error": "Prefeito não encontrado no cache"}
-            except Exception:
-                return {"error": "Erro ao buscar prefeito"}
-            # Enriquece com Wikipedia
-            wiki_pt = details.pop("wiki_title_pt", details.get("name", ""))
-            wiki_en = details.pop("wiki_title_en", details.get("name", ""))
-            wiki_res = await get_wiki_data(wiki_pt, wiki_en)
-            details["photo"]     = wiki_res.get("photo") or details.get("photo", "")
-            details["bio"]       = wiki_res.get("bio", "")
-            details["wiki_link"] = wiki_res.get("link", "")
-        else:
-            # IDs "mayor-*" — curated ou não encontrado
-            match = next((v for v in CURATED_POLITICIANS.values() if v.get("id") == politician_id), None)
-            if match:
-                details = dict(match)
-                wiki_title_pt = details.pop("wiki_title_pt", "") or ""
-                wiki_title_en = details.pop("wiki_title_en", "") or ""
-                wiki_res = await get_wiki_data(wiki_title_pt, wiki_title_en)
-                photo = wiki_res.get("photo", "")
-                if not photo:
-                    photo = _FALLBACK_PHOTOS.get(wiki_title_pt) or _FALLBACK_PHOTOS.get(wiki_title_en, "")
-                details["photo"] = photo or details.get("photo", "")
-                if wiki_res.get("bio"):
-                    details["bio"] = wiki_res["bio"]
-                    details["wiki_link"] = wiki_res.get("link", "")
-            else:
-                return {"error": "Político não encontrado"}
+        parts = politician_id.split("-",1); source = parts[0]; api_id = parts[1] if len(parts)>1 else ""
+        if source=="dep":   details = await get_deputado_details(api_id)
+        elif source=="sen": details = await get_senador_details(api_id)
+        elif source=="wd":  details = await get_wikidata_entity(api_id)
+        else: return {"error":"Fonte desconhecida"}
 
     ratings = db.query(PoliticianRating).filter_by(politician_id=politician_id).all()
     avg = (sum(r.score for r in ratings)/len(ratings)) if ratings else None
@@ -3228,25 +956,12 @@ async def rate_politician(data:dict=Body(...), db:Session=Depends(get_db)):
 async def compare_politicians(ids:str=Query(...)):
     id_list = [i.strip() for i in ids.split(",") if i.strip()][:4]
     async def _fetch(pid):
-        # 1. Dict curado pelo ID exato
         if pid in CURATED_POLITICIANS:
-            d = dict(CURATED_POLITICIANS[pid]); d.pop("wiki_title_pt",None); d.pop("wiki_title_en",None); return d
-        # 2. IDs curados alternativos (mayor-*, etc.)
-        match = next((v for v in CURATED_POLITICIANS.values() if v.get("id") == pid), None)
-        if match:
-            d = dict(match); d.pop("wiki_title_pt",None); d.pop("wiki_title_en",None); return d
+            d = dict(CURATED_POLITICIANS[pid]); d.pop("wiki_title_pt",None); return d
         parts=pid.split("-",1); src=parts[0]; aid=parts[1] if len(parts)>1 else ""
         if src=="dep": return await get_deputado_details(aid)
         if src=="sen": return await get_senador_details(aid)
         if src=="wd":  return await get_wikidata_entity(aid)
-        if src=="tse":
-            try:
-                db2 = SessionLocal()
-                needle = '"id": "' + pid + '"'
-                row = db2.query(MayorCache).filter(MayorCache.data.contains(needle)).first()
-                db2.close()
-                return _json.loads(row.data) if row else {}
-            except: return {}
         return {}
     results = await asyncio.gather(*[_fetch(pid) for pid in id_list])
     return {"politicians":[{"id":pid,**d} for pid,d in zip(id_list,results)]}
@@ -3264,325 +979,60 @@ async def get_cities_by_uf(uf: str):
     return {"cities": cities, "uf": uf.upper(), "total": len(cities)}
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  WIKIDATA SPARQL — base de todas as buscas de políticos
-# ═══════════════════════════════════════════════════════════════════════
-
-async def _wikidata_sparql(sparql: str, timeout: int = 15) -> list:
-    """Executa query SPARQL no Wikidata. Retorna lista de bindings ou []."""
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
-            r = await c.get(
-                "https://query.wikidata.org/sparql",
-                params={"query": sparql, "format": "json"},
-                headers={**_HDR, "Accept": "application/sparql-results+json"}
-            )
-            if r.status_code == 200:
-                return r.json().get("results", {}).get("bindings", [])
-    except Exception:
-        pass
-    return []
-
-
-def _parse_politician_binding(b: dict, city_name: str, uf: str) -> dict | None:
-    """Converte um binding Wikidata em dict de político normalizado."""
-    qid  = b.get("person", {}).get("value", "").split("/")[-1]
-    name = b.get("personLabel", {}).get("value", "")
-    if not name or name.startswith("Q") or not qid:
-        return None
-    image = b.get("image", {}).get("value", "")
-    if image and not image.startswith("http"):
-        image = _wd_image(image)
-    # Tenta extrair sitelink pt.wikipedia para busca de bio depois
-    wiki_pt = b.get("sitelink", {}).get("value", "")
-    if wiki_pt and "/wiki/" in wiki_pt:
-        wiki_pt = urllib.parse.unquote(wiki_pt.split("/wiki/")[-1])
-    return {
-        "id":            f"wd-{qid}",
-        "name":          name,
-        "display_name":  name,
-        "role":          b.get("posLabel", {}).get("value", "") or f"Político de {city_name}",
-        "party":         b.get("partyLabel", {}).get("value", ""),
-        "state":         uf.upper() if uf else "",
-        "country":       "Brasil",
-        "photo":         image,
-        "source":        "wikidata",
-        "wiki_title_pt": wiki_pt or name,
-        "wiki_title_en": name,
-    }
-
-# ═══════════════════════════════════════════════════════════════════════
-#  SISTEMA DE PREFEITOS — COBERTURA TOTAL DOS 5.571 MUNICÍPIOS
-#
-#  Camadas (executadas em ordem, parando na primeira que retorna):
-#    1. Dict curado MAYORS_BY_CITY  → 87 grandes cidades, 100% confiável
-#    2. MayorCache no PostgreSQL    → resultado de consultas anteriores (TTL 90d)
-#    3. TSE Eleições 2024           → fonte oficial, cobre TODOS os 5.571
-#    4. Wikidata bulk por UF        → enriquece com QID, foto, partido
-#    5. Wikidata individual         → fallback para cidades fora do bulk
-#    6. Avatar gerado               → foto garantida mesmo sem Wikipedia
-# ═══════════════════════════════════════════════════════════════════════
-
-# UF → QID do estado no Wikidata
-_UF_QID = {
-    "AC":"Q40780","AL":"Q40806","AP":"Q40786","AM":"Q40800",
-    "BA":"Q40820","CE":"Q40818","DF":"Q119509","ES":"Q43506",
-    "GO":"Q43505","MA":"Q43504","MT":"Q44203","MS":"Q43508",
-    "MG":"Q3227", "PA":"Q43507","PB":"Q40776","PR":"Q151966",
-    "PE":"Q40783","PI":"Q40779","RJ":"Q171",  "RN":"Q40775",
-    "RS":"Q40787","RO":"Q43513","RR":"Q40778","SC":"Q40801",
-    "SE":"Q43510","SP":"Q174",  "TO":"Q40782",
-}
-
-# Cache em memória por UF (evita hit no DB a cada request, TTL 1h)
-_MAYOR_MEM:     dict[str, dict] = {}   # { "SP": { city_norm: {...} } }
-_MAYOR_MEM_TS:  dict[str, float] = {}  # { "SP": timestamp }
-_MAYOR_MEM_TTL = 3600  # 1 hora
-
-# ── Helpers do banco ───────────────────────────────────────────────────
-
-def _db_mayor_get(city_norm: str, uf: str) -> dict | None:
-    """Busca prefeito no cache persistente. None se não existe ou expirado."""
-    try:
-        db = SessionLocal()
-        row = db.query(MayorCache).filter_by(uf=uf.upper(), city_norm=city_norm).first()
-        db.close()
-        if not row: return None
-        fetched = row.fetched_at
-        if fetched.tzinfo is None:
-            fetched = fetched.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) - fetched > timedelta(days=90):
-            return None
-        d = _json.loads(row.data)
-        return None if d.get("_miss") else d
-    except Exception:
-        return None
-
-def _db_mayor_save(city_norm: str, city_name: str, uf: str, data: dict) -> None:
-    """Salva/atualiza prefeito no cache persistente."""
-    try:
-        db = SessionLocal()
-        row = db.query(MayorCache).filter_by(uf=uf.upper(), city_norm=city_norm).first()
-        payload = _json.dumps(data, ensure_ascii=False)
-        now = datetime.now(timezone.utc)
-        if row:
-            row.data = payload; row.city_name = city_name; row.fetched_at = now
-        else:
-            db.add(MayorCache(uf=uf.upper(), city_norm=city_norm,
-                              city_name=city_name, data=payload, fetched_at=now))
-        db.commit(); db.close()
-    except Exception:
-        try: db.rollback(); db.close()
-        except: pass
-
-# ── Camada 3: TSE 2024 ─────────────────────────────────────────────────
-
-async def _fetch_tse_mayors(uf: str) -> dict:
-    """Busca todos os prefeitos eleitos em 2024 via TSE Divulga.
-    Retorna { city_norm: { name, party, city_name, uf } }.
-    Cobre todos os ~853 municípios de SP, ~184 do RJ, etc."""
-    uf = uf.upper()
-    url = (f"https://resultados.tse.jus.br/oficial/ele2024/619/"
-           f"dados-simplificados/{uf.lower()}/{uf.lower()}-p000011-cs.json")
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
-            r = await c.get(url, headers=_HDR)
-            if r.status_code != 200:
-                return {}
-            raw = r.json()
-    except Exception:
-        return {}
-
-    result: dict[str, dict] = {}
-    # Formato TSE: { "cand": [ { "nm": "FULANO", "sg": "PT", "mu": "SAO PAULO", ... } ] }
-    # ou por município: { "abr": [ { "mu": ..., "cand": [...] } ] }
-    try:
-        entries = raw.get("abr", [])
-        for entry in entries:
-            city_raw = entry.get("mu", "")
-            cands = entry.get("cand", [])
-            # Pega o primeiro candidato com votos (eleito)
-            for c in cands:
-                if c.get("st") in ("E", "D"):  # Eleito / Deferido
-                    name_raw  = c.get("nm", "").strip().title()
-                    party_raw = c.get("sg", "").strip()
-                    city_title = city_raw.strip().title()
-                    norm = _norm(city_title)
-                    if name_raw and norm:
-                        result[norm] = {
-                            "id":       f"tse-{_norm(city_title).replace(' ','-')}",
-                            "name":     name_raw,
-                            "display_name": name_raw,
-                            "role":     f"Prefeito(a) de {city_title}",
-                            "party":    party_raw,
-                            "state":    uf,
-                            "country":  "Brasil",
-                            "source":   "tse",
-                            "photo":    "",
-                            "city_name": city_title,
-                            "wiki_title_pt": name_raw,
-                            "wiki_title_en": name_raw,
-                        }
-                    break
-    except Exception:
-        pass
-    return result
-
-# ── Camada 4: Wikidata bulk por estado ───────────────────────────────
-
-async def _fetch_wikidata_mayors_bulk(uf: str) -> dict:
-    """Busca TODOS os prefeitos de um estado com uma query SPARQL.
-    Retorna { city_norm: politician_dict }.
-    Cobertura: ~40-60% dos municípios (apenas os com P6 no Wikidata)."""
-    state_qid = _UF_QID.get(uf.upper(), "")
-    if not state_qid: return {}
-    sparql = f"""
-SELECT DISTINCT ?city ?cityLabel ?person ?personLabel ?partyLabel ?image ?sitelink WHERE {{
-  ?city wdt:P31 wd:Q3184121 .
-  ?city wdt:P131+ wd:{state_qid} .
-  ?city wdt:P6 ?person .
-  ?person wdt:P31 wd:Q5 .
-  OPTIONAL {{ ?person wdt:P18 ?image }}
-  OPTIONAL {{ ?person wdt:P102 ?party }}
-  OPTIONAL {{ ?sitelink schema:about ?person ; schema:inLanguage "pt" ;
-              schema:isPartOf <https://pt.wikipedia.org/> }}
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}} LIMIT 1000"""
-    bindings = await _wikidata_sparql(sparql, timeout=35)
-    result: dict[str, dict] = {}
-    for b in bindings:
-        city_label = b.get("cityLabel", {}).get("value", "")
-        if not city_label: continue
-        p = _parse_politician_binding(b, city_label, uf)
-        if not p: continue
-        p["role"] = f"Prefeito(a) de {city_label}"
-        norm = _norm(city_label)
-        if norm not in result:
-            result[norm] = (city_label, p)
-    return result  # { norm: (city_name_original, politician_dict) }
-
-# ── Orquestrador principal ─────────────────────────────────────────────
-
-async def _populate_uf_cache(uf: str) -> dict[str, dict]:
-    """Popula o cache completo para um estado:
-    TSE (todos) + Wikidata (enriquece com QID/foto).
-    Retorna { city_norm: politician_dict }."""
-    uf = uf.upper()
-
-    # Executa TSE e Wikidata em paralelo
-    tse_data, wd_data = await asyncio.gather(
-        _fetch_tse_mayors(uf),
-        _fetch_wikidata_mayors_bulk(uf),
-    )
-
-    merged: dict[str, dict] = {}
-
-    # Base: TSE tem nome oficial de todos os prefeitos
-    for norm, p in tse_data.items():
-        merged[norm] = p
-
-    # Enriquece com dados do Wikidata (QID real, foto, partido)
-    for norm, (city_orig, wd_p) in wd_data.items():
-        if norm in merged:
-            base = merged[norm]
-            # Wikidata sobrescreve: id (QID real), party se vazio, photo se disponível
-            merged[norm] = {
-                **base,
-                "id":            wd_p["id"],       # wd-QXXXX é melhor que tse-slug
-                "party":         wd_p.get("party") or base.get("party",""),
-                "photo":         wd_p.get("photo") or "",
-                "wiki_title_pt": wd_p.get("wiki_title_pt") or base.get("wiki_title_pt",""),
-                "wiki_title_en": wd_p.get("wiki_title_en") or base.get("wiki_title_en",""),
-                "source":        "wikidata",
-            }
-        else:
-            # Cidade apenas no Wikidata (TSE não retornou — raro)
-            merged[norm] = wd_p
-
-    # Salva tudo no DB
-    for norm, p in merged.items():
-        _db_mayor_save(norm, p.get("city_name", norm), uf, p)
-
-    # Atualiza cache em memória
-    _MAYOR_MEM[uf] = merged
-    _MAYOR_MEM_TS[uf] = time.time()
-    return merged
-
-async def _get_mayor_dynamic(city_name: str, uf: str) -> dict | None:
-    """Retorna prefeito para qualquer município brasileiro.
-    Ordem: memória → DB → fetch completo do estado → individual."""
-    uf = uf.upper()
-    norm = _norm(city_name)
-
-    # 1. Cache em memória (1h)
-    if uf in _MAYOR_MEM and (time.time() - _MAYOR_MEM_TS.get(uf, 0)) < _MAYOR_MEM_TTL:
-        p = _MAYOR_MEM[uf].get(norm)
-        if p: return p
-
-    # 2. Cache no DB (90 dias)
-    p = _db_mayor_get(norm, uf)
-    if p: return p
-
-    # 3. Popula cache completo do estado (TSE + Wikidata bulk)
-    state_map = await _populate_uf_cache(uf)
-    p = state_map.get(norm)
-    if p: return p
-
-    # 4. Fallback individual por Wikidata P6 (cidade não no TSE nem Wikidata bulk)
-    for sparql in [
-        f"""SELECT DISTINCT ?person ?personLabel ?partyLabel ?image ?sitelink WHERE {{
-  ?city rdfs:label "{city_name}"@pt .
-  ?city wdt:P31 wd:Q3184121 .
-  ?city wdt:P6 ?person .
-  ?person wdt:P31 wd:Q5 .
-  OPTIONAL {{ ?person wdt:P18 ?image }}
-  OPTIONAL {{ ?person wdt:P102 ?party }}
-  OPTIONAL {{ ?sitelink schema:about ?person ; schema:inLanguage "pt" ;
-              schema:isPartOf <https://pt.wikipedia.org/> }}
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}} LIMIT 3""",
-    ]:
-        bindings = await _wikidata_sparql(sparql)
-        for b in bindings:
-            p = _parse_politician_binding(b, city_name, uf)
-            if p:
-                p["role"] = f"Prefeito(a) de {city_name}"
-                _db_mayor_save(norm, city_name, uf, p)
-                return p
-
-    # Não encontrado — salva miss para não repetir queries caras
-    _db_mayor_save(norm, city_name, uf, {"_miss": True, "city_name": city_name})
-    return None
-
-# ── Compatibilidade com código existente ─────────────────────────────
-
-async def get_mayor_by_city_wikidata(city_name: str, uf: str = "") -> dict | None:
-    """Wrapper legado — redireciona para o novo sistema dinâmico."""
-    if not city_name: return None
-    return await _get_mayor_dynamic(city_name, uf)
-
 async def search_city_politicians_wikidata(city_name: str, uf: str = "") -> list:
-    """Busca vereadores e políticos locais via Wikidata SPARQL."""
+    """
+    Busca via Wikidata SPARQL políticos que exerceram cargo em uma cidade brasileira.
+    Retorna prefeito atual + vereadores proeminentes.
+    """
     sparql = f"""
 SELECT DISTINCT ?person ?personLabel ?posLabel ?partyLabel ?image WHERE {{
   ?person wdt:P31 wd:Q5 .
-  ?person p:P39 ?posStmt .
-  ?posStmt ps:P39 ?pos .
-  ?posStmt pq:P642 ?city .
+  ?person wdt:P39 ?pos .
+  ?pos wdt:P642 ?city .
   ?city rdfs:label ?cityLabel .
   FILTER(LCASE(STR(?cityLabel)) = LCASE("{city_name}"))
   FILTER(LANG(?cityLabel) = "pt")
   OPTIONAL {{ ?person wdt:P18 ?image }}
   OPTIONAL {{ ?person wdt:P102 ?party }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "pt,en". }}
-}} LIMIT 25"""
-    bindings = await _wikidata_sparql(sparql)
-    seen, results = set(), []
+}} LIMIT 20"""
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+            r = await c.get(
+                "https://query.wikidata.org/sparql",
+                params={"query": sparql, "format": "json"},
+                headers={**_HDR, "Accept": "application/sparql-results+json"}
+            )
+            if r.status_code != 200:
+                raise Exception(f"Status {r.status_code}")
+            bindings = r.json().get("results", {}).get("bindings", [])
+    except Exception:
+        return []
+
+    seen = set()
+    results = []
     for b in bindings:
-        p = _parse_politician_binding(b, city_name, uf)
-        if p and p["id"] not in seen:
-            seen.add(p["id"])
-            results.append(p)
+        qid = b.get("person", {}).get("value", "").split("/")[-1]
+        if qid in seen:
+            continue
+        seen.add(qid)
+        name = b.get("personLabel", {}).get("value", "")
+        if not name or name.startswith("Q"):
+            continue
+        image = b.get("image", {}).get("value", "")
+        if image and not image.startswith("http"):
+            image = _wd_image(image)
+        role = b.get("posLabel", {}).get("value", "")
+        results.append({
+            "id": f"wd-{qid}",
+            "name": name,
+            "role": role or f"Político de {city_name}",
+            "party": b.get("partyLabel", {}).get("value", ""),
+            "state": uf.upper() if uf else "",
+            "country": "Brasil",
+            "photo": image,
+            "source": "wikidata",
+        })
     return results[:15]
 
 
@@ -3626,13 +1076,10 @@ async def get_local_politicians(
     sen_enrich = await asyncio.gather(*[enrich_with_photo(s) for s in senadores])
     senadores = list(sen_enrich)
 
-    # Executivo: Lula e Alckmin com foto dinâmica
-    exec_raw = [
+    executivo = [
         {**CURATED_POLITICIANS["wd-Q28227"], "highlight": True},
         {**CURATED_POLITICIANS["wd-Q41551"], "highlight": False},
     ]
-    exec_enrich = await asyncio.gather(*[enrich_with_photo(e) for e in exec_raw])
-    executivo = list(exec_enrich)
 
     # Governador com foto
     gov_raw = GOVERNORS_BY_UF.get(uf)
@@ -3643,37 +1090,22 @@ async def get_local_politicians(
     else:
         governador = []
 
-    # ── Prefeito — cobertura total dos 5.571 municípios ──────────────────────
-    # Camada 1: dict curado (87 cidades, 100% confiável)
-    mayor_data = get_mayor_data(city)
+    # Prefeito: primeiro tenta curado, depois busca Wikidata
+    mayor_data = MAYORS_BY_CITY.get(city)
     if mayor_data:
         mayor_dict = {**mayor_data, "country": "Brasil", "source": "wikidata", "email": ""}
         mayor_dict = await enrich_with_photo(mayor_dict)
         prefeito = [mayor_dict]
-    elif city:
-        # Camadas 2-5: TSE 2024 + Wikidata (cache DB → estado completo → individual)
-        mayor_dyn = await _get_mayor_dynamic(city, uf)
-        if mayor_dyn:
-            mayor_dyn = await enrich_with_photo({**mayor_dyn, "email": ""})
-            prefeito = [mayor_dyn]
-        else:
-            # Último recurso: filtrar da busca de vereadores
-            pref_from_search = [p for p in city_politicians_raw
-                                 if "prefeito" in p.get("role","").lower()
-                                 or "prefeita" in p.get("role","").lower()]
-            prefeito = [await enrich_with_photo(pref_from_search[0])] if pref_from_search else []
+    elif city_politicians_raw:
+        # Filtra quem tem "prefeito" no cargo
+        prefeito_wd = [p for p in city_politicians_raw if "prefeito" in p.get("role","").lower() or "prefeita" in p.get("role","").lower()]
+        prefeito = prefeito_wd[:1]
     else:
         prefeito = []
 
     # Vereadores / outros políticos locais do Wikidata (exceto já listado como prefeito)
     prefeito_ids = {p["id"] for p in prefeito}
     vereadores = [p for p in city_politicians_raw if p["id"] not in prefeito_ids]
-    # Enriquece fotos dos vereadores do Wikidata em paralelo
-    if vereadores:
-        vereadores = list(await asyncio.gather(*[enrich_with_photo(v) for v in vereadores[:10]]))
-
-    # STF: enriquece fotos em paralelo
-    stf_enriched = list(await asyncio.gather(*[enrich_with_photo(dict(m)) for m in STF_MINISTERS]))
 
     sections = [
         {"id":"executivo","title":f"{country_flag} Poder Executivo Federal","subtitle":"Presidente e Vice-Presidente da República","color":"#ffd93d","politicians":executivo},
@@ -3686,7 +1118,7 @@ async def get_local_politicians(
     sections += [
         {"id":"senadores","title":f"🗣️ Senadores de {uf}","subtitle":f"Senadores de {state_full} no Senado Federal","color":"#c678dd","politicians":senadores},
         {"id":"deputados","title":f"📋 Deputados Federais de {uf}","subtitle":f"Deputados eleitos por {state_full}","color":"#45b7d1","politicians":deputados},
-        {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros — guardiões da Constituição Federal","color":"#ff6b6b","politicians":stf_enriched},
+        {"id":"stf","title":"⚖️ Supremo Tribunal Federal","subtitle":"11 Ministros — guardiões da Constituição Federal","color":"#ff6b6b","politicians":STF_MINISTERS},
     ]
 
     return {
@@ -3698,82 +1130,11 @@ async def get_local_politicians(
         "sections": sections,
     }
 
-@router.get("/transparency/prefetch-mayors/{uf}")
-async def prefetch_mayors(uf: str):
-    """Popula o cache de prefeitos para um estado inteiro (TSE + Wikidata).
-    Chamar via cron: GET /transparency/prefetch-mayors/SP, /RJ, etc.
-    Retorna resumo do que foi encontrado."""
-    uf = uf.upper()
-    if uf not in _UF_QID and uf != "DF":
-        return {"error": "UF inválida"}
-    state_map = await _populate_uf_cache(uf)
-    tse_count = sum(1 for p in state_map.values() if p.get("source") in ("tse",))
-    wd_count  = sum(1 for p in state_map.values() if p.get("source") == "wikidata")
-    return {
-        "status":   "ok",
-        "uf":       uf,
-        "total":    len(state_map),
-        "tse":      tse_count,
-        "wikidata": wd_count,
-        "sample":   [{"city": p.get("city_name","?"), "name": p.get("name","?"), "party": p.get("party","")}
-                     for p in list(state_map.values())[:10]],
-    }
-
-@router.get("/transparency/prefetch-all-mayors")
-async def prefetch_all_mayors():
-    """Popula o cache de todos os estados. Usar apenas no deploy inicial.
-    Execução assíncrona — retorna imediatamente, processa em background."""
-    all_ufs = list(_UF_QID.keys())
-    results = {}
-    for uf in all_ufs:
-        try:
-            state_map = await _populate_uf_cache(uf)
-            results[uf] = len(state_map)
-            await asyncio.sleep(2)  # respeita rate limit do Wikidata e TSE
-        except Exception as e:
-            results[uf] = f"erro: {e}"
-    return {"status": "ok", "total_cached": sum(v for v in results.values() if isinstance(v, int)), "by_uf": results}
-
-@router.get("/transparency/mayor-cache-stats")
-async def mayor_cache_stats():
-    """Estatísticas do cache de prefeitos no banco."""
-    try:
-        db = SessionLocal()
-        total = db.query(MayorCache).count()
-        by_uf = {}
-        for uf in _UF_QID:
-            by_uf[uf] = db.query(MayorCache).filter_by(uf=uf).count()
-        db.close()
-        return {"total": total, "by_uf": by_uf, "mem_loaded": list(_MAYOR_MEM.keys())}
-    except Exception as e:
-        return {"error": str(e)}
-
-@router.get("/transparency/refresh-photos")
-async def refresh_photo_cache():
-    """Força refresh do cache de fotos para todos os políticos curados.
-    Chamado automaticamente pelo cron do Render a cada 12h."""
-    _PHOTO_CACHE.clear()
-    refreshed = []
-    for pid, p in CURATED_POLITICIANS.items():
-        wiki_pt = p.get("wiki_title_pt", "")
-        wiki_en = p.get("wiki_title_en", "")
-        if wiki_pt or wiki_en:
-            photo = await get_photo(wiki_pt, wiki_en)
-            refreshed.append({"id": pid, "name": p.get("name"), "has_photo": bool(photo)})
-            await asyncio.sleep(0.5)
-    return {"status": "ok", "refreshed": len(refreshed), "results": refreshed}
-
-@router.get("/transparency/photo")
-async def get_politician_photo(title: str = Query(...)):
-    """Retorna URL de foto atual para um título Wikipedia. Cacheable."""
-    photo = await get_photo(title)
-    return {"photo": photo, "title": title}
-
 @router.get("/transparency/featured")
 async def featured_politicians():
     return {"featured":[
         {**CURATED_POLITICIANS["wd-Q28227"]},
         {**CURATED_POLITICIANS["wd-Q41551"]},
-        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":""},
-        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":""},
+        {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/400px-Donald_Trump_official_portrait.jpg"},
+        {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Emmanuel_Macron_in_2019.jpg/400px-Emmanuel_Macron_in_2019.jpg"},
     ]}

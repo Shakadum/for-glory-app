@@ -1,53 +1,11 @@
 
 
-window.dmSendQueue = window.dmSendQueue || [];
-window.dmWSChatKey = window.dmWSChatKey || null;
-function sendSystemDmMessage(text, chatKey) {
+function sendSystemDmMessage(text) {
   try {
-    const payload = String(text);
-    const key = chatKey || window.dmWSChatKey || null;
-    if (!key) return;
-
-    if (window.dmWS && window.dmWS.readyState === WebSocket.OPEN && window.dmWSChatKey === key) {
-      window.dmWS.send(payload);
-    } else {
-      // queue for later (avoid losing "call started/ended" etc when WS reconnects)
-      window.dmSendQueue = window.dmSendQueue || [];
-      window.dmSendQueue.push({ k: key, t: payload, ts: Date.now() });
-      if (window.dmSendQueue.length > 80) window.dmSendQueue = window.dmSendQueue.slice(-80);
+    if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
+      dmWS.send(String(text));
     }
   } catch (e) { console.warn('system dm message failed', e); }
-}
-
-function flushDmSendQueue() {
-  try {
-    if (!window.dmWS || window.dmWS.readyState !== WebSocket.OPEN) return;
-    const key = window.dmWSChatKey;
-    if (!key) return;
-
-function buildChatKeyFor(id, type) {
-  try {
-    if (!user || !user.id) return null;
-    if (type === 'group') return `group_${id}`;
-    // 1v1 / dm
-    const a = Math.min(user.id, id);
-    const b = Math.max(user.id, id);
-    return `dm_${a}_${b}`;
-  } catch (e) { return null; }
-}
-
-
-    window.dmSendQueue = window.dmSendQueue || [];
-    const remaining = [];
-    for (const item of window.dmSendQueue) {
-      if (item && item.k === key) {
-        try { window.dmWS.send(String(item.t)); } catch (e) { remaining.push(item); }
-      } else {
-        remaining.push(item);
-      }
-    }
-    window.dmSendQueue = remaining;
-  } catch (e) { console.warn('flush dm queue failed', e); }
 }
 // ===== Emoji data (fallback) =====
 const EMOJIS = window.EMOJIS || [
@@ -275,7 +233,6 @@ function initLangDropdown(){
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-    initDraggableFloatingCallButton();
     // Tradução da interface
     let flag = window.currentLang === 'pt' ? '🇧🇷 PT' : (window.currentLang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN');
     let langBtnLogin = document.getElementById('lang-btn-login');
@@ -317,14 +274,6 @@ function showLoginScreen() {
 }
 
 var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
-
-// ===== Feature toggles =====
-// Remoção do FEED (timeline) solicitada: mantemos posts/perfil e outras funções,
-// mas desativamos a navegação e o carregamento do feed.
-window.FEED_ENABLED = false;
-// Prevent race conditions when switching chats quickly (especially on mobile).
-// Any async fetch/WS handler must check this token before mutating the DOM.
-var currentChatLoadToken = 0;
 var activeCommId=null, activeChannelId=null;
 window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
 let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
@@ -341,9 +290,9 @@ document.body.addEventListener('click', () => {
     if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
 }, { once: true });
 
-window.ringtone = new Audio('/static/sounds/ringtone.wav'); window.ringtone.loop = true;
-window.callingSound = new Audio('/static/sounds/calling.wav'); window.callingSound.loop = true;
-window.msgSound = new Audio('/static/sounds/message.wav');
+window.ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg'); window.ringtone.loop = true;
+window.callingSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'); window.callingSound.loop = true;
+window.msgSound = new Audio('https://actions.google.com/sounds/v1/water/pop.ogg');
 
 function safePlaySound(snd) {
     try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado", e)); } } catch(err){}
@@ -415,235 +364,6 @@ async function authFetch(url, options = {}) {
     return res;
 }
 
-
-// ===== Draggable floating call button (mobile + desktop) =====
-function initDraggableFloatingCallButton() {
-    const btn = document.getElementById('floating-call-btn');
-    if (!btn) return;
-
-    // Restore last position
-    try {
-        const raw = localStorage.getItem('floatingCallBtnPos');
-        if (raw) {
-            const p = JSON.parse(raw);
-            if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-                btn.style.left = p.x + 'px';
-                btn.style.top = p.y + 'px';
-                btn.style.right = 'auto';
-                btn.style.bottom = 'auto';
-                btn.style.position = 'fixed';
-            }
-        }
-    } catch(e) {}
-
-    btn.style.touchAction = 'none';
-    btn.style.userSelect  = 'none';
-
-    // ── Estado ──────────────────────────────────────────────────────
-    let dragging  = false;
-    let startX = 0, startY = 0;
-    let origLeft = 0, origTop = 0;
-    let btnW = 0, btnH = 0;
-    let curDX = 0, curDY = 0;
-    let moved  = 0, rafId = 0;
-
-    // Edge-snap state
-    let snapped = false;  // está colado na borda?
-    let snapSide = '';    // 'left' | 'right'
-    // Quanto de movimento (px) cancela o snap
-    const SNAP_PULL_THRESHOLD = 50;
-    const SNAP_ZONE = 28;   // px da borda para acionar snap
-    const SNAP_DELAY = 120; // ms depois de soltar na borda
-
-    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-    // ── Snap visual ──────────────────────────────────────────────────
-    function applySnap(side) {
-        snapped  = true;
-        snapSide = side;
-        btn.classList.add('fcb-snapped', side === 'left' ? 'fcb-snap-left' : 'fcb-snap-right');
-        btn.style.transform = 'translate3d(0,0,0)';
-    }
-    function releaseSnap() {
-        snapped  = false;
-        snapSide = '';
-        btn.classList.remove('fcb-snapped', 'fcb-snap-left', 'fcb-snap-right');
-    }
-    function checkSnap() {
-        const rect = btn.getBoundingClientRect();
-        const mid  = rect.left + rect.width / 2;
-        if (rect.left <= SNAP_ZONE) {
-            btn.style.left = '0px';
-            btn.style.top  = origTop + curDY + 'px';
-            btn.style.transform = 'translate3d(0,0,0)';
-            applySnap('left');
-            return true;
-        }
-        if (rect.right >= window.innerWidth - SNAP_ZONE) {
-            btn.style.left = (window.innerWidth - rect.width) + 'px';
-            btn.style.top  = origTop + curDY + 'px';
-            btn.style.transform = 'translate3d(0,0,0)';
-            applySnap('right');
-            return true;
-        }
-        releaseSnap();
-        return false;
-    }
-
-    // ── Handlers ────────────────────────────────────────────────────
-    const onDown = (ev) => {
-        if (ev.button !== undefined && ev.button !== 0) return;
-        const e = ev.touches ? ev.touches[0] : ev;
-
-        const rect = btn.getBoundingClientRect();
-        btn.style.position = 'fixed';
-        btn.style.right  = 'auto';
-        btn.style.bottom = 'auto';
-        btn.style.left   = rect.left + 'px';
-        btn.style.top    = rect.top  + 'px';
-        btn.style.transform = 'translate3d(0,0,0)';
-
-        // Se estava snapped, re-ancora para posição atual
-        if (snapped) releaseSnap();
-
-        origLeft = rect.left;
-        origTop  = rect.top;
-        btnW     = rect.width;
-        btnH     = rect.height;
-        startX   = e.clientX;
-        startY   = e.clientY;
-        curDX = curDY = 0;
-        moved     = 0;
-        dragging  = true;
-
-        btn.style.willChange = 'transform';
-        btn.style.transition = 'none';
-
-        try { ev.pointerId != null && btn.setPointerCapture(ev.pointerId); } catch(_) {}
-        ev.preventDefault && ev.preventDefault();
-    };
-
-    const onMove = (ev) => {
-        if (!dragging) return;
-        const e = ev.touches ? ev.touches[0] : ev;
-
-        const maxDX = window.innerWidth  - btnW - 6 - origLeft;
-        const minDX = 6 - origLeft;
-        const maxDY = window.innerHeight - btnH - 6 - origTop;
-        const minDY = 6 - origTop;
-
-        curDX = clamp(e.clientX - startX, minDX, maxDX);
-        curDY = clamp(e.clientY - startY, minDY, maxDY);
-        moved = Math.max(moved, Math.abs(curDX), Math.abs(curDY));
-
-        if (!rafId) {
-            rafId = requestAnimationFrame(() => {
-                rafId = 0;
-                btn.style.transform = `translate3d(${curDX}px,${curDY}px,0)`;
-            });
-        }
-
-        ev.preventDefault && ev.preventDefault();
-    };
-
-    const onUp = () => {
-        if (!dragging) return;
-        dragging = false;
-        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-
-        const finalLeft = origLeft + curDX;
-        const finalTop  = origTop  + curDY;
-        btn.style.left      = finalLeft + 'px';
-        btn.style.top       = finalTop  + 'px';
-        btn.style.transform = 'translate3d(0,0,0)';
-        btn.style.willChange = 'auto';
-
-        // Transição suave para snap
-        btn.style.transition = 'left 0.25s cubic-bezier(.4,0,.2,1), top 0.25s cubic-bezier(.4,0,.2,1)';
-        setTimeout(() => { btn.style.transition = ''; }, 260);
-
-        // Verifica snap após animação
-        setTimeout(checkSnap, SNAP_DELAY);
-
-        try {
-            localStorage.setItem('floatingCallBtnPos',
-                JSON.stringify({ x: finalLeft, y: finalTop }));
-        } catch(_) {}
-
-        if (moved > 5) {
-            btn.__justDragged = true;
-            setTimeout(() => { btn.__justDragged = false; }, 300);
-        }
-    };
-
-    if (window.PointerEvent) {
-        btn.addEventListener('pointerdown',    onDown, { passive: false });
-        window.addEventListener('pointermove', onMove, { passive: false });
-        window.addEventListener('pointerup',   onUp,  { passive: true });
-        window.addEventListener('pointercancel', onUp, { passive: true });
-    } else {
-        btn.addEventListener('touchstart',    onDown, { passive: false });
-        window.addEventListener('touchmove',  onMove, { passive: false });
-        window.addEventListener('touchend',   onUp,  { passive: true });
-        btn.addEventListener('mousedown',     onDown);
-        window.addEventListener('mousemove',  onMove);
-        window.addEventListener('mouseup',    onUp);
-    }
-
-    // Cancela click se foi drag
-    btn.addEventListener('click', (e) => {
-        if (btn.__justDragged) { e.preventDefault(); e.stopPropagation(); }
-    }, true);
-}
-
-// ── Convidar para call em andamento ───────────────────────────────────
-function openCallInvite() {
-    document.getElementById('modal-call-invite').classList.remove('hidden');
-    document.getElementById('call-invite-username').value = '';
-    document.getElementById('call-invite-error').style.display = 'none';
-    setTimeout(() => document.getElementById('call-invite-username').focus(), 100);
-}
-
-async function sendCallInvite() {
-    const username = (document.getElementById('call-invite-username').value || '').trim();
-    if (!username) return;
-    const errEl = document.getElementById('call-invite-error');
-    errEl.style.display = 'none';
-    try {
-        // Busca o usuário pelo username
-        const r = await authFetch(`/user/search?q=${encodeURIComponent(username)}`);
-        const data = await r.json();
-        const found = Array.isArray(data) ? data[0] : (data.users && data.users[0]);
-        if (!found) { errEl.innerText = 'Usuário não encontrado.'; errEl.style.display = 'block'; return; }
-        // Envia incoming_call via ring/dm usando o canal atual
-        await fetch('/call/ring/dm', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}`},
-            body: JSON.stringify({
-                caller_id: user.id,
-                target_id: found.id,
-                channel_name: window.currentAgoraChannel
-            })
-        });
-        showToast(`📞 Convite enviado para ${found.username || found.name}`);
-        document.getElementById('modal-call-invite').classList.add('hidden');
-    } catch(e) {
-        errEl.innerText = 'Falha ao enviar convite.';
-        errEl.style.display = 'block';
-    }
-}
-
-// Entrar em call já em andamento (sem ring)
-async function joinActiveCall(channel, type) {
-    if (rtc.client) return showToast("Você já está em uma call!");
-    window.isCaller = false;
-    window.pendingCallType = type;
-    window.currentAgoraChannel = channel;
-    document.getElementById('floating-call-btn').style.display = 'flex';
-    showCallPanel();
-    await connectToAgora(channel, type);
-}
-
 async function initCall(typeParam, targetId) {
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = true;
@@ -701,225 +421,137 @@ async function acceptCall() {
 }
 
 async function connectToAgora(channelName, typeParam) {
-    // wait pending cleanup to avoid \"can't start another call\"
-    if (window.__leaveCallPromise) { try { await window.__leaveCallPromise; } catch(e) {} }
-    if (window.__connectingCall) { showToast('Aguarde...'); return; }
-    window.__connectingCall = true;
-    window.pendingCallType = typeParam;
-
+    window.currentAgoraChannel = sanitizeChannelName(channelName);
+    if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
+    document.getElementById('call-active-profile').style.display = 'none';
+    document.getElementById('call-hud-status').innerText = "CONECTANDO...";
+    
+    let bgAction = document.getElementById('call-bg-action');
+    if (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') { bgAction.style.display = 'block'; } 
+    else { bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; }
+    
     try {
-        window.currentAgoraChannel = sanitizeChannelName(channelName);
-        if(!window.currentAgoraChannel){ showToast("❌ Canal inválido"); return; } 
-
-        document.getElementById('call-active-profile').style.display = 'none';
-        document.getElementById('call-hud-status').innerText = "CONECTANDO...";
-
-        let bgAction = document.getElementById('call-bg-action');
-        if (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group') { bgAction.style.display = 'block'; } 
-        else { bgAction.style.display = window.currentCommIsAdmin ? 'block' : 'none'; }
-
         const safeCh = window.currentAgoraChannel;
         let res = await authFetch(`/agora/token?channel=${encodeURIComponent(safeCh)}&uid=${user.id}`);
+        if (!res.ok) {
+            console.error('Agora token error:', res.status);
+            showToast('⚠️ Sessão expirada ou sem permissão para a call. Faça login novamente.');
+            leaveCall();
+            return;
+        }
         let conf = await res.json();
-
-        if (!conf.app_id || conf.app_id.trim() === "") {
-            showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)");
-            await leaveCall();
-            return;
-        }
-        if (!conf.token || (typeof conf.token === "string" && conf.token.trim() === "")) {
-            showToast("⚠️ ERRO: Token Agora inválido (AGORA_APP_CERTIFICATE / endpoint /agora/token)");
-            await leaveCall();
-            return;
-        }
-
-        // If there's an old client still alive, kill it hard.
+        if (!conf.app_id || conf.app_id.trim() === "") { showToast("⚠️ ERRO: Central de Rádio Offline (Configure o AGORA_APP_ID no Render)"); leaveCall(); return; }
+if (rtc.client) { await rtc.client.leave(); }
+        
         try {
-            if (rtc.client) {
-                try { rtc.client.removeAllListeners(); } catch(_) {}
-                try { await rtc.client.leave(); } catch(_) {}
-                rtc.client = null;
-            }
-        } catch(_) {}
+            let rBg = await fetch(`/call/bg/call/${encodeURIComponent(window.currentAgoraChannel)}`); let resBg = await rBg.json();
+            if(resBg && resBg.bg_url) { document.getElementById('expanded-call-panel').style.backgroundImage = `url('${resBg.bg_url}')`; } 
+            else { document.getElementById('expanded-call-panel').style.backgroundImage = 'none'; }
+        } catch(e) { console.error(e); }
 
-        // background (optional) -> apply to expanded + floating
-        try {
-            let rBg = await fetch(`/call/bg/call/${encodeURIComponent(safeCh)}`);
-            let resBg = await rBg.json();
-            const bgUrl = (resBg && resBg.bg_url) ? `url('${resBg.bg_url}')` : 'none';
-            const panel = document.getElementById('expanded-call-panel');
-            if (panel) panel.style.backgroundImage = bgUrl;
-            const floatBtn = document.getElementById('floating-call-btn');
-            if (floatBtn) floatBtn.style.backgroundImage = bgUrl;
-        } catch (e) { console.error(e); }
-
-        rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-        rtc.remoteUsers = {};
-
-        rtc.client.on("connection-state-change", (cur) => {
-            if (cur === "DISCONNECTED") {
-                leaveCall();
-            }
-        });
-
+        rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); rtc.remoteUsers = {};
+        
         rtc.client.on("user-published", async (remoteUser, mediaType) => {
-            try {
-                window.callHasConnected = true;
-                stopSounds();
-                await rtc.client.subscribe(remoteUser, mediaType);
-
-                rtc.remoteUsers[remoteUser.uid] = remoteUser;
-
-                if (mediaType === "audio" && remoteUser.audioTrack) remoteUser.audioTrack.play();
-                renderCallPanel();
-            } catch (e) {
-                console.error("user-published handler error:", e);
-            }
+            window.callHasConnected = true; 
+            stopSounds();
+            await rtc.client.subscribe(remoteUser, mediaType);
+            if (mediaType === "audio") { rtc.remoteUsers[remoteUser.uid] = remoteUser; __getRemoteState(remoteUser.uid).remoteUnpub = false; remoteUser.audioTrack.play(); renderCallPanel(rtc, user.id); }
         });
-
-        const onRemoteGone = (remoteUser) => {
-            try { delete rtc.remoteUsers[remoteUser.uid]; } catch(_) {}
-            renderCallPanel();
-            if (Object.keys(rtc.remoteUsers || {}).length === 0) {
-                showToast("A call ficou vazia.");
+        
+        rtc.client.on("user-unpublished", (remoteUser, mediaType) => {
+            // Remote stopped publishing audio/video — keep user visible and mark status.
+            rtc.remoteUsers[remoteUser.uid] = remoteUser;
+            if (mediaType === "audio" || !mediaType) __getRemoteState(remoteUser.uid).remoteUnpub = true;
+            renderCallPanel(rtc, user.id);
+        });
+        rtc.client.on("user-left", (remoteUser) => {
+            // Remote actually left the channel — end the call.
+            delete rtc.remoteUsers[remoteUser.uid];
+            renderCallPanel(rtc, user.id);
+            if (window.callHasConnected) {
+                showToast("O aliado saiu da chamada.");
                 leaveCall();
             }
-        };
-        rtc.client.on("user-unpublished", onRemoteGone);
-        rtc.client.on("user-left", onRemoteGone);
-
-        // 1) JOIN
-        await rtc.client.join(conf.app_id, safeCh, conf.token, user.id);
-
-        // 2) MICROFONE
-        try {
-            rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-        } catch (micErr) {
-            console.error("Mic error:", micErr);
-            alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio.");
-            await leaveCall();
-            return;
-        }
-
-        // 3) PUBLISH
+        });
+        
+        await rtc.client.join(conf.app_id, window.currentAgoraChannel, conf.token, user.id);
+        
+        try { rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(); } 
+        catch(micErr) { alert("⚠️ Sem Microfone! Autorize no navegador para usar o rádio."); leaveCall(); return; }
+        
         await rtc.client.publish([rtc.localAudioTrack]);
-
-        // Auto-hangup if nobody joins
+        window.callHasConnected = true;
+        if (!window.__callStartedAt) window.__callStartedAt = Date.now();
+        if (!window.__callStartLogged) {
+          window.__callStartLogged = true;
+          const dt = new Date();
+          sendSystemDmMessage(`📞 Chamada iniciada em ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`);
+        }
         try {
-            if (window.__callAloneTimer) clearTimeout(window.__callAloneTimer);
-            window.__callAloneTimer = setTimeout(() => {
-                try {
-                    if (rtc && rtc.client && Object.keys(rtc.remoteUsers || {}).length === 0) {
-                        showToast("Ninguém entrou na call.");
-                        leaveCall();
-                    }
-                } catch(_) {}
-            }, 20000);
-        } catch(_) {}
-
-        // 4) UI
-        document.getElementById('floating-call-btn').style.display = 'flex';
-        showCallPanel();
-
-        // Log started only once per join
-        try {
-            if (!window.__callStartLogged && (typeParam === 'dm' || typeParam === '1v1' || typeParam === 'group')) {
-                window.__callStartLogged = true;
-                const msg = `📞 Chamada iniciada`;
-                const key = (typeParam === 'group') ? buildChatKeyFor(currentChatId, 'group') : buildChatKeyFor(currentChatId, '1v1');
-                sendSystemDmMessage(msg, key);
+            window.callStartedAt = Date.now();
+            if (window.currentCallType === 'dm' && dmWS && dmWS.readyState === 1) {
+                dmWS.send(`📞 Call iniciada • ${new Date(window.callStartedAt).toLocaleString()}`);
             }
-        } catch(_) {}
-    } catch (e) {
-        console.error("Call Connect Error:", e);
-        showToast("Falha ao conectar na Call.");
-        await leaveCall();
-        return;
-    } finally {
-        window.__connectingCall = false;
-    }
-}
+        } catch(e) { console.warn('call chat start event failed', e); }
 
+        document.getElementById('floating-call-btn').style.display = 'flex'; showCallPanel();
+        
+    } catch(e) { console.error("Call Connect Error:", e); showToast("Falha ao conectar na Call."); leaveCall(); }
+}
 
 async function uploadCallBg(inputElem){
-    if(!inputElem || !inputElem.files || !inputElem.files[0]) return;
-    if(!window.currentAgoraChannel){ showToast('Sem call ativa.'); return; }
+    if(!inputElem.files || !inputElem.files[0]) return;
+    if(!window.currentAgoraChannel) { showToast("Aguarde conectar na call."); return; }
+    showToast("Aplicando fundo tático...");
     try{
-        let f = inputElem.files[0];
         let formData = new FormData();
-        formData.append('file', f);
-
-        let up = await authFetch(`/call/bg/upload/${encodeURIComponent(window.currentAgoraChannel)}`, { method:'POST', body: formData });
-        if(!up.ok){ showToast('Falha ao enviar fundo.'); return; }
-        let data = await up.json();
-
-        const bgUrl = (data && data.bg_url) ? `url('${data.bg_url}')` : 'none';
-        const panel = document.getElementById('expanded-call-panel');
-        if(panel) panel.style.backgroundImage = bgUrl;
-
-        const floatBtn = document.getElementById('floating-call-btn');
-        if(floatBtn) floatBtn.style.backgroundImage = bgUrl;
-
-        showToast('Fundo atualizado!');
-    }catch(e){ console.error(e); showToast('Erro ao atualizar fundo.'); }
+        formData.append('file', inputElem.files[0]);
+        let res = await authFetch('/upload', { method: 'POST', body: formData, headers: {} }); // sem Content-Type
+        let data = await res.json();
+        await authFetch('/call/bg/set', {
+            method:'POST',
+            body:JSON.stringify({ target_type: 'call', target_id: window.currentAgoraChannel, bg_url: (pickUploadedUrl(data) || '') })
+        });
+        const bgUrl = pickUploadedUrl(data);
+        if(!bgUrl){ showToast('Erro na imagem.'); return; }
+        document.getElementById('expanded-call-panel').style.backgroundImage=`url('${bgUrl}')`;
+        showToast("Fundo alterado!");
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) {
+            globalWS.send("SYNC_BG:" + window.currentAgoraChannel + ":" + bgUrl);
+        }
+    } catch(e) { console.error("Upload BG erro:", e); showToast("Erro na imagem."); }
 }
-
 
 async function leaveCall() {
-  // Single-flight: prevent multiple overlapping leave() calls
-  if (window.__leaveCallPromise) return window.__leaveCallPromise;
-
-  window.__leavingCall = true;
-  window.__leaveCallPromise = (async () => {
-    // stop timers
-    try { if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; } } catch(_) {}
-
-    // reset UI fast
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
-    try { hideCallPanel(); } catch(_) {}
-    try { stopSounds(); } catch(_) {}
-
-    // best-effort log end
     try {
-      if (window.__callStartLogged && window.currentAgoraChannel && (window.pendingCallType === 'dm' || window.pendingCallType === '1v1' || window.pendingCallType === 'group')) {
-        const msg = `📴 Chamada finalizada`;
-        const key = (window.pendingCallType === 'group') ? buildChatKeyFor(currentChatId, 'group') : buildChatKeyFor(currentChatId, '1v1');
-        sendSystemDmMessage(msg, key);
+      const startedAt = window.__callStartedAt;
+      if (startedAt) {
+        const ms = Date.now() - startedAt;
+        const sec = Math.max(0, Math.floor(ms/1000));
+        const mm = String(Math.floor(sec/60)).padStart(2,"0");
+        const ss = String(sec%60).padStart(2,"0");
+        sendSystemDmMessage(`📞 Chamada finalizada (duração ${mm}:${ss})`);
       }
-    } catch (e) { }
-
-    // hard cleanup tracks / agora client
-    try {
-      if (rtc && rtc.localAudioTrack) {
-        try { rtc.localAudioTrack.stop(); } catch(_) {}
-        try { rtc.localAudioTrack.close(); } catch(_) {}
-        rtc.localAudioTrack = null;
-      }
-    } catch(_) {}
-
-    try {
-      if (rtc && rtc.client) {
-        try { rtc.client.removeAllListeners(); } catch(_) {}
-        try { await rtc.client.leave(); } catch(_) {}
-        rtc.client = null;
-      }
-    } catch(_) {}
-
-    try { rtc.remoteUsers = {}; } catch(_) {}
-
-    // reset state
-    try { window.currentAgoraChannel = null; } catch(_) {}
-    try { window.callHasConnected = false; } catch(_) {}
-    try { window.__callStartLogged = false; } catch(_) {}
-    try { window.pendingCallType = null; } catch(_) {}
-  })().finally(() => {
-    window.__leavingCall = false;
-    window.__leaveCallPromise = null;
-  });
-
-  return window.__leaveCallPromise;
+    } catch(e) {}
+    window.__callStartLogged = false;
+    window.__callStartedAt = null;
+ 
+    stopSounds();
+    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); } 
+    if (rtc.client) { await rtc.client.leave(); } 
+    
+    if (window.isCaller && window.callTargetId && !window.callHasConnected && globalWS) {
+        globalWS.send(`CALL_SIGNAL:${window.callTargetId}:cancelled:${window.currentAgoraChannel}`);
+    }
+    
+    rtc.localAudioTrack = null; rtc.client = null; window.callHasConnected = false; window.currentAgoraChannel = null;
+    window.isCaller = false; window.callTargetId = null;
+    
+    clearInterval(callInterval); 
+    document.getElementById('expanded-call-panel').style.display = 'none'; 
+    document.getElementById('floating-call-btn').style.display = 'none'; 
+    let btn = document.getElementById('btn-mute-call'); btn.classList.remove('muted'); btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`; isMicMuted = false;
 }
-
 
 window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
@@ -930,8 +562,8 @@ async function renderCallPanel(rtc, localUid) {
         const usersList = document.getElementById('call-users-list');
         const activeProfile = document.getElementById('call-active-profile');
 
-        const statusText = document.getElementById('call-hud-status');
-        const timeText = document.getElementById('call-hud-time');
+        const statusText = document.getElementById('call-status');
+        const timeText = document.getElementById('call-time');
         const nameText = document.getElementById('call-active-name');
         const avatarImg = document.getElementById('call-active-avatar');
 
@@ -1021,7 +653,6 @@ async function renderCallPanel(rtc, localUid) {
 
         if (avatarImg) avatarImg.src = safeAvatarUrl(activeBasic?.avatar);
         if (nameText) nameText.textContent = (activeBasic?.name || 'Usuário');
-        if (activeProfile) activeProfile.style.display = 'flex';
 
         // Status + timer
         if (statusText) statusText.textContent = 'EM CHAMADA';
@@ -1103,16 +734,7 @@ async function toggleMuteCall() {
 }
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
-
-// Mostra/esconde botão de convidar conforme tipo da call
-function updateCallInviteBtn() {
-    const btn = document.querySelector('.cp-ctrl-invite');
-    if (!btn) return;
-    const isGroup = (window.pendingCallType === 'group' || window.pendingCallType === 'channel');
-    btn.style.display = isGroup ? 'flex' : 'none';
-}
-function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; updateCallInviteBtn(); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
-function hideCallPanel() { const p = document.getElementById('expanded-call-panel'); if (p) p.style.display = 'none'; clearInterval(callInterval); callInterval = null; }
+function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
@@ -1193,22 +815,7 @@ function closeUpload(){ document.getElementById('modal-upload').classList.add('h
 function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-picker').style.display='flex'; }
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
 
-document.addEventListener("visibilitychange", ()=>{ 
-    if(document.visibilityState==="visible" && user){ 
-        fetchUnread();
-        fetchOnlineUsers();
-        if(window.FEED_ENABLED && document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId);
-    }
-});
-
-// Garante liberação do microfone ao sair/fechar aba (privacidade)
-window.addEventListener('pagehide', ()=>{
-    try{ if(rtc && (rtc.client || rtc.localAudioTrack)) leaveCall(); }catch(e){}
-});
-window.addEventListener('beforeunload', ()=>{
-    try{ if(rtc && (rtc.client || rtc.localAudioTrack)) leaveCall(); }catch(e){}
-});
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && user){ fetchUnread(); fetchOnlineUsers(); if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId); } });
 async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
 function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
 
@@ -1216,12 +823,6 @@ async function fetchUnread(){
     if(!user) return;
     try {
         let r = await fetch(`/notifications?nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-        if(!r.ok){
-            try{ document.getElementById('inbox-badge').style.display='none'; }catch(_){ }
-            try{ document.getElementById('bases-badge').style.display='none'; }catch(_){ }
-            try{ document.getElementById('profile-badge').style.display='none'; }catch(_){ }
-            return;
-        }
         let d = await r.json(); 
         window.unreadData = d.dms.by_sender || {};
         let badgeInbox = document.getElementById('inbox-badge');
@@ -1240,16 +841,7 @@ async function fetchUnread(){
         if(document.getElementById('view-mycomms').classList.contains('active')) {
             document.querySelectorAll('.comm-card').forEach(card => { let cid = card.getAttribute('data-id'); let dot = card.querySelector('.req-dot'); if(d.comms.by_comm[cid]) { if(dot) dot.style.display='block'; } else { if(dot) dot.style.display='none'; } });
         }
-    } catch(e) { console.error(e);
-        const badgeInbox = document.getElementById('inbox-badge');
-        const badgeBases = document.getElementById('bases-badge');
-        const badgeProfile = document.getElementById('profile-badge');
-        if (badgeInbox) badgeInbox.style.display = 'none';
-        if (badgeBases) badgeBases.style.display = 'none';
-        if (badgeProfile) badgeProfile.style.display = 'none';
-        window.unreadData = {};
-        window.lastTotalUnread = 0;
-    }
+    } catch(e) { console.error(e); }
 }
 
 async function loadInbox(){
@@ -1259,67 +851,17 @@ async function loadInbox(){
         let d = await r.json();
         let b = document.getElementById('inbox-list'); b.innerHTML = '';
         if((d.groups || []).length === 0 && (d.friends || []).length === 0) { b.innerHTML = `<p style='text-align:center;color:#888;margin-top:20px;'>${t('empty_box')}</p>`; return; }
-        (d.groups || []).forEach(g => {
-            const previews = (g.member_previews || []).slice(0, 4);
-            const extraCount = (g.member_count || 0) - previews.length;
-            const avatarsHtml = previews.map((m, i) =>
-                `<img class="squad-av-preview" src="${safeAvatarUrl(m.avatar)}" style="z-index:${previews.length - i}" onerror="this.src='/static/default-avatar.svg'">`
-            ).join('') + (extraCount > 0 ? `<span class="squad-av-extra">+${extraCount}</span>` : '');
-
-            b.innerHTML += `
-            <div class="inbox-item squad-card" data-id="${g.id}" data-type="group" onclick="openChat(${g.id}, '${g.name.replace(/'/g, "\\'")}', 'group', '${g.avatar}')">
-                <div class="squad-card-left">
-                    <div class="squad-avatar-wrap">
-                        <img class="squad-avatar" src="${safeAvatarUrl(g.avatar)}" onerror="this.src='/static/default-avatar.svg'">
-                        <span class="squad-icon-badge">
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        </span>
-                    </div>
-                    <div class="squad-info">
-                        <div class="squad-name">${escapeHtml(g.name)}</div>
-                        <div class="squad-meta">
-                            <div class="squad-av-stack">${avatarsHtml}</div>
-                            <span class="squad-count">${g.member_count || 0} membros</span>
-                        </div>
-                    </div>
-                </div>
-                <svg class="squad-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>`;
-        });
+        (d.groups || []).forEach(g => { b.innerHTML += `<div class="inbox-item" data-id="${g.id}" data-type="group" style="display:flex;align-items:center;gap:15px;padding:12px;background:var(--card-bg);border-radius:12px;cursor:pointer;border:1px solid rgba(102,252,241,0.2);" onclick="openChat(${g.id}, '${g.name}', 'group')"><img src="${g.avatar}" style="width:45px;height:45px;border-radius:50%;"><div style="flex:1;"><b style="color:white;font-size:16px;">${g.name}</b><br><span style="font-size:12px;color:var(--primary);">${t('squad')}</span></div></div>`; });
         (d.friends || []).forEach(f => {
             let unreadCount = (window.unreadData && window.unreadData[String(f.id)]) ? window.unreadData[String(f.id)] : 0; let badgeDisplay = unreadCount > 0 ? 'block' : 'none';
-            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1', '${f.avatar}')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
+            b.innerHTML += `<div class="inbox-item" data-id="${f.id}" data-type="1v1" style="display:flex;align-items:center;gap:15px;padding:12px;background:rgba(255,255,255,0.05);border-radius:12px;cursor:pointer;" onclick="openChat(${f.id}, '${f.name}', '1v1')"><div class="av-wrap"><img src="${f.avatar}" style="width:45px;height:45px;border-radius:50%;object-fit:cover;"><div class="status-dot" data-uid="${f.id}"></div></div><div style="flex:1;"><b style="color:white;font-size:16px;">${f.name}</b><br><span style="font-size:12px;color:#888;">${t('direct_msg')}</span></div><div class="list-badge" style="display:${badgeDisplay}; background:#ff5555; color:white; font-size:12px; font-weight:bold; padding:4px 10px; border-radius:12px; box-shadow:0 0 8px rgba(255,85,85,0.6);">${unreadCount}</div></div>`;
         });
         updateStatusDots();
     } catch(e) { console.error(e); }
 }
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
-async function submitCreateGroup(){
-  let name = document.getElementById('new-group-name').value.trim();
-  if(!name) return;
-
-  let cbs = document.querySelectorAll('.grp-friend-cb:checked');
-  let member_ids = Array.from(cbs).map(cb => parseInt(cb.value));
-  if(member_ids.length === 0) return;
-
-  try{
-    let r = await authFetch('/group/create', {
-      method:'POST',
-      body: JSON.stringify({ name:name, creator_id:user.id, member_ids:member_ids })
-    });
-    if(r.ok){
-      document.getElementById('modal-create-group').classList.add('hidden');
-      loadInbox();
-    } else {
-      console.error('POST /group/create failed', r.status);
-      showToast('Erro ao criar grupo.');
-    }
-  }catch(e){
-    console.error(e);
-    showToast('Erro ao criar grupo.');
-  }
-}
+async function submitCreateGroup(){ let name=document.getElementById('new-group-name').value.trim(); if(!name)return; let cbs=document.querySelectorAll('.grp-friend-cb:checked'); let member_ids=Array.from(cbs).map(cb=>parseInt(cb.value)); if(member_ids.length===0)return; try{ let r=await fetch('/group/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,creator_id:user.id,member_ids:member_ids})}); if(r.ok){document.getElementById('modal-create-group').classList.add('hidden');loadInbox();} }catch(e){ console.error(e); } }
 async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${f.avatar}" style="width:30px;height:30px;border-radius:50%;"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
@@ -1444,46 +986,7 @@ function connectGlobalWS(){
 
     globalWS.onclose = () => { 
         // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
-        setTimeout(() => { if(user) connectGlobalWS();
-// ── Reconexão ao voltar do segundo plano ──────────────────────────────
-document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'hidden' && rtc.client && window.currentAgoraChannel) {
-        try {
-            // Verifica se o audio track ainda está publicado
-            if (rtc.localAudioTrack && rtc.localAudioTrack.enabled === false) {
-                await rtc.localAudioTrack.setEnabled(true);
-            }
-            // Se o cliente desconectou, tenta reconectar
-            const state = rtc.client.connectionState;
-            if (state === 'DISCONNECTED' || state === 'DISCONNECTING') {
-                showToast('🔄 Reconectando call...');
-                await connectToAgora(window.currentAgoraChannel, window.pendingCallType);
-            }
-        } catch(e) { console.warn('visibilitychange reconnect:', e); }
-    }
-});
-
-// Mantém AudioContext ativo no mobile (evita suspensão pelo browser)
-let _keepAliveInterval = null;
-function _startCallKeepAlive() {
-    if (_keepAliveInterval) return;
-    _keepAliveInterval = setInterval(() => {
-        try {
-            if (rtc.client && AgoraRTC) {
-                // Agora SDK mantém conexão — apenas verificamos estado
-                const s = rtc.client.connectionState;
-                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
-                    console.warn('Keep-alive: state =', s);
-                }
-            }
-        } catch(_) {}
-    }, 8000);
-}
-function _stopCallKeepAlive() {
-    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
-}
-
- }, 4000); 
+        setTimeout(() => { if(user) connectGlobalWS(); }, 4000); 
     };
 }
 connectGlobalWS();
@@ -1493,18 +996,11 @@ if(!window._globalPingInterval){
         if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } 
     }, 20000);
 }
-    syncInterval=setInterval(()=>{ 
-        if(window.FEED_ENABLED && document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        fetchOnlineUsers();
-    },4000);
+    syncInterval=setInterval(()=>{ if(document.getElementById('view-feed').classList.contains('active')) loadFeed(); fetchOnlineUsers(); },4000);
 }
 
 function logout(){ localStorage.removeItem('token'); user = null; if(syncInterval) clearInterval(syncInterval); if(globalWS) globalWS.close(); showLoginScreen(); }
 function goView(v, btnElem){
-    // Feed removido: redireciona qualquer tentativa para a caixa de entrada.
-    if(v === 'feed' && !window.FEED_ENABLED){
-        v = 'inbox';
-    }
     document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
     document.getElementById('view-'+v).classList.add('active');
     if(v !== 'public-profile' && v !== 'dm' && v !== 'comm-dashboard') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(btnElem) btnElem.classList.add('active'); else if(event && event.target && event.target.closest) event.target.closest('.nav-btn')?.classList.add('active'); }
@@ -1569,13 +1065,7 @@ async function toggleRecord(type) {
 }
 
 async function loadMyHistory(){try{let hist=await fetch(`/user/${user.id}?viewer_id=${user.id}&nocache=${new Date().getTime()}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); let hData=await hist.json(); let grid=document.getElementById('my-posts-grid');grid.innerHTML='';if((hData.posts||[]).length===0)grid.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_history')}</p>`;(hData.posts||[]).forEach(p=>{grid.innerHTML+=p.media_type==='video'?`<video src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;" controls preload="metadata"></video>`:`<img src="${p.content_url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;border-radius:10px;" onclick="window.open(this.src)">`;});}catch(e){ console.error(e); }}
-async function loadFeed(){
-    if(!window.FEED_ENABLED) {
-        const cont = document.getElementById('feed-container');
-        if(cont) cont.innerHTML = `<div style="text-align:center;color:#888;padding:30px;">Feed desativado.</div>`;
-        return;
-    }
-    try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
+async function loadFeed(){try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${x.author_avatar}" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
 document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash=''; loadFeed(); loadMyHistory(); updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){lastFeedHash=''; loadFeed();}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){try{ if(mainType==='dm' && typeof dmWS!=='undefined' && dmWS && dmWS.readyState===1){ dmWS.send(JSON.stringify({type:'message_deleted', msg_id:id})); } }catch(e){} let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
@@ -1633,14 +1123,12 @@ async function sendComment(pid) {
         }
     } catch (e) { console.error(e); }
 }
-async function fetchChatMessages(id, type, loadToken) {
+async function fetchChatMessages(id, type) {
     let list = document.getElementById('dm-list');
     let url = type === 'group' ? `/group/${id}/messages?nocache=${new Date().getTime()}` : `/dms/${id}?uid=${user.id}&nocache=${new Date().getTime()}`;
     try {
         let r = await authFetch(url);
         if (r.ok) {
-            // If user switched chats while this request was in-flight, ignore the result.
-            if (loadToken !== undefined && loadToken !== currentChatLoadToken) return;
             let msgs = await r.json();
             let isAtBottom = (list.scrollHeight - list.scrollTop <= list.clientHeight + 50);
             (msgs || []).forEach(d => {
@@ -1687,123 +1175,41 @@ async function fetchChatMessages(id, type, loadToken) {
     } catch (e) { console.error(e); }
 }
 
-async function openChat(id, name, type, avatar) {
+async function openChat(id, name, type) {
     let changingChat = (currentChatId !== id || currentChatType !== type);
     currentChatId = id;
     currentChatType = type;
-    // New token for this chat session (prevents DM/group mixing from async races)
-    const loadToken = ++currentChatLoadToken;
-
-    // Populate header
     document.getElementById('dm-header-name').innerText = name;
-
-    // Sub-label by type
-    const sub = document.getElementById('dm-header-sub');
-    if (sub) sub.innerText = type === 'group' ? 'Grupo' : 'Mensagem Direta';
-
-    // Group settings button
-    const gear = document.getElementById('group-settings-btn');
-    if (gear) {
-        if (type === 'group') {
-            gear.style.display = 'inline-flex';
-            gear.dataset.groupId = String(id);
-        } else {
-            gear.style.display = 'none';
-            gear.dataset.groupId = '';
-        }
-    }
-
-
-    // Avatar
-    const av = document.getElementById('dm-header-avatar');
-    if (av) {
-        av.src = avatar ? safeAvatarUrl(avatar) : '/static/default-avatar.svg';
-        av.onerror = () => { av.src = '/static/default-avatar.svg'; };
-    }
-
-    // Status dot — só para 1v1
-    const dot = document.getElementById('dm-header-status-dot');
-    if (dot) {
-        if (type === '1v1') {
-            dot.setAttribute('data-uid', id);
-            dot.style.display = 'block';
-            updateStatusDots();
-        } else {
-            dot.style.display = 'none';
-        }
-    }
-
-    // Show/hide call button
-    const callBtn = document.getElementById('dm-call-btn');
-    if (callBtn) callBtn.style.display = 'flex';
-
-    // Verifica se há call ativa no canal e mostra badge "ENTRAR"
-    try {
-        const expectedCh = (type === 'group')
-            ? sanitizeChannelName(`call_group_${id}`)
-            : sanitizeChannelName(`call_dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`);
-        const r = await authFetch(`/call/active?channel=${encodeURIComponent(expectedCh)}`);
-        if (r.ok) {
-            const info = await r.json();
-            const sub = document.getElementById('dm-header-sub');
-            if (sub) {
-                if (info.active && !rtc.client) {
-                    sub.innerHTML = `<span class="join-call-badge" onclick="joinActiveCall('${expectedCh}','${type}')">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        CALL ATIVA · ${info.participants} ${info.participants===1?'pessoa':'pessoas'} · ENTRAR
-                    </span>`;
-                } else {
-                    sub.innerText = type === 'group' ? 'Grupo' : 'Mensagem Direta';
-                }
-            }
-        }
-    } catch(_) {}
-
     goView('dm');
     if (type === '1v1') {
         await fetch(`/inbox/read/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ uid: user.id }) });
         fetchUnread();
     }
-    document.getElementById('dm-list').innerHTML = '';
-    await fetchChatMessages(id, type, loadToken);
+    if (changingChat) {
+        document.getElementById('dm-list').innerHTML = '';
+    }
+    await fetchChatMessages(id, type);
     if (changingChat || !dmWS || dmWS.readyState !== WebSocket.OPEN) {
-        connectDmWS(id, name, type, loadToken);
+        connectDmWS(id, name, type);
     }
 }
 
-function connectDmWS(id, name, type, loadToken) {
+function connectDmWS(id, name, type) {
     if (dmWS) dmWS.close();
     let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     let token = localStorage.getItem('token');
     let ch = type === 'group' ? `group_${id}` : `dm_${Math.min(user.id, id)}_${Math.max(user.id, id)}`;
     dmWS = new WebSocket(`${protocol}//${location.host}/ws/${ch}/${user.id}?token=${token}`);
-    dmWS.onopen = () => {
-        window.dmWS = dmWS;
-        window.dmWSChatKey = ch;
-        flushDmSendQueue();
-    };
     dmWS.onclose = () => {
-        try { if (window.dmWS === dmWS) { window.dmWS = null; } } catch(_) {}
-
         setTimeout(() => {
-            // If user switched chats, don't reconnect/fetch the old chat.
-            if (loadToken !== currentChatLoadToken) return;
-            if (currentChatId === id && currentChatType === type && document.getElementById('view-dm').classList.contains('active')) {
-                // no fetchChatMessages on close; avoid races/badges
-                connectDmWS(id, name, type, loadToken);
+            if (currentChatId === id && document.getElementById('view-dm').classList.contains('active')) {
+                fetchChatMessages(id, type);
+                connectDmWS(id, name, type);
             }
-        }, 1200);
+        }, 2000);
     };
     dmWS.onmessage = (e) => {
         let d = JSON.parse(e.data);
-
-        // Não misturar mensagens de outra conversa (mobile alterna rápido e pode chegar msg de chat antigo)
-        // If user switched chats, never render into the current DOM
-        if (loadToken !== currentChatLoadToken || currentChatId !== id || currentChatType !== type) {
-            // Só atualiza contadores (sem renderizar no chat aberto)
-            try { fetchUnread(); } catch(_) {}
-            return;
-        }
         let b = document.getElementById('dm-list');
         let m = parseInt(d.user_id) === parseInt(user.id);
         let c = (d && d.content !== undefined && d.content !== null) ? String(d.content) : '';
@@ -1876,45 +1282,18 @@ function connectDmWS(id, name, type, loadToken) {
     };
 }
 
-function sendDM(){
-  let i=document.getElementById('dm-msg');
-  let msg=(i&&i.value?i.value.trim():'');
-  if(!msg) return;
-  const key = buildChatKeyFor(currentChatId, currentChatType==='group'?'group':'1v1');
-  if(dmWS && dmWS.readyState===WebSocket.OPEN){
-    dmWS.send(msg);
-  } else {
-    window.dmSendQueue = window.dmSendQueue || [];
-    if(key) window.dmSendQueue.push({k:key, t:msg, ts:Date.now()});
-  }
-  if(i) i.value='';
-  toggleEmoji(true);
-}
+function sendDM(){let i=document.getElementById('dm-msg');let msg=i.value.trim();if(msg&&dmWS&&dmWS.readyState===WebSocket.OPEN){dmWS.send(msg);i.value='';toggleEmoji(true);}}
 async function uploadDMImage(){
-  let f = document.getElementById('dm-file').files[0];
+  let f=document.getElementById('dm-file').files[0];
   if(!f) return;
   try{
-    let formData = new FormData();
-    formData.append('file', f);
+    let formData=new FormData(); formData.append('file', f);
     let res = await authFetch('/upload', { method:'POST', body: formData, headers:{} });
     let data = await res.json();
-    const url = (typeof pickUploadedUrl === 'function' ? pickUploadedUrl(data) : null) || data.secure_url || data.url;
+    const url = pickUploadedUrl(data);
     if(!url){ showToast("Erro no upload da imagem."); return; }
-
-    if(dmWS && dmWS.readyState === WebSocket.OPEN){
-      dmWS.send(url);
-    } else {
-      window.dmSendQueue = window.dmSendQueue || [];
-      window.dmSendQueue.push(url);
-      try { dmWS && dmWS.close(); } catch(e) {}
-      if (window.currentChatId && window.currentChatType) {
-        connectDmWS(currentChatId, window.currentChatName || '', currentChatType, window.currentChatLoadToken);
-      }
-    }
-  }catch(e){
-    console.error(e);
-    showToast("Erro no upload da imagem.");
-  }
+    if(dmWS) dmWS.send(url);
+  }catch(e){ console.error(e); showToast("Erro no upload da imagem."); }
 }
 async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
 async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
@@ -2234,179 +1613,4 @@ function applyRemoteDelete(msgNumericId){
         el.querySelectorAll('.del-msg-btn').forEach(b=>b.remove());
     }
 }
-}
-
-// ===================== Group Settings Modal =====================
-function openGroupSettings(){
-    try{
-        if (currentChatType !== 'group' || !currentChatId) return;
-        const modal = document.getElementById('modal-group-settings');
-        if (!modal) return;
-        document.getElementById('group-settings-error').style.display = 'none';
-        modal.classList.remove('hidden');
-        loadGroupSettings();
-    }catch(e){ console.error(e); }
-}
-function closeGroupSettings(){
-    const modal = document.getElementById('modal-group-settings');
-    if (modal) modal.classList.add('hidden');
-}
-
-function gsError(msg){
-    const el = document.getElementById('group-settings-error');
-    if (!el) return;
-    el.innerText = msg || 'Falha.';
-    el.style.display = 'block';
-}
-
-async function loadGroupSettings(){
-    try{
-        const gid = currentChatId;
-        const res  = await authFetch(`/group/${gid}`);          // retorna Response
-        const data = await res.json();                           // parseia para objeto
-        if (!data) return;
-        const nameEl = document.getElementById('group-settings-name');
-        const metaEl = document.getElementById('group-settings-meta');
-        const avEl   = document.getElementById('group-settings-avatar');
-        if (nameEl) nameEl.innerText = data.name || 'Grupo';
-        const members = Array.isArray(data.members) ? data.members : [];
-        if (metaEl) metaEl.innerText = `${members.length} membro${members.length !== 1 ? 's' : ''}`;
-        if (avEl) avEl.src = (data.avatar || data.avatar_url)
-            ? safeAvatarUrl(data.avatar || data.avatar_url)
-            : '/static/default-avatar.svg';
-        renderGroupMembers(members, data.creator_id);
-    }catch(e){
-        console.error(e);
-        gsError('Não foi possível carregar dados do grupo.');
-    }
-}
-
-function renderGroupMembers(members, creatorId){
-    const list = document.getElementById('group-members-list');
-    if (!list) return;
-    list.innerHTML = '';
-    members.forEach(m => {
-        const row = document.createElement('div');
-        row.className = 'group-member-row';
-        const left = document.createElement('div');
-        left.className = 'group-member-left';
-
-        const av = document.createElement('img');
-        av.className = 'group-member-avatar';
-        av.src = safeAvatarUrl(m.avatar_url || m.avatar) || '/static/default-avatar.svg';
-        av.onerror = ()=>{ av.src = '/static/default-avatar.svg'; };
-
-        const nm = document.createElement('div');
-        nm.className = 'group-member-name';
-        nm.innerText = m.username || m.name || `ID ${m.id}`;
-
-        left.appendChild(av);
-        left.appendChild(nm);
-
-        const actions = document.createElement('div');
-        actions.className = 'group-member-actions';
-
-        // Não mostra REMOVER para si mesmo nem se não for criador
-        const isMe = (m.id === user.id);
-        const isCreator = (user.id === creatorId);
-        if (!isMe) {
-            const btnRemove = document.createElement('button');
-            btnRemove.className = 'gm-remove-btn';
-            btnRemove.title = 'Remover membro';
-            btnRemove.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-            if (!isCreator) btnRemove.style.display = 'none'; // só criador remove
-            btnRemove.onclick = ()=> removeGroupMember(m.id);
-            actions.appendChild(btnRemove);
-        } else {
-            const youBadge = document.createElement('span');
-            youBadge.className = 'gm-you-badge';
-            youBadge.innerText = 'Você';
-            actions.appendChild(youBadge);
-        }
-
-        row.appendChild(left);
-        row.appendChild(actions);
-        list.appendChild(row);
-    });
-}
-
-async function addGroupMember(){
-    try{
-        const inp = document.getElementById('group-add-username');
-        const username = (inp && inp.value || '').trim();
-        if (!username) return gsError('Informe o usuário para adicionar.');
-        document.getElementById('group-settings-error').style.display = 'none';
-        await authFetch(`/group/${currentChatId}/members/add`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ username })
-        });
-        if (inp) inp.value = '';
-        await loadGroupSettings();
-        await refreshInbox();
-    }catch(e){
-        console.error(e);
-        gsError('Não foi possível adicionar. Verifique o nome do usuário ou permissões.');
-    }
-}
-
-async function removeGroupMember(user_id){
-    try{
-        document.getElementById('group-settings-error').style.display = 'none';
-        await authFetch(`/group/${currentChatId}/members/remove`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ user_id })
-        });
-        await loadGroupSettings();
-        await refreshInbox();
-    }catch(e){
-        console.error(e);
-        gsError('Não foi possível remover. Você pode não ter permissão.');
-    }
-}
-
-async function leaveGroup(){
-    try{
-        document.getElementById('group-settings-error').style.display = 'none';
-        await authFetch(`/group/${currentChatId}/leave`, { method: 'POST' });
-        closeGroupSettings();
-        // Volta pra inbox
-        document.getElementById('dm-chat-area').classList.add('hidden');
-        await refreshInbox();
-    }catch(e){
-        console.error(e);
-        gsError('Não foi possível sair do grupo.');
-    }
-}
-
-async function changeGroupAvatar(){
-    try{
-        // Use existing upload modal flow if present; fallback to file input
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.onchange = async () => {
-            const f = fileInput.files && fileInput.files[0];
-            if (!f) return;
-            const fd = new FormData();
-            fd.append('file', f);
-            const res = await fetch('/upload', { method:'POST', body: fd });
-            const data = await res.json().catch(()=> ({}));
-            const url = pickUploadedUrl(data);
-            if (!url) return gsError('Upload falhou.');
-            await authFetch(`/group/${currentChatId}/avatar`, {
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ avatar_url: url })
-            });
-            await loadGroupSettings();
-            await refreshInbox();
-            // update header avatar if you have one specific to groups
-        };
-        fileInput.click();
-    }catch(e){
-        console.error(e);
-        gsError('Não foi possível trocar a foto do grupo.');
-    }
 }
