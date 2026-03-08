@@ -2217,8 +2217,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.documentElement.setAttribute('data-theme', themeId);
         }
         // Toggle medieval decorative elements
-        const _isM = themeId === 'medieval';
-        document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => { el.style.display = _isM ? '' : 'none'; });
+        // Decorações medievais v2 (glass theme): CSS cuida do display, JS só limpa inline style
+        document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => { el.style.display = 'none'; });
 
         try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
         _updateThemeBtns(themeId);
@@ -2232,7 +2232,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (saved && saved !== 'default' && _THEMES[saved]) {
                 // Aplica sem aguardar (async background)
                 window.applyTheme(saved);
-                if (saved === 'medieval') document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => el.style.display = '');
             }
         } catch(e) {}
     })();

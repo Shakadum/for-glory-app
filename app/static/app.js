@@ -40,19 +40,7 @@ function safeDisplayName(u) {
     return trimmed ? trimmed : "Usuário";
 }
 
-function safeAvatarUrl(url, fallbackName){
-  try{
-    const s = (url === undefined || url === null) ? "" : String(url).trim();
-    if(!s || s === "undefined" || s === "null"){
-      return "/static/default-avatar.svg";
-    }
-    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:")) return s;
-    if (s.startsWith("/")) return s;
-    return "/" + s;
-  }catch(e){
-    return "/static/default-avatar.svg";
-  }
-}
+
 
 
 // Picks the best URL field returned by /upload.
@@ -1294,9 +1282,9 @@ function renderMedals(boxId, medalsData, isPublic = false) {
     let mHtml = medalsToShow.map(m => {
         let op = m.earned ? '1' : '0.4'; let filter = m.earned ? 'drop-shadow(0 0 8px rgba(102,252,241,0.4))' : 'grayscale(100%)';
         let statusText = m.earned ? `<span style="color:#2ecc71;font-size:9px;">✔ Desbloqueado</span>` : `<span style="color:#ff5555;font-size:9px;">🔒 Faltam ${m.missing} XP</span>`;
-        return `<div style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${m.earned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}"><div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div><div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>${statusText}</div>`;
+        return `<div class="medal-card" style="background:rgba(0,0,0,0.5); padding:12px 5px; border-radius:12px; border:1px solid ${m.earned ? 'rgba(102,252,241,0.3)' : '#333'}; width:100px; text-align:center; opacity:${op}; display:flex; flex-direction:column; align-items:center; justify-content:space-between; transition:0.3s;" title="${m.desc}"><div style="font-size:32px; filter:${filter}; margin-bottom:5px;">${m.icon}</div><div style="font-size:11px; color:white; font-weight:bold; font-family:'Inter'; line-height:1.2; margin-bottom:4px;">${m.name}</div>${statusText}</div>`;
     }).join('');
-    box.innerHTML = `<h3 style="color:var(--primary); font-family:"Rajdhani"; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
+    box.innerHTML = `<h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
 }
 
 function updateUI(){
@@ -1307,7 +1295,7 @@ function updateUI(){
     document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);
     let missingXP = user.next_xp - user.xp;
-    document.getElementById('p-progression-box').innerHTML = `<div style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:"Rajdhani"; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
+    document.getElementById('p-progression-box').innerHTML = `<div class="xp-box" style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:'Rajdhani'; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div class="xp-track" style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div class="xp-fill" style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span class="xp-label" style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
 }
 
@@ -1515,7 +1503,7 @@ async function loadFeed(){
         if(cont) cont.innerHTML = `<div style="text-align:center;color:#888;padding:30px;">Feed desativado.</div>`;
         return;
     }
-    try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${safeAvatarUrl(x.author_avatar, x.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="post-av" style="margin:0;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
+    try{let r=await fetch(`/posts?uid=${user.id}&limit=50&nocache=${new Date().getTime()}`);if(!r.ok)return;let p=await r.json();let h=JSON.stringify(p.map(x=>x.id+x.likes+x.comments+(x.user_liked?"1":"0")));if(h===lastFeedHash)return;lastFeedHash=h;let openComments=[];let activeInputs={};let focusedInputId=null;if(document.activeElement&&document.activeElement.classList.contains('comment-inp')){focusedInputId=document.activeElement.id;}document.querySelectorAll('.comments-section').forEach(sec=>{if(sec.style.display==='block')openComments.push(sec.id.split('-')[1]);});document.querySelectorAll('.comment-inp').forEach(inp=>{if(inp.value)activeInputs[inp.id]=inp.value;});let ht='';p.forEach(x=>{let m=x.media_type==='video'?`<video src="${x.content_url}" class="post-media" controls playsinline preload="metadata"></video>`:`<img src="${x.content_url}" class="post-media" loading="lazy">`;m=`<div class="post-media-wrapper">${m}</div>`;let delBtn=x.author_id===user.id?`<span onclick="window.deleteTarget={type:'post', id:${x.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="cursor:pointer;opacity:0.5;font-size:20px;transition:0.2s;" onmouseover="this.style.opacity='1';this.style.color='#ff5555'" onmouseout="this.style.opacity='0.5';this.style.color=''">🗑️</span>`:'';let heartIcon=x.user_liked?"❤️":"🤍";let heartClass=x.user_liked?"liked":"";let rankHtml=formatRankInfo(x.author_rank,x.special_emblem,x.rank_color);ht+=`<div class="post-card"><div class="post-header"><div style="display:flex;align-items:center;cursor:pointer" onclick="openPublicProfile(${x.author_id})"><div class="av-wrap" style="margin-right:12px;"><img src="${safeAvatarUrl(x.author_avatar, x.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="post-av" style="margin:0;"><div class="status-dot" data-uid="${x.author_id}"></div></div><div class="user-info-box"><b style="color:white;font-size:14px">${x.author_name}</b><div style="margin-top:2px;">${rankHtml}</div></div></div>${delBtn}</div>${m}<div class="post-actions"><button class="action-btn ${heartClass}" onclick="toggleLike(${x.id}, this)"><span class="icon">${heartIcon}</span> <span class="count" style="color:white;font-weight:bold;">${x.likes}</span></button><button class="action-btn" onclick="toggleComments(${x.id})">💬 <span class="count" style="color:white;font-weight:bold;">${x.comments}</span></button></div><div class="post-caption"><b style="color:white;cursor:pointer;" onclick="openPublicProfile(${x.author_id})">${x.author_name}</b> ${(x.caption||"")}</div><div id="comments-${x.id}" class="comments-section"><div id="comment-list-${x.id}"></div><form class="comment-input-area" onsubmit="sendComment(${x.id}); return false;"><button type="button" class="icon-btn" id="btn-mic-comment-${x.id}" onclick="toggleRecord('comment-${x.id}')">🎤</button><input id="comment-inp-${x.id}" class="comment-inp" placeholder="${t('caption_placeholder')}" autocomplete="off"><button type="button" class="icon-btn" onclick="openEmoji('comment-inp-${x.id}')">😀</button><button type="submit" class="btn-send-msg">➤</button></form></div></div>`});document.getElementById('feed-container').innerHTML=ht;openComments.forEach(pid=>{let sec=document.getElementById(`comments-${pid}`);if(sec){sec.style.display='block';loadComments(pid);}});for(let id in activeInputs){let inp=document.getElementById(id);if(inp)inp.value=activeInputs[id];}if(focusedInputId){let inp=document.getElementById(focusedInputId);if(inp){inp.focus({preventScroll:true});let val=inp.value;inp.value='';inp.value=val;}}updateStatusDots();}catch(e){ console.error(e); }}
 
 document.getElementById('btn-confirm-delete').onclick=async()=>{if(!window.deleteTarget || !window.deleteTarget.id)return;let tp=window.deleteTarget.type;let id=window.deleteTarget.id;document.getElementById('modal-delete').classList.add('hidden');try{if(tp==='post'){let r=await authFetch('/post/delete', {method:'POST', body:JSON.stringify({post_id:id})}); if(r.ok){lastFeedHash=''; loadFeed(); loadMyHistory(); updateProfileState();}}else if(tp==='comment'){let r=await authFetch('/comment/delete', {method:'POST', body:JSON.stringify({comment_id:id})}); if(r.ok){lastFeedHash=''; loadFeed();}}else if(tp==='base'){let r=await authFetch(`/community/${id}/delete`, {method:'POST'}); if(r.ok){closeComm();loadMyComms();}}else if(tp==='channel'){let r=await authFetch(`/community/channel/${id}/delete`, {method:'POST'}); if(r.ok){document.getElementById('modal-edit-channel').classList.add('hidden');openCommunity(activeCommId, true);}}else if(tp==='dm_msg'||tp==='comm_msg'||tp==='group_msg'){let mainType=tp==='dm_msg'?'dm':(tp==='comm_msg'?'comm':'group');let r=await authFetch('/message/delete', {method:'POST', body:JSON.stringify({msg_id:id,type:mainType})}); let res=await r.json(); if(res.status==='ok'){try{ if(mainType==='dm' && typeof dmWS!=='undefined' && dmWS && dmWS.readyState===1){ dmWS.send(JSON.stringify({type:'message_deleted', msg_id:id})); } }catch(e){} let msgBubble=document.getElementById(`${tp}-${id}`).querySelector('.msg-bubble');let timeSpan=msgBubble.querySelector('.msg-time');let timeStr=timeSpan?timeSpan.outerHTML:'';msgBubble.innerHTML=`<span class="msg-deleted">${t('deleted_msg')}</span>${timeStr}`;let btn=document.getElementById(`${tp}-${id}`).querySelector('.del-msg-btn');if(btn)btn.remove();}}}catch(e){ console.error(e); }};
 
@@ -1555,7 +1543,7 @@ function bumpCommentCount(pid, delta=1){
     }catch(e){}
 }
 
-async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${safeAvatarUrl(c.author_avatar, c.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="comment-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
+async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${safeAvatarUrl(c.author_avatar, c.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="comment-av"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
 async function sendComment(pid) {
     try {
         let inp = document.getElementById(`comment-inp-${pid}`);
@@ -1881,10 +1869,10 @@ async function uploadDMImage(){
     showToast("Erro no upload da imagem.");
   }
 }
-async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:"Rajdhani";letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
-async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:"Rajdhani";letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function loadMyComms(){try{let r=await authFetch(`/communities/list?nocache=${new Date().getTime()}`); let d=await r.json(); let mList=document.getElementById('my-comms-grid');mList.innerHTML='';if((d.my_comms||[]).length===0)mList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases')}</p>`;(d.my_comms||[]).forEach(c=>{mList.innerHTML+=`<div class="comm-card" data-id="${c.id}" onclick="openCommunity(${c.id})"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><div class="req-dot" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff5555;color:white;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:bold;box-shadow:0 0 10px #ff5555;border:2px solid var(--dark-bg);z-index:10;">NOVO</div><b style="color:white;font-size:16px;font-family:'Rajdhani';letter-spacing:1px;">${c.name}</b></div>`;});fetchUnread();}catch(e){ console.error(e); }}
+async function loadPublicComms(){try{let r=await authFetch(`/communities/search?nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 function clearCommSearch(){document.getElementById('search-comm-input').value='';loadPublicComms();}
-async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:"Rajdhani";letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
+async function searchComms(){try{let q=document.getElementById('search-comm-input').value.trim();let r=await authFetch(`/communities/search?q=${q}&nocache=${new Date().getTime()}`); let d=await r.json(); let pList=document.getElementById('public-comms-grid');pList.innerHTML='';if((d||[]).length===0)pList.innerHTML=`<p style='color:#888;grid-column:1/-1;'>${t('no_bases_found')}</p>`;(d||[]).forEach(c=>{let btnStr=c.is_private?`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:orange;color:orange;" onclick="requestCommJoin(${c.id})">${t('request_join')}</button>`:`<button class="glass-btn" style="padding:5px 10px;width:100%;border-color:#2ecc71;color:#2ecc71;" onclick="joinCommunity(${c.id})">${t('enter')}</button>`;pList.innerHTML+=`<div class="comm-card"><img src="${safeAvatarUrl(c.avatar_url)}" class="comm-avatar"><b style="color:white;font-size:15px;font-family:'Rajdhani';letter-spacing:1px;margin-bottom:5px;">${c.name}</b>${btnStr}</div>`;});}catch(e){ console.error(e); }}
 async function joinCommunity(cid){try{let r=await authFetch('/community/join', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Entrou na Base com sucesso!");loadPublicComms();openCommunity(cid);}else{showToast("Erro.");}}catch(e){ console.error(e); }}
 async function requestCommJoin(cid){try{let r=await authFetch('/community/request/send', {method:'POST', body:JSON.stringify({comm_id:cid})}); if(r.ok){showToast("Enviado.");}}catch(e){ console.error(e); }}
 async function leaveCommunity(cid){if(confirm("Desertar desta base?")){try{let r=await authFetch(`/community/${cid}/leave`, {method:'POST'}); let res=await r.json(); if(res.status==='ok'){closeComm();loadMyComms();}else{showToast(res.msg);}}catch(e){ console.error(e); }}}
@@ -2423,7 +2411,7 @@ async function loadQuizzes() {
         if (!r.ok) { container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Sem quizzes disponíveis.</div>'; return; }
         const quizzes = await r.json();
         if (!quizzes.length) {
-            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:"DM Sans";font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
+            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:'DM Sans';font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
             return;
         }
         const catColors = {news:'#ef4444',politicians:'#3b82f6',constitution:'#8b5cf6',community:'#10b981',general:'#6b7280'};
@@ -2435,9 +2423,9 @@ async function loadQuizzes() {
                     ${q.category==='news'?'📰':q.category==='politicians'?'🏛️':q.category==='constitution'?'📜':q.category==='community'?'👥':'🧠'}
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <div style="font-family:"DM Sans";font-weight:600;font-size:13px;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(q.title)}</div>
+                    <div style="font-family:'DM Sans';font-weight:600;font-size:13px;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(q.title)}</div>
                     <div style="display:flex;gap:8px;align-items:center;margin-top:5px;">
-                        <span style="font-size:10px;color:${col};font-family:"Rajdhani";font-weight:700;letter-spacing:0.5px;">${(q.category||'').toUpperCase()}</span>
+                        <span style="font-size:10px;color:${col};font-family:'Rajdhani';font-weight:700;letter-spacing:0.5px;">${(q.category||'').toUpperCase()}</span>
                         <span style="font-size:10px;color:#4b5563;">·</span>
                         <span style="font-size:10px;color:#4b5563;">${q.question_count} perguntas</span>
                         <span style="font-size:10px;color:#4b5563;">·</span>
@@ -2447,7 +2435,7 @@ async function loadQuizzes() {
                 <div style="flex-shrink:0;">
                     ${done
                         ? '<span style="font-size:11px;color:#10b981;">✓ Feito</span>'
-                        : `<button onclick="startQuiz(${q.id},'${escapeHtml(q.title)}')" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:8px 14px;font-family:"Rajdhani";font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">JOGAR</button>`
+                        : `<button onclick="startQuiz(${q.id},'${escapeHtml(q.title)}')" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:8px 14px;font-family:'Rajdhani';font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">JOGAR</button>`
                     }
                 </div>
             </div>`;
@@ -2468,8 +2456,8 @@ async function loadQuizRanking() {
             return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">
                 <span style="font-size:${i<3?'18':'13'}px;width:24px;text-align:center;flex-shrink:0;">${medal}</span>
                 <img src="${safeAvatarUrl(entry.avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" onerror="this.src='/static/default-avatar.svg'">
-                <span style="flex:1;font-family:"DM Sans";font-size:13px;color:#e5e7eb;">${escapeHtml(entry.username)}</span>
-                <span style="font-family:"Rajdhani";font-weight:700;font-size:14px;color:#66fcf1;">${(entry.score_week||0).toLocaleString('pt-BR')} pts</span>
+                <span style="flex:1;font-family:'DM Sans';font-size:13px;color:#e5e7eb;">${escapeHtml(entry.username)}</span>
+                <span style="font-family:'Rajdhani';font-weight:700;font-size:14px;color:#66fcf1;">${(entry.score_week||0).toLocaleString('pt-BR')} pts</span>
             </div>`;
         }).join('');
     } catch(e) { console.warn('loadQuizRanking:', e); }
@@ -2507,16 +2495,16 @@ function renderQuizModal(quiz) {
         <div id="modal-quiz" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
             <div style="background:#111827;border:1px solid rgba(102,252,241,0.2);border-radius:18px;padding:24px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-                    <div style="font-family:"Rajdhani";font-weight:800;font-size:14px;color:#66fcf1;letter-spacing:1px;">QUIZ · ${currentQ+1}/${total}</div>
+                    <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#66fcf1;letter-spacing:1px;">QUIZ · ${currentQ+1}/${total}</div>
                     <button onclick="document.getElementById('modal-quiz').remove()" style="background:transparent;border:none;color:#6b7280;cursor:pointer;font-size:18px;">✕</button>
                 </div>
                 <div style="background:rgba(102,252,241,0.05);border-radius:20px;height:4px;margin-bottom:20px;overflow:hidden;">
                     <div style="height:100%;background:#66fcf1;border-radius:20px;width:${progress}%;transition:width 0.3s;"></div>
                 </div>
-                <div style="font-family:"DM Sans";font-weight:600;font-size:15px;color:#f3f4f6;line-height:1.5;margin-bottom:20px;">${escapeHtml(q.question)}</div>
+                <div style="font-family:'DM Sans';font-weight:600;font-size:15px;color:#f3f4f6;line-height:1.5;margin-bottom:20px;">${escapeHtml(q.question)}</div>
                 <div id="quiz-options" style="display:flex;flex-direction:column;gap:10px;">
                     ${q.options.map((opt, i) => `
-                    <button onclick="selectAnswer(${i})" id="quiz-opt-${i}" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 16px;text-align:left;color:#e5e7eb;font-family:"DM Sans";font-size:13px;cursor:pointer;transition:all 0.15s;width:100%;"
+                    <button onclick="selectAnswer(${i})" id="quiz-opt-${i}" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 16px;text-align:left;color:#e5e7eb;font-family:'DM Sans';font-size:13px;cursor:pointer;transition:all 0.15s;width:100%;"
                         onmouseover="if(!this.dataset.locked)this.style.borderColor='rgba(102,252,241,0.4)'"
                         onmouseout="if(!this.dataset.locked)this.style.borderColor='rgba(255,255,255,0.1)'">
                         <span style="color:#66fcf1;margin-right:10px;font-weight:700;">${['A','B','C','D'][i]}.</span>${escapeHtml(opt)}
@@ -2524,7 +2512,7 @@ function renderQuizModal(quiz) {
                 </div>
                 <div id="quiz-explanation" style="display:none;margin-top:16px;padding:14px;background:rgba(102,252,241,0.05);border:1px solid rgba(102,252,241,0.15);border-radius:10px;font-size:12px;color:#9ca3af;line-height:1.5;"></div>
                 <div id="quiz-nav" style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px;display:none;">
-                    <button id="quiz-next-btn" onclick="nextQuizQuestion()" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:10px 20px;font-family:"Rajdhani";font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
+                    <button id="quiz-next-btn" onclick="nextQuizQuestion()" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:10px 20px;font-family:'Rajdhani';font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
                         ${currentQ < total-1 ? 'PRÓXIMA →' : 'FINALIZAR ✓'}
                     </button>
                 </div>
@@ -2594,16 +2582,16 @@ async function submitQuizAnswers(quizId, answers) {
             <div id="modal-quiz-result" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
                 <div style="background:#111827;border:1px solid rgba(102,252,241,0.2);border-radius:18px;padding:28px;max-width:380px;width:100%;text-align:center;">
                     <div style="font-size:48px;margin-bottom:12px;">${d.correct === d.total ? '🏆' : d.correct >= d.total/2 ? '⭐' : '📚'}</div>
-                    <div style="font-family:"Syne";font-weight:800;font-size:20px;color:#f3f4f6;margin-bottom:8px;">
+                    <div style="font-family:'Syne';font-weight:800;font-size:20px;color:#f3f4f6;margin-bottom:8px;">
                         ${d.correct}/${d.total} corretas
                     </div>
-                    <div style="font-family:"DM Sans";font-size:13px;color:#6b7280;margin-bottom:20px;">${timeSec}s · ${d.multiplier > 1 ? `${d.multiplier}x multiplicador VIP` : 'sem multiplicador'}</div>
+                    <div style="font-family:'DM Sans';font-size:13px;color:#6b7280;margin-bottom:20px;">${timeSec}s · ${d.multiplier > 1 ? `${d.multiplier}x multiplicador VIP` : 'sem multiplicador'}</div>
                     <div style="background:rgba(102,252,241,0.08);border:1px solid rgba(102,252,241,0.2);border-radius:12px;padding:16px;margin-bottom:20px;">
-                        <div style="font-family:"Rajdhani";font-weight:800;font-size:28px;color:#66fcf1;">+${d.glory_earned}</div>
+                        <div style="font-family:'Rajdhani';font-weight:800;font-size:28px;color:#66fcf1;">+${d.glory_earned}</div>
                         <div style="font-size:12px;color:#6b7280;">pontos de glória</div>
                         <div style="font-size:11px;color:#4b5563;margin-top:4px;">Total: ${(d.glory_total||0).toLocaleString('pt-BR')} pts</div>
                     </div>
-                    <button onclick="document.getElementById('modal-quiz-result').remove(); loadQuizPanel();" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:12px 24px;font-family:"Rajdhani";font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px;width:100%;">
+                    <button onclick="document.getElementById('modal-quiz-result').remove(); loadQuizPanel();" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:12px 24px;font-family:'Rajdhani';font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px;width:100%;">
                         CONTINUAR
                     </button>
                 </div>
@@ -2644,7 +2632,7 @@ async function loadVipPlans() {
                 <div style="background:rgba(102,252,241,0.06);border:1px solid rgba(102,252,241,0.15);border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;">
                     <div style="font-size:24px;">${currentSlug==='free'?'👤':currentSlug==='vip1'?'🥈':currentSlug==='vip2'?'🥇':'💎'}</div>
                     <div style="flex:1;">
-                        <div style="font-family:"Rajdhani";font-weight:800;font-size:15px;color:#66fcf1;">Plano atual: ${cp.name || 'Gratuito'}</div>
+                        <div style="font-family:'Rajdhani';font-weight:800;font-size:15px;color:#66fcf1;">Plano atual: ${cp.name || 'Gratuito'}</div>
                         <div style="font-size:12px;color:#6b7280;margin-top:3px;">Multiplicador de Glory: ${(cp.glory_multiplier||1)}x
                         ${sub?.expires ? ` · Renova em ${new Date(sub.expires).toLocaleDateString('pt-BR')}` : ''}
                         </div>
@@ -2673,12 +2661,12 @@ async function loadVipPlans() {
                     <div style="display:flex;align-items:center;gap:10px;">
                         <span style="font-size:22px;">${icon}</span>
                         <div>
-                            <div style="font-family:"Rajdhani";font-weight:800;font-size:16px;color:${color};letter-spacing:0.5px;">${p.name}</div>
+                            <div style="font-family:'Rajdhani';font-weight:800;font-size:16px;color:${color};letter-spacing:0.5px;">${p.name}</div>
                             <div style="font-size:12px;color:#6b7280;">${p.glory_multiplier}x Glory</div>
                         </div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-family:"Syne";font-weight:800;font-size:18px;color:#f3f4f6;">
+                        <div style="font-family:'Syne';font-weight:800;font-size:18px;color:#f3f4f6;">
                             ${p.price_monthly > 0 ? `R$ ${p.price_monthly.toFixed(2).replace('.',',')}` : 'Grátis'}
                         </div>
                         ${p.price_monthly > 0 ? '<div style="font-size:10px;color:#4b5563;">/mês</div>' : ''}
@@ -2688,8 +2676,8 @@ async function loadVipPlans() {
                     ${feats.map(f => `<li style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:8px;"><span style="color:${color};">✓</span>${f}</li>`).join('')}
                 </ul>
                 ${isCurrent
-                    ? `<div style="text-align:center;padding:10px;background:${color}22;border-radius:8px;font-family:"Rajdhani";font-weight:700;font-size:12px;color:${color};letter-spacing:1px;">PLANO ATUAL</div>`
-                    : p.slug === 'free' ? '' : `<button onclick="subscribePlan('${p.slug}')" style="width:100%;background:${color};color:#0b0c10;border:none;border-radius:8px;padding:12px;font-family:"Rajdhani";font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
+                    ? `<div style="text-align:center;padding:10px;background:${color}22;border-radius:8px;font-family:'Rajdhani';font-weight:700;font-size:12px;color:${color};letter-spacing:1px;">PLANO ATUAL</div>`
+                    : p.slug === 'free' ? '' : `<button onclick="subscribePlan('${p.slug}')" style="width:100%;background:${color};color:#0b0c10;border:none;border-radius:8px;padding:12px;font-family:'Rajdhani';font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;">
                         ASSINAR${p.price_monthly > 0 ? ` · R$ ${p.price_monthly.toFixed(2).replace('.',',')}` : ''}
                     </button>`
                 }
@@ -2751,7 +2739,7 @@ async function loadDiagnostics() {
         panel.innerHTML = `
             <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                    <div style="font-family:"Rajdhani";font-weight:800;font-size:14px;color:${overallColor};">
+                    <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:${overallColor};">
                         ${overallIcon} Sistema: ${d.overall.toUpperCase()}
                     </div>
                     <div style="font-size:11px;color:#4b5563;">${new Date(d.generated_at).toLocaleTimeString('pt-BR')}</div>
@@ -2766,7 +2754,7 @@ async function loadDiagnostics() {
                                 <div style="font-size:12px;color:#e5e7eb;font-weight:600;">${escapeHtml(c.name)}</div>
                                 <div style="font-size:11px;color:#6b7280;margin-top:2px;">${escapeHtml(c.message)}</div>
                             </div>
-                            ${c.count > 0 ? `<span style="font-family:"Rajdhani";font-weight:700;font-size:13px;color:${color};">${c.count}</span>` : ''}
+                            ${c.count > 0 ? `<span style="font-family:'Rajdhani';font-weight:700;font-size:13px;color:${color};">${c.count}</span>` : ''}
                         </div>`;
                     }).join('')}
                 </div>

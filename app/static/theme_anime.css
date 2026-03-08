@@ -319,33 +319,116 @@
     color: #0f172a !important;
     opacity: 1 !important;
 }
-/* =========================================
-   DESTRUINDO A TARJA BRANCA DOS TROFÉUS
-   ========================================= */
+/* ═══════════════════════════════════════════════════════
+   CORREÇÃO FINAL: SALA DE TROFÉUS E BARRA XP (ANIME)
+   Regras cirúrgicas — sem wildcard [style*=...]
+═══════════════════════════════════════════════════════ */
 
-/* Remove a cor de fundo do container inteiro */
-[data-theme="anime"] #p-progression-box,
-[data-theme="anime"] #p-progression-box > div,
-[data-theme="anime"] #pub-progression-box,
-[data-theme="anime"] #pub-progression-box > div {
+/* XP box: fundo glassmorphism limpo */
+[data-theme="anime"] #p-progression-box > div {
+    background: rgba(255,255,255,0.75) !important;
+    border: 1px solid rgba(255,255,255,0.9) !important;
+    backdrop-filter: blur(12px) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 20px rgba(0,120,200,0.1) !important;
+    color: #1e293b !important;
+}
+/* Textos internos da barra XP */
+[data-theme="anime"] #p-progression-box span,
+[data-theme="anime"] #p-progression-box div {
+    color: #1e293b !important;
+    text-shadow: none !important;
+}
+/* Track da barra de progresso */
+[data-theme="anime"] #p-progression-box .xp-track {
+    background: rgba(0,0,0,0.1) !important;
+}
+/* Fill da barra */
+[data-theme="anime"] #p-progression-box .xp-fill {
+    background: linear-gradient(90deg, #00e1ff, #7dd3fc) !important;
+}
+
+/* Wrapper do medals (h3 + flex grid) — transparente */
+[data-theme="anime"] #p-medals-box > h3,
+[data-theme="anime"] #pub-medals-box > h3 {
+    color: #0284c7 !important;
+    font-family: 'M PLUS Rounded 1c', sans-serif !important;
+    border-bottom-color: #e2e8f0 !important;
+    text-shadow: none !important;
+}
+[data-theme="anime"] #p-medals-box > div,
+[data-theme="anime"] #pub-medals-box > div {
     background: transparent !important;
-    background-color: transparent !important;
     border: none !important;
     box-shadow: none !important;
 }
-
-/* Deixa os quadradinhos dos troféus com efeito de vidro para leitura */
-[data-theme="anime"] #p-progression-box > div > div > div,
-[data-theme="anime"] #p-progression-box [style*="border-radius"],
-[data-theme="anime"] #p-progression-box [style*="background"] {
-    background-color: rgba(255, 255, 255, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.9) !important;
-    backdrop-filter: blur(4px) !important;
+/* Cada card de troféu individualmente */
+[data-theme="anime"] #p-medals-box > div > div,
+[data-theme="anime"] #pub-medals-box > div > div {
+    background: rgba(255,255,255,0.82) !important;
+    border: 1px solid rgba(255,255,255,0.95) !important;
+    backdrop-filter: blur(8px) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 16px rgba(0,100,180,0.08) !important;
+    color: #0f172a !important;
+}
+[data-theme="anime"] #p-medals-box > div > div *,
+[data-theme="anime"] #pub-medals-box > div > div * {
+    color: #1e293b !important;
+    text-shadow: none !important;
 }
 
-/* Força as letras da sala de troféus a ficarem escuras */
-[data-theme="anime"] #p-progression-box *,
-[data-theme="anime"] #pub-progression-box * {
-    color: #0f172a !important;
+/* VIP profile banner — sem fundo escuro */
+[data-theme="anime"] #vip-profile-banner > div {
+    background: rgba(255,255,255,0.82) !important;
+    border: 1px solid rgba(0,200,255,0.35) !important;
+    backdrop-filter: blur(12px) !important;
+    border-radius: 16px !important;
+}
+[data-theme="anime"] #vip-profile-banner [style*="color:#66fcf1"],
+[data-theme="anime"] #vip-profile-banner [style*="color: #66fcf1"] {
+    color: #0284c7 !important;
+}
+[data-theme="anime"] #vip-profile-banner [style*="color:#9ca3af"],
+[data-theme="anime"] #vip-profile-banner [style*="color: #9ca3af"] {
+    color: #475569 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SELETORES DE CLASSE — XP BAR E TROFÉUS (após fix app.js)
+═══════════════════════════════════════════════════════ */
+
+/* XP Box wrapper */
+[data-theme="anime"] .xp-box {
+    background: rgba(255,255,255,0.78) !important;
+    border: 1px solid rgba(255,255,255,0.95) !important;
+    backdrop-filter: blur(14px) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 20px rgba(0,120,220,0.1) !important;
+}
+[data-theme="anime"] .xp-box span,
+[data-theme="anime"] .xp-box div,
+[data-theme="anime"] .xp-label {
+    color: #1e293b !important;
+    text-shadow: none !important;
+}
+/* XP progress track */
+[data-theme="anime"] .xp-track {
+    background: rgba(0,0,0,0.1) !important;
+    box-shadow: none !important;
+}
+/* XP fill */
+[data-theme="anime"] .xp-fill {
+    background: linear-gradient(90deg, #00e1ff, #38bdf8) !important;
+}
+
+/* Cada troféu individualmente */
+[data-theme="anime"] .medal-card {
+    background: rgba(255,255,255,0.82) !important;
+    border-color: rgba(255,255,255,0.95) !important;
+    box-shadow: 0 4px 16px rgba(0,100,180,0.08) !important;
+}
+[data-theme="anime"] .medal-card * {
+    color: #1e293b !important;
     text-shadow: none !important;
 }
