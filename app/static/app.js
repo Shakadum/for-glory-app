@@ -865,59 +865,55 @@ async function uploadCallBg(inputElem){
 }
 
 
-async function leaveCall() {
-  // Single-flight: prevent multiple overlapping leave() calls
-  if (window.__leaveCallPromise) return window.__leaveCallPromise;
+function leaveCall(){
+    try{
+        if(window.rtc){
 
-  window.__leavingCall = true;
-  window.__leaveCallPromise = (async () => {
-    // stop timers
-    try { if (window.__callAloneTimer) { clearTimeout(window.__callAloneTimer); window.__callAloneTimer = null; } } catch(_) {}
+            // parar microfone
+            if(rtc.localAudioTrack){
+                try{
+                    rtc.localAudioTrack.stop();
+                    rtc.localAudioTrack.close();
+                }catch(e){console.error(e);}
+                rtc.localAudioTrack = null;
+            }
 
-    // reset UI fast
-    try { document.getElementById('floating-call-btn').style.display = 'none'; } catch(_) {}
-    try { hideCallPanel(); } catch(_) {}
-    try { stopSounds(); } catch(_) {}
+            // limpar usuários remotos
+            if(rtc.remoteUsers){
+                Object.values(rtc.remoteUsers).forEach(u=>{
+                    try{
+                        if(u.audioTrack) u.audioTrack.stop();
+                        if(u.videoTrack) u.videoTrack.stop();
+                    }catch(e){}
+                });
+                rtc.remoteUsers = {};
+            }
 
-    // best-effort log end
-    try {
-      if (window.__callStartLogged && window.currentAgoraChannel && (window.pendingCallType === 'dm' || window.pendingCallType === '1v1' || window.pendingCallType === 'group')) {
-        const msg = `📴 Chamada finalizada`;
-        const key = (window.pendingCallType === 'group') ? buildChatKeyFor(currentChatId, 'group') : buildChatKeyFor(currentChatId, '1v1');
-        sendSystemDmMessage(msg, key);
-      }
-    } catch (e) { }
+            // sair do canal agora
+            if(rtc.client){
+                rtc.client.leave().catch(()=>{});
+                rtc.client = null;
+            }
+        }
 
-    // hard cleanup tracks / agora client
-    try {
-      if (rtc && rtc.localAudioTrack) {
-        try { rtc.localAudioTrack.stop(); } catch(_) {}
-        try { rtc.localAudioTrack.close(); } catch(_) {}
-        rtc.localAudioTrack = null;
-      }
-    } catch(_) {}
+        // estado global
+        window.currentAgoraChannel = null;
+        window.callHasConnected = false;
 
-    try {
-      if (rtc && rtc.client) {
-        try { rtc.client.removeAllListeners(); } catch(_) {}
-        try { await rtc.client.leave(); } catch(_) {}
-        rtc.client = null;
-      }
-    } catch(_) {}
+        // esconder UI
+        let panel = document.getElementById('expanded-call-panel');
+        if(panel) panel.style.display = 'none';
 
-    try { rtc.remoteUsers = {}; } catch(_) {}
+        let floatBtn = document.getElementById('floating-call-btn');
+        if(floatBtn) floatBtn.style.display = 'none';
 
-    // reset state
-    try { window.currentAgoraChannel = null; } catch(_) {}
-    try { window.callHasConnected = false; } catch(_) {}
-    try { window.__callStartLogged = false; } catch(_) {}
-    try { window.pendingCallType = null; } catch(_) {}
-  })().finally(() => {
-    window.__leavingCall = false;
-    window.__leaveCallPromise = null;
-  });
+        // reset status
+        let status = document.getElementById('call-hud-status');
+        if(status) status.innerText = '';
 
-  return window.__leaveCallPromise;
+    }catch(e){
+        console.error("leaveCall error:", e);
+    }
 }
 
 
