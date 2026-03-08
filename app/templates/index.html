@@ -1113,6 +1113,13 @@
 </div>
 
 <div id="app">
+    <!-- 🏰 Elementos decorativos medievais (só aparecem com tema medieval) -->
+    <div id="med-frame-tl" class="med-corner med-corner-tl">✦</div>
+    <div id="med-frame-tr" class="med-corner med-corner-tr">✦</div>
+    <div id="med-frame-bl" class="med-corner med-corner-bl">✦</div>
+    <div id="med-frame-br" class="med-corner med-corner-br">✦</div>
+    <div id="med-torch-l" class="med-torch med-torch-l">🔥</div>
+    <div id="med-torch-r" class="med-torch med-torch-r">🔥</div>
     <div id="sidebar">
         <button id="nav-profile-btn" class="nav-btn" onclick="goView('profile', this)" style="position:relative;">
             <img id="nav-avatar" src="" class="my-avatar-mini" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
@@ -1456,6 +1463,16 @@
             <!-- ══ PAINEL NOTÍCIAS ══ -->
             <div id="panel-news" class="news-panel">
                 <div class="news-header">
+                    <!-- 🐉 Título ornamental medieval (só aparece com tema medieval) -->
+                    <div id="med-title-banner" class="med-title-banner" style="display:none;">
+                        <div class="med-dragon-l">🐉</div>
+                        <div class="med-title-center">
+                            <div class="med-title-ornament">⸻ ⚔ ⸻</div>
+                            <div class="med-title-text">Notícias</div>
+                            <div class="med-title-ornament">⸻ ⚜ ⸻</div>
+                        </div>
+                        <div class="med-dragon-r">🐉</div>
+                    </div>
                     <div class="news-header-top">
                         <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:800; font-size:20px; letter-spacing:2px;">📡 NOTÍCIAS</span>
                         <div style="display:flex; gap:8px; align-items:center;">
@@ -2199,6 +2216,9 @@ document.addEventListener('DOMContentLoaded', () => {
             await new Promise(res => { link.onload=res; link.onerror=res; setTimeout(res,1200); });
             document.documentElement.setAttribute('data-theme', themeId);
         }
+        // Toggle medieval decorative elements
+        const _isM = themeId === 'medieval';
+        document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => { el.style.display = _isM ? '' : 'none'; });
 
         try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
         _updateThemeBtns(themeId);
@@ -2212,6 +2232,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (saved && saved !== 'default' && _THEMES[saved]) {
                 // Aplica sem aguardar (async background)
                 window.applyTheme(saved);
+                if (saved === 'medieval') document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => el.style.display = '');
             }
         } catch(e) {}
     })();
