@@ -420,6 +420,8 @@
         border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap;
         transition:all .18s; flex-shrink:0; }
     .fav-tab.active { color:#66fcf1; border-bottom-color:#66fcf1; }
+    /* VIP panel view layout */
+    #view-history, #view-vip-panel { flex-direction: column; }
     .fav-tab:hover:not(.active) { color:#9ca3af; }
     .fav-panel { min-height:80px; }
     .fav-empty { display:flex; flex-direction:column; align-items:center;
@@ -1218,7 +1220,7 @@
             </div>
         </div>
         
-        <div id="view-history" class="view" style="display:flex;flex-direction:column;">
+        <div id="view-history" class="view">
             <!-- Header + sub-tabs -->
             <div style="background:rgba(0,0,0,0.3);border-bottom:1px solid #222;flex-shrink:0;">
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;">
@@ -1242,7 +1244,7 @@
         </div>
         
         
-        <div id="view-vip-panel" class="view" style="display:flex;flex-direction:column;">
+        <div id="view-vip-panel" class="view">
             <!-- Header -->
             <div style="background:rgba(0,0,0,0.3);border-bottom:1px solid #222;flex-shrink:0;padding:16px 20px 14px;">
                 <span style="color:white;font-family:'Rajdhani';font-weight:800;font-size:22px;letter-spacing:1px;">⭐ VIP</span>
