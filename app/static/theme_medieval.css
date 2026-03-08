@@ -182,3 +182,25 @@
   0%,100% { filter: drop-shadow(0 0 8px rgba(255,140,30,0.8)); transform: translateY(-50%) scale(1); }
   50%     { filter: drop-shadow(0 0 14px rgba(255,100,20,0.9)); transform: translateY(-50%) scale(1.05); }
 }
+
+/* =========================================
+   CORREÇÕES DE FUNDO - TEMA MEDIEVAL
+   ========================================= */
+
+/* Garante a aplicação do fundo na raiz */
+[data-theme="medieval"] body,
+[data-theme="medieval"] #app {
+    background: url('/static/bg-medieval.jpg') center/cover fixed !important;
+}
+
+/* Substitui a cor sólida dos painéis por um tom escuro semi-transparente */
+[data-theme="medieval"] #content-area,
+[data-theme="medieval"] #view-vip-panel > div:last-child,
+[data-theme="medieval"] #view-history > div:last-child,
+[data-theme="medieval"] #view-explore > div:last-child,
+[data-theme="medieval"] #view-mycomms > div:last-child,
+[data-theme="medieval"] .news-panel {
+    background-color: rgba(20, 14, 8, 0.75) !important;
+    background-image: none !important;
+    backdrop-filter: blur(4px) !important;
+}

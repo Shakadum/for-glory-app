@@ -107,3 +107,24 @@
 
 /* Avatares quadrados */
 [data-theme="retro"] img { border-radius: 0 !important; border: 2px solid var(--retro-border) !important; }
+
+/* =========================================
+   CORREÇÕES DE FUNDO - TEMA RETRO
+   ========================================= */
+
+/* Garante a aplicação do fundo na raiz */
+[data-theme="retro"] body,
+[data-theme="retro"] #app {
+    background: url('/static/bg-retro.png') center/cover fixed !important;
+}
+
+/* Remove a cor sólida para revelar o mapa 16-bit atrás */
+[data-theme="retro"] #content-area,
+[data-theme="retro"] #view-vip-panel > div:last-child,
+[data-theme="retro"] #view-history > div:last-child,
+[data-theme="retro"] #view-explore > div:last-child,
+[data-theme="retro"] #view-mycomms > div:last-child,
+[data-theme="retro"] .news-panel {
+    background-color: transparent !important;
+    background-image: none !important;
+}
