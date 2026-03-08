@@ -128,3 +128,61 @@
 [data-theme="medieval"] .news-card-desc, [data-theme="medieval"] .dm-preview {
     color: #a89f91 !important;
 }
+
+/* =========================================
+   FUNDO MEDIEVAL E CHAT PERGAMINHO
+   ========================================= */
+
+/* 1. Fundo do Castelo Online (Garantido de aparecer) */
+[data-theme="medieval"] body,
+[data-theme="medieval"] #app,
+[data-theme="medieval"] .app-shell {
+    background: #000 url('https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?q=80&w=1920') center/cover fixed !important;
+}
+
+/* Deixa as telas levemente transparentes para ver o castelo */
+[data-theme="medieval"] #content-area,
+[data-theme="medieval"] .view,
+[data-theme="medieval"] .news-panel,
+[data-theme="medieval"] #view-profile {
+    background: rgba(20, 14, 8, 0.8) !important;
+    backdrop-filter: blur(4px) !important;
+    background-image: none !important;
+}
+
+/* 2. O CHAT DM EM FORMATO DE PERGAMINHO */
+[data-theme="medieval"] .chat-box-centered {
+    background-color: #e8d5a7 !important; /* Cor base do pergaminho */
+    background-image: url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42 0 0 0 0 0.3 0 0 0 0 0.05 0 0 0 0.15 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+    border: 6px solid #8a6008 !important; /* Borda grossa simulando couro/madeira */
+    border-radius: 4px !important;
+    box-shadow: inset 0 0 50px rgba(100, 60, 10, 0.6), 0 20px 40px rgba(0,0,0,0.9) !important;
+}
+
+/* Cabeçalho do Chat Pergaminho */
+[data-theme="medieval"] .dm-topbar {
+    background: rgba(138, 96, 8, 0.15) !important;
+    border-bottom: 2px solid #a67b1e !important;
+    backdrop-filter: none !important;
+}
+[data-theme="medieval"] .dm-topbar-name { color: #2e1e0d !important; font-family: 'Cinzel', serif !important; font-weight: 900 !important; font-size: 18px !important; }
+[data-theme="medieval"] .dm-topbar-sub { color: #5c3a21 !important; font-family: 'IM Fell English', serif !important; }
+[data-theme="medieval"] .dm-back-btn { background: transparent !important; color: #5c3a21 !important; border-color: #a67b1e !important; }
+[data-theme="medieval"] .dm-back-btn:hover { background: rgba(138, 96, 8, 0.3) !important; color: #2e1e0d !important; }
+
+/* Área de Digitar do Pergaminho */
+[data-theme="medieval"] .chat-input-area {
+    background: rgba(138, 96, 8, 0.15) !important;
+    border-top: 2px solid #a67b1e !important;
+    backdrop-filter: none !important;
+}
+[data-theme="medieval"] .chat-msg {
+    background: rgba(255,255,255,0.4) !important;
+    color: #1c1309 !important;
+    border: 1px solid #8a6008 !important;
+    font-family: 'IM Fell English', serif !important;
+    font-size: 16px !important;
+}
+[data-theme="medieval"] .chat-msg::placeholder { color: #6b4e33 !important; }
+[data-theme="medieval"] .chat-input-area .icon-btn { color: #5c3a21 !important; border-color: #a67b1e !important; background: transparent !important;}
+[data-theme="medieval"] .chat-input-area .btn-send-msg { background: linear-gradient(135deg, #8a6008, #5c3a21) !important; border: 1px solid #d4af37 !important; color: #e8d5a7 !important; }

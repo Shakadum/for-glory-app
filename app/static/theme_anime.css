@@ -230,3 +230,49 @@
     color: #0f172a !important;
     border: 1px solid #94a3b8 !important;
 }
+
+/* =========================================
+   CORREÇÃO: TELA DE PERFIL E BOTÕES (ANIME)
+   ========================================= */
+
+/* Fundo sólido branco/azulado para os botões "glass" para dar leitura */
+[data-theme="anime"] .glass-btn {
+    background-color: rgba(255, 255, 255, 0.85) !important;
+    color: #0f172a !important;
+    border: 1px solid #94a3b8 !important;
+    font-weight: 800 !important;
+}
+[data-theme="anime"] .glass-btn:hover { background-color: #ffffff !important; }
+
+/* Botão Vermelho (Desconectar) */
+[data-theme="anime"] .danger-btn {
+    background-color: rgba(254, 226, 226, 0.9) !important;
+    color: #dc2626 !important;
+    border-color: #fca5a5 !important;
+}
+
+/* Barra de Pesquisa (Buscar Soldado) */
+[data-theme="anime"] .search-glass {
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid #94a3b8 !important;
+}
+[data-theme="anime"] .search-glass input { color: #0f172a !important; font-weight: bold !important; }
+[data-theme="anime"] .search-glass input::placeholder { color: #64748b !important; }
+
+/* Textos soltos no perfil (Bio, "pontos de glória", etc) */
+[data-theme="anime"] #view-profile p,
+[data-theme="anime"] #view-profile span,
+[data-theme="anime"] #p-bio,
+[data-theme="anime"] #glory-header span,
+[data-theme="anime"] #glory-header div {
+    color: #1e293b !important;
+}
+
+/* Os botões de Troféu no perfil e Ranking */
+[data-theme="anime"] #p-medals-box > div,
+[data-theme="anime"] #pub-medals-box > div,
+[data-theme="anime"] .rank-badge {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+}
