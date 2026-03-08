@@ -44,9 +44,10 @@
    APP SHELL — PEDRA ESCURA LIMPA
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] #app, [data-theme="medieval"] .app-shell, [data-theme="medieval"] body {
-  background: var(--stone) radial-gradient(circle at 50% 0%, var(--stone-md) 0%, var(--stone) 80%) !important;
+  background: var(--stone) url('/static/bg-medieval.jpg') center/cover fixed !important;
   color: var(--parch-lt) !important;
 }
+
 
 /* ══════════════════════════════════════════════════
    SIDEBAR & CABEÇALHOS GERAIS

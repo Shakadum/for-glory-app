@@ -93,3 +93,33 @@
 
 /* Modal Background */
 [data-theme="anime"] .modal-box { background: rgba(255,255,255,0.85) !important; backdrop-filter: blur(24px) !important; border: 1px solid white !important; }
+/* ============================================================
+   AJUSTE DE LEGIBILIDADE — TEMA ANIME
+   Adicione isto ao final do arquivo theme_anime.css
+   ============================================================ */
+
+/* Garante fundo sólido e texto escuro nos cards de notícias */
+[data-theme="anime"] .news-card {
+    background-color: rgba(255, 255, 255, 0.95) !important; /* Quase branco sólido */
+    border: 1px solid #e2e8f0 !important;
+}
+[data-theme="anime"] .news-card-title {
+    color: #0f172a !important; /* Azul muito escuro */
+}
+[data-theme="anime"] .news-card-desc {
+    color: #334155 !important; /* Cinza escuro */
+}
+
+/* Ajuste nos balões de chat (DMs e Inbox) */
+[data-theme="anime"] .msg-bubble {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Ajuste na área VIP/Portal da Transparência */
+[data-theme="anime"] .vup-card, 
+[data-theme="anime"] .transparency-card {
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    color: #1e293b !important;
+}

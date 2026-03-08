@@ -16,11 +16,11 @@
 
 /* Fundo Global */
 [data-theme="retro"] body, [data-theme="retro"] #app {
-    background: var(--retro-bg) url('/caminho/para/fundo-pixel-mapa.png') center/cover !important;
+    background: var(--retro-bg) url('/static/bg-retro.png') center/cover fixed !important;
     color: var(--retro-text) !important;
     font-family: 'Press Start 2P', monospace !important;
-    font-size: 10px !important; /* Fontes pixel precisam ser menores */
-    image-rendering: pixelated !important; /* Deixa imagens pontiagudas */
+    font-size: 10px !important; 
+    image-rendering: pixelated !important; 
 }
 
 /* Tipografia e Títulos */
