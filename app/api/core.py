@@ -311,6 +311,16 @@ def ensure_chat_group_schema():
 @app.on_event("startup")
 async def _startup():
     ensure_chat_group_schema()
+    # Cria tabela MayorCache se não existir (idempotente)
+    try:
+        from app.api.routers.transparency import MayorCache, on_startup as transp_startup
+        from app.db.base import Base
+        Base.metadata.create_all(bind=engine, tables=[MayorCache.__table__], checkfirst=True)
+        import asyncio
+        asyncio.create_task(transp_startup())
+    except Exception as _e:
+        import logging
+        logging.getLogger("ForGlory").warning(f"MayorCache/transparency startup ignorado: {_e}")
     await init_redis()
 
 @app.on_event("shutdown")
