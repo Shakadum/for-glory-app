@@ -128,3 +128,22 @@
     background-color: transparent !important;
     background-image: none !important;
 }
+
+/* =========================================
+   FORÇAR TRANSPARÊNCIA PARA O FUNDO RETRO
+   ========================================= */
+[data-theme="retro"] #content-area,
+[data-theme="retro"] .view,
+[data-theme="retro"] .news-panel,
+[data-theme="retro"] #view-history > div:last-child,
+[data-theme="retro"] #view-vip-panel > div:last-child {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Painéis VIP com fundo azul clássico e borda branca */
+[data-theme="retro"] .vup-box, 
+[data-theme="retro"] .vip-sheet {
+    background: var(--retro-menu) !important;
+    border: 4px solid var(--retro-border) !important;
+}

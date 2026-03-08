@@ -158,3 +158,30 @@
     background: rgba(255, 255, 255, 0.7) !important;
     border-color: #7dd3fc !important;
 }
+
+/* =========================================
+   CORREÇÃO DE LEGIBILIDADE VIP E TEXTOS
+   ========================================= */
+[data-theme="anime"] .vup-plan-name,
+[data-theme="anime"] .vup-price-val,
+[data-theme="anime"] .vup-benefit-name,
+[data-theme="anime"] .vup-benefit-desc,
+[data-theme="anime"] .vup-plan-sub,
+[data-theme="anime"] .vip-benefit-name,
+[data-theme="anime"] .vip-benefit-desc,
+[data-theme="anime"] .vip-pcard-name,
+[data-theme="anime"] .vip-pcard-price,
+[data-theme="anime"] .vup-title,
+[data-theme="anime"] .vip-hdr-title,
+[data-theme="anime"] [style*="color:white"],
+[data-theme="anime"] [style*="color:#e5e7eb"],
+[data-theme="anime"] [style*="color:#f3f4f6"] {
+    color: #0f172a !important;
+    text-shadow: none !important;
+}
+
+[data-theme="anime"] .vup-plan, 
+[data-theme="anime"] .vip-pcard {
+    background-color: rgba(255,255,255,0.85) !important;
+    border-color: #cbd5e1 !important;
+}

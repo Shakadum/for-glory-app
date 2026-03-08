@@ -1,206 +1,158 @@
-/* ═══════════════════════════════════════════════════════════════════
-   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL v4 (REFINADO)
-   Pergaminhos Limpos · Pedra · Ferro · Cera · Brasões
-   Ativar: document.documentElement.setAttribute('data-theme','medieval')
-═══════════════════════════════════════════════════════════════════ */
+/* ============================================================
+   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL (REMASTERIZADO)
+   Elegante, sombrio, focado na imagem de fundo e sem poluição.
+   ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&family=IM+Fell+English:ital@0;1&display=swap');
 
-/* ══════════════════════════════════════════════════
-   VARIÁVEIS GLOBAIS
-══════════════════════════════════════════════════ */
 [data-theme="medieval"] {
-  --parch:       #e8d5a7;   /* pergaminho base mais claro e limpo */
-  --parch-lt:    #f4e6c4;   /* pergaminho claro */
-  --parch-dk:    #d1b880;   /* pergaminho escuro */
-  --parch-edge:  #a68b4e;   /* borda pergaminho */
-  --stone:       #17130f;   /* pedra base escura */
-  --stone-md:    #2e241c;   /* pedra média */
-  --stone-lt:    #4a3c2e;   /* pedra clara */
-  --stone-top:   #5e4f3e;   /* pedra mais clara */
-  --gold:        #c8960a;
-  --gold-lt:     #e8c030;
-  --gold-pale:   #f0d878;
-  --gold-glow:   rgba(200,150,10,0.35);
-  --ink:         #1c1309;   /* Tinta mais escura para melhor leitura */
-  --ink-md:      #3d2b17;
-  --ink-lt:      #6b4e33;
-  --seal-red:    #8b1a1a;
-  --seal-wax:    #6b1010;
-  --iron:        #3a3530;
-  --shadow-deep: rgba(0,0,0,0.7);
+    --gold: #d4af37;
+    --gold-dark: #aa8529;
+    --gold-glow: rgba(212, 175, 55, 0.3);
+    --parchment: #e8d5a7;
+    --stone: #1a1510;
+    --blood: #8b1a1a;
+    --glass-dark: rgba(20, 14, 8, 0.85); /* Vidro escuro para ver a imagem */
 }
 
-/* ══════════════════════════════════════════════════
-   CURSOR MEDIEVAL & SCROLLBAR
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] button, [data-theme="medieval"] a, [data-theme="medieval"] [onclick], [data-theme="medieval"] .nav-btn { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M4 0 L4 16 L8 12 L12 20 L14 19 L10 11 L16 11Z' fill='%23c8960a' stroke='%23150e04' stroke-width='1'/%3E%3C/svg%3E") 4 0, pointer !important; }
-[data-theme="medieval"] * { scrollbar-color: rgba(200,150,10,0.5) rgba(0,0,0,0.4) !important; }
-[data-theme="medieval"] ::-webkit-scrollbar { width: 8px; }
-[data-theme="medieval"] ::-webkit-scrollbar-track { background: var(--stone); border-left: 1px solid rgba(200,150,10,0.2); }
-[data-theme="medieval"] ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--gold-lt), var(--gold)); border: 1px solid var(--stone); border-radius: 4px; }
-
-/* ══════════════════════════════════════════════════
-   APP SHELL — PEDRA ESCURA LIMPA
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] #app, [data-theme="medieval"] .app-shell, [data-theme="medieval"] body {
-  background: var(--stone) url('/static/bg-medieval.jpg') center/cover fixed !important;
-  color: var(--parch-lt) !important;
+/* 1. REMOVER POLUIÇÃO ANTIGA (Dragões, Tochas, Cantoneiras) */
+[data-theme="medieval"] .med-corner,
+[data-theme="medieval"] .med-torch,
+[data-theme="medieval"] .med-dragon-l,
+[data-theme="medieval"] .med-dragon-r,
+[data-theme="medieval"] .med-title-banner,
+[data-theme="medieval"] .news-cards-container::before,
+[data-theme="medieval"] .news-cards-container::after {
+    display: none !important;
 }
 
-
-/* ══════════════════════════════════════════════════
-   SIDEBAR & CABEÇALHOS GERAIS
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] #sidebar {
-  background: linear-gradient(180deg, #120e0a 0%, #1c150f 40%, #120e0a 100%) !important;
-  border-right: 2px solid var(--gold) !important;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.9) !important;
-}
-[data-theme="medieval"] .nav-btn { color: var(--stone-top) !important; transition: all .2s ease !important; }
-[data-theme="medieval"] .nav-btn:hover, [data-theme="medieval"] .nav-btn.active { color: var(--gold-lt) !important; filter: drop-shadow(0 0 8px var(--gold-glow)) !important; }
-
-[data-theme="medieval"] .news-header, [data-theme="medieval"] #view-inbox > div:first-child, [data-theme="medieval"] #view-mycomms > div:first-child, [data-theme="medieval"] #view-explore > div:first-child, [data-theme="medieval"] #view-history > div:first-child, [data-theme="medieval"] #view-vip-panel > div:first-child {
-  background: linear-gradient(180deg, #140f0a 0%, #201810 100%) !important;
-  border-bottom: 2px solid var(--gold) !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important;
-}
-[data-theme="medieval"] .news-header-top span, [data-theme="medieval"] #view-inbox > div:first-child div[data-i18n] {
-  font-family: 'Cinzel Decorative', serif !important; color: var(--gold-lt) !important;
-  text-shadow: 0 0 15px var(--gold-glow), 2px 2px 0 rgba(0,0,0,0.9) !important; font-size: 16px !important;
+/* 2. FUNDO GERAL (A Imagem vai aqui) */
+[data-theme="medieval"] body,
+[data-theme="medieval"] #app,
+[data-theme="medieval"] .app-shell {
+    background: #000 url('/static/bg-medieval.jpg') center/cover fixed !important;
+    color: var(--parchment) !important;
 }
 
-/* ══════════════════════════════════════════════════
-   CONTENT AREA & FUNDOS DE PERGAMINHO LIMPO
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] #content-area, [data-theme="medieval"] .news-cards-container, [data-theme="medieval"] .news-panel, [data-theme="medieval"] #panel-transparency, [data-theme="medieval"] #view-inbox, [data-theme="medieval"] #view-mycomms, [data-theme="medieval"] #view-explore, [data-theme="medieval"] #view-profile, [data-theme="medieval"] #view-dm {
-  background-color: var(--parch) !important;
-  /* Gradiente suave a simular descoloração do papel nos cantos, sem grão */
-  background-image: 
-    radial-gradient(ellipse at top left, var(--parch-lt) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, var(--parch-dk) 0%, transparent 60%) !important;
-  border-left: 2px solid var(--gold) !important;
+/* 3. PAINÉIS PRINCIPAIS (Translúcidos para ver a imagem de fundo) */
+[data-theme="medieval"] #content-area,
+[data-theme="medieval"] .view,
+[data-theme="medieval"] .news-panel,
+[data-theme="medieval"] #view-history > div:last-child,
+[data-theme="medieval"] #view-vip-panel > div:last-child,
+[data-theme="medieval"] #view-inbox,
+[data-theme="medieval"] #view-mycomms,
+[data-theme="medieval"] #view-explore {
+    background: var(--glass-dark) !important;
+    background-image: none !important;
+    backdrop-filter: blur(6px) !important; /* Embaça levemente a imagem atrás */
+    border-left: 2px solid var(--gold-dark) !important;
 }
 
-/* ══════════════════════════════════════════════════
-   CARDS DE NOTÍCIAS (SEM RUÍDO)
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .news-card-featured {
-  border: 2px solid var(--gold) !important; border-radius: 4px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important; background: var(--stone) !important;
+/* Headers / Topos de Tela */
+[data-theme="medieval"] .news-header,
+[data-theme="medieval"] .dm-topbar,
+[data-theme="medieval"] .comm-topbar,
+[data-theme="medieval"] #view-history > div:first-child,
+[data-theme="medieval"] #view-vip-panel > div:first-child {
+    background: linear-gradient(180deg, rgba(15,10,5,0.95), rgba(20,15,10,0.8)) !important;
+    border-bottom: 2px solid var(--gold-dark) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.8) !important;
 }
-[data-theme="medieval"] .news-card {
-  background: var(--parch-lt) !important; border: 1px solid var(--parch-edge) !important;
-  border-radius: 4px !important; box-shadow: 2px 4px 12px rgba(0,0,0,0.15) !important;
-  transition: transform 0.2s, box-shadow 0.2s !important;
-}
-[data-theme="medieval"] .news-card:hover {
-  background: #fdf5e0 !important; border-color: var(--gold) !important;
-  transform: translateY(-3px) !important; box-shadow: 0 10px 20px rgba(0,0,0,0.2) !important;
-}
-[data-theme="medieval"] .news-card-title { font-family: 'Cinzel', serif !important; color: var(--ink) !important; font-weight: bold !important; font-size: 13px !important; }
-[data-theme="medieval"] .news-card-desc, [data-theme="medieval"] .news-card-meta { font-family: 'IM Fell English', serif !important; color: var(--ink-md) !important; }
 
-/* ══════════════════════════════════════════════════
-   INBOX & DM (MENSAGENS)
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .conv-item, [data-theme="medieval"] #inbox-list > div, [data-theme="medieval"] #inbox-list > a {
-  background: var(--parch-lt) !important; border: 1px solid var(--parch-edge) !important;
-  border-radius: 4px !important; position: relative !important;
-  box-shadow: 2px 2px 8px rgba(0,0,0,0.1) !important;
+/* 4. TIPOGRAFIA ÉPICA */
+[data-theme="medieval"] h1, [data-theme="medieval"] h2, [data-theme="medieval"] h3,
+[data-theme="medieval"] .news-header-top span, 
+[data-theme="medieval"] .vup-title, [data-theme="medieval"] .vip-hdr-title {
+    font-family: 'Cinzel Decorative', serif !important;
+    color: var(--gold) !important;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.9) !important;
+    letter-spacing: 1px !important;
 }
-[data-theme="medieval"] #inbox-list > div::before, [data-theme="medieval"] #inbox-list > a::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
-  background: linear-gradient(180deg, var(--seal-red), var(--seal-wax)); border-radius: 4px 0 0 4px;
+
+[data-theme="medieval"] p, [data-theme="medieval"] span, [data-theme="medieval"] div {
+    font-family: 'IM Fell English', serif !important;
 }
-[data-theme="medieval"] #inbox-list .dm-name { font-family: 'Cinzel', serif !important; color: var(--ink) !important; font-weight: bold !important; }
-[data-theme="medieval"] #inbox-list .dm-preview { font-family: 'IM Fell English', serif !important; font-style: italic !important; color: var(--ink-md) !important; }
+
+[data-theme="medieval"] .nav-btn { color: #887250 !important; }
+[data-theme="medieval"] .nav-btn:hover, [data-theme="medieval"] .nav-btn.active {
+    color: var(--gold) !important;
+    filter: drop-shadow(0 0 8px var(--gold-glow)) !important;
+}
+
+/* 5. TELA DE LOGIN & MODAIS (Estilo Livro de Feitiços / Pedra) */
+[data-theme="medieval"] .modal-box,
+[data-theme="medieval"] .vup-box,
+[data-theme="medieval"] .vip-sheet {
+    background: linear-gradient(135deg, #1f1710, #0f0a05) !important;
+    border: 2px solid var(--gold-dark) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(212,175,55,0.1) !important;
+    color: var(--parchment) !important;
+}
+
+[data-theme="medieval"] .inp, 
+[data-theme="medieval"] .gs-input, 
+[data-theme="medieval"] .chat-msg {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border: 1px solid var(--gold-dark) !important;
+    color: var(--parchment) !important;
+    border-radius: 4px !important;
+    font-family: 'IM Fell English', serif !important;
+    font-size: 16px !important;
+}
+[data-theme="medieval"] .inp:focus { border-color: var(--gold) !important; box-shadow: 0 0 10px var(--gold-glow) !important; }
+
+[data-theme="medieval"] .btn-main {
+    background: linear-gradient(135deg, #6b4c1a, #3d2b0e) !important;
+    border: 1px solid var(--gold) !important;
+    color: var(--parchment) !important;
+    font-family: 'Cinzel', serif !important;
+    font-weight: bold !important;
+    border-radius: 4px !important;
+    letter-spacing: 2px !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;
+}
+[data-theme="medieval"] .btn-main:hover {
+    background: linear-gradient(135deg, #8c6525, #5a4015) !important;
+    box-shadow: 0 0 15px var(--gold-glow) !important;
+}
+
+/* 6. CARDS (Notícias, Inbox, Guildas) */
+[data-theme="medieval"] .news-card, 
+[data-theme="medieval"] .comm-card, 
+[data-theme="medieval"] .fav-item,
+[data-theme="medieval"] #inbox-list > div {
+    background: linear-gradient(135deg, #2a2015, #150f0a) !important;
+    border: 1px solid var(--gold-dark) !important;
+    border-radius: 4px !important;
+    box-shadow: 2px 4px 10px rgba(0,0,0,0.6) !important;
+}
+[data-theme="medieval"] .news-card:hover, 
+[data-theme="medieval"] #inbox-list > div:hover {
+    border-color: var(--gold) !important;
+    transform: translateY(-2px) !important;
+}
+[data-theme="medieval"] .news-card-title, 
+[data-theme="medieval"] .dm-name {
+    color: var(--gold) !important;
+    font-family: 'Cinzel', serif !important;
+    font-weight: bold !important;
+}
+[data-theme="medieval"] .news-card-desc, 
+[data-theme="medieval"] .dm-preview {
+    color: #a89f91 !important;
+}
 
 /* Balões de Chat */
-[data-theme="medieval"] .msg-out, [data-theme="medieval"] .bubble-out, [data-theme="medieval"] .dm-msg.sent {
-  background: #d9b873 !important; border: 1px solid var(--parch-edge) !important; color: var(--ink) !important;
-  font-family: 'IM Fell English', serif !important; font-size: 14px !important;
-  border-radius: 12px 12px 2px 12px !important; box-shadow: 2px 2px 6px rgba(0,0,0,0.1) !important;
+[data-theme="medieval"] .msg-bubble { 
+    background: #2a2015 !important; 
+    border: 1px solid #4a3825 !important; 
+    color: var(--parchment) !important; 
+    border-radius: 12px 12px 12px 2px !important;
 }
-[data-theme="medieval"] .msg-in, [data-theme="medieval"] .bubble-in, [data-theme="medieval"] .dm-msg.received {
-  background: var(--parch-lt) !important; border: 1px solid var(--parch-edge) !important; color: var(--ink) !important;
-  font-family: 'IM Fell English', serif !important; font-size: 14px !important;
-  border-radius: 12px 12px 12px 2px !important; box-shadow: 2px 2px 6px rgba(0,0,0,0.1) !important;
-}
-[data-theme="medieval"] .chat-input-area { background: var(--stone-md) !important; border-top: 2px solid var(--gold) !important; }
-[data-theme="medieval"] .chat-msg { background: var(--stone) !important; border: 1px solid var(--parch-edge) !important; color: var(--parch-lt) !important; font-family: 'IM Fell English', serif !important; }
-[data-theme="medieval"] .chat-msg:focus { border-color: var(--gold) !important; outline: none !important; }
-
-/* ══════════════════════════════════════════════════
-   BOTÕES E INPUTS GERAIS
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .btn-main {
-  background: linear-gradient(135deg, #a67b1e, #855f12) !important; border: 1px solid var(--gold-lt) !important;
-  color: #fff !important; font-family: 'Cinzel', serif !important; font-weight: bold !important;
-  border-radius: 4px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
-}
-[data-theme="medieval"] .btn-main:hover { background: linear-gradient(135deg, #c49429, #a3761a) !important; transform: translateY(-1px) !important; }
-
-[data-theme="medieval"] .gs-input, [data-theme="medieval"] input[type="text"], [data-theme="medieval"] textarea {
-  background: rgba(255,255,255,0.4) !important; border: 1px solid var(--parch-edge) !important;
-  color: var(--ink) !important; font-family: 'IM Fell English', serif !important; border-radius: 4px !important;
-}
-[data-theme="medieval"] .gs-input:focus { background: rgba(255,255,255,0.7) !important; border-color: var(--gold) !important; box-shadow: 0 0 8px rgba(200,150,10,0.3) !important; outline: none !important; }
-
-/* ══════════════════════════════════════════════════
-   TIPOGRAFIA GLOBAL NO CONTEÚDO
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] #content-area h1, [data-theme="medieval"] #content-area h2, [data-theme="medieval"] #content-area h3 {
-  font-family: 'Cinzel Decorative', serif !important; color: var(--ink) !important; font-weight: bold !important;
-}
-[data-theme="medieval"] #content-area p, [data-theme="medieval"] #content-area span:not(.nav-btn):not(.btn-main):not(.badge) {
-  font-family: 'IM Fell English', serif !important; color: var(--ink-md) !important; font-size: 15px !important;
-}
-
-/* ══════════════════════════════════════════════════
-   ORNAMENTOS E DECORAÇÕES MANTIDOS (SEM O SVG PESADO)
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .news-cards-container::before {
-  content: '🐉'; position: absolute; bottom: 20px; right: 20px; font-size: 120px; opacity: 0.04; pointer-events: none;
-  filter: sepia(1); transform: scaleX(-1) rotate(-10deg);
-}
-[data-theme="medieval"] .news-cards-container::after {
-  content: '⚜'; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); font-size: 24px; color: rgba(166,139,78,0.2); pointer-events: none; letter-spacing: 30px;
-}
-[data-theme="medieval"] .med-title-text {
-  font-family: 'Cinzel Decorative', serif !important; font-size: 28px !important; font-weight: 900 !important;
-  color: var(--gold-lt) !important; text-shadow: 2px 2px 4px rgba(0,0,0,0.9), 0 0 15px var(--gold-glow) !important;
-}
-[data-theme="medieval"] .med-torch {
-  position: fixed; z-index: 9997; pointer-events: none; font-size: 24px; top: 50%; transform: translateY(-50%);
-  filter: drop-shadow(0 0 8px rgba(255,140,30,0.7)); animation: med-flicker 2.5s ease-in-out infinite !important;
-}
-[data-theme="medieval"] .med-torch-l { left: 72px; }
-[data-theme="medieval"] .med-torch-r { right: 10px; }
-
-@keyframes med-flicker {
-  0%,100% { filter: drop-shadow(0 0 8px rgba(255,140,30,0.8)); transform: translateY(-50%) scale(1); }
-  50%     { filter: drop-shadow(0 0 14px rgba(255,100,20,0.9)); transform: translateY(-50%) scale(1.05); }
-}
-
-/* =========================================
-   CORREÇÕES DE FUNDO - TEMA MEDIEVAL
-   ========================================= */
-
-/* Garante a aplicação do fundo na raiz */
-[data-theme="medieval"] body,
-[data-theme="medieval"] #app {
-    background: url('/static/bg-medieval.jpg') center/cover fixed !important;
-}
-
-/* Substitui a cor sólida dos painéis por um tom escuro semi-transparente */
-[data-theme="medieval"] #content-area,
-[data-theme="medieval"] #view-vip-panel > div:last-child,
-[data-theme="medieval"] #view-history > div:last-child,
-[data-theme="medieval"] #view-explore > div:last-child,
-[data-theme="medieval"] #view-mycomms > div:last-child,
-[data-theme="medieval"] .news-panel {
-    background-color: rgba(20, 14, 8, 0.75) !important;
-    background-image: none !important;
-    backdrop-filter: blur(4px) !important;
+[data-theme="medieval"] .msg-row.mine .msg-bubble { 
+    background: #3d2b0e !important; 
+    border-color: var(--gold-dark) !important; 
+    border-radius: 12px 12px 2px 12px !important;
 }
