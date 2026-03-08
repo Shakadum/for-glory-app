@@ -1,6 +1,5 @@
 /* ============================================================
-   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL (REMASTERIZADO)
-   Elegante, Sombrio, Castelo de Fundo, Sem Poluição Visual.
+   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL (FINAL)
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IM+Fell+English:ital@0;1&display=swap');
@@ -10,80 +9,44 @@
     --gold-dark: #8a6c1c;
     --gold-glow: rgba(212, 175, 55, 0.3);
     --parchment: #e8d5a7;
-    --glass-dark: rgba(15, 10, 5, 0.85); 
+    --glass-dark: rgba(15, 10, 5, 0.85);
 }
 
-/* 1. ESCONDER A POLUIÇÃO ANTIGA (Adeus Dragões e Tochas) */
-[data-theme="medieval"] .med-corner,
-[data-theme="medieval"] .med-torch,
-[data-theme="medieval"] .med-title-banner,
-[data-theme="medieval"] .news-cards-container::before,
-[data-theme="medieval"] .news-cards-container::after,
-[data-theme="medieval"] #app::before {
+/* 1. APAGA AS DECORAÇÕES ANTIGAS (DRAGÕES, TOCHAS, ETC) */
+[data-theme="medieval"] .med-corner, [data-theme="medieval"] .med-torch,
+[data-theme="medieval"] .med-title-banner, [data-theme="medieval"] #app::before,
+[data-theme="medieval"] .news-cards-container::before, [data-theme="medieval"] .news-cards-container::after {
     display: none !important;
 }
 
-/* 2. FUNDO GERAL ONLINE GARANTIDO (Castelo Sombrio) */
-[data-theme="medieval"] body,
-[data-theme="medieval"] #app {
+/* 2. FUNDO GERAL COM A IMAGEM DO CASTELO ONLINE */
+[data-theme="medieval"] body, [data-theme="medieval"] #app, [data-theme="medieval"] .app-shell {
     background: #000 url('https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?q=80&w=1920') center/cover fixed !important;
     color: var(--parchment) !important;
 }
 
-/* 3. PAINÉIS PRINCIPAIS (Vidro escuro para ver o castelo atrás) */
-[data-theme="medieval"] #content-area,
-[data-theme="medieval"] .view,
-[data-theme="medieval"] .news-panel,
-[data-theme="medieval"] #view-history > div:last-child,
-[data-theme="medieval"] #view-vip-panel > div:last-child,
-[data-theme="medieval"] #view-inbox,
-[data-theme="medieval"] #view-mycomms,
-[data-theme="medieval"] #view-explore {
+/* 3. TRANSFORMA AS TELAS EM VIDRO ESCURO PARA VER O CASTELO */
+[data-theme="medieval"] #content-area, [data-theme="medieval"] .view, [data-theme="medieval"] .news-panel,
+[data-theme="medieval"] .news-cards-container, [data-theme="medieval"] #view-history > div:last-child,
+[data-theme="medieval"] #view-vip-panel > div:last-child, [data-theme="medieval"] #view-inbox,
+[data-theme="medieval"] #view-mycomms, [data-theme="medieval"] #view-explore,
+[data-theme="medieval"] #view-profile, [data-theme="medieval"] #view-public-profile,
+[data-theme="medieval"] #panel-transparency, [data-theme="medieval"] #panel-quiz {
     background: var(--glass-dark) !important;
-    background-image: none !important;
-    backdrop-filter: blur(5px) !important; 
-    border-left: 2px solid var(--gold-dark) !important;
+    background-image: none !important; /* ISSO AQUI DESTRÓI O FUNDO AMARELO ANTIGO */
+    backdrop-filter: blur(4px) !important;
 }
 
-/* Headers e Topos */
-[data-theme="medieval"] .news-header,
-[data-theme="medieval"] .dm-topbar,
-[data-theme="medieval"] .comm-topbar,
-[data-theme="medieval"] #sidebar,
-[data-theme="medieval"] #view-history > div:first-child,
-[data-theme="medieval"] #view-vip-panel > div:first-child {
+/* Headers e Menus */
+[data-theme="medieval"] .news-header, [data-theme="medieval"] #sidebar,
+[data-theme="medieval"] #view-history > div:first-child, [data-theme="medieval"] #view-vip-panel > div:first-child {
     background: linear-gradient(180deg, rgba(10,5,0,0.95), rgba(15,10,5,0.9)) !important;
     border-bottom: 2px solid var(--gold-dark) !important;
 }
 
-/* 4. TELA DE LOGIN & MODAIS (Placa de Pedra e Ouro) */
-[data-theme="medieval"] .modal-box,
-[data-theme="medieval"] .vup-box,
-[data-theme="medieval"] .vip-sheet {
-    background: linear-gradient(135deg, #1f1710, #0a0704) !important;
-    border: 2px solid var(--gold-dark) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 0 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(212,175,55,0.1) !important;
-    color: var(--parchment) !important;
-}
-
-/* Inputs da tela de login e chats */
-[data-theme="medieval"] .inp, 
-[data-theme="medieval"] .gs-input, 
-[data-theme="medieval"] .chat-msg {
-    background: rgba(0, 0, 0, 0.6) !important;
-    border: 1px solid var(--gold-dark) !important;
-    color: var(--parchment) !important;
-    border-radius: 4px !important;
-    font-family: 'IM Fell English', serif !important;
-    font-size: 16px !important;
-}
-[data-theme="medieval"] .inp:focus { border-color: var(--gold) !important; }
-
-/* 5. TIPOGRAFIA ÉPICA */
+/* 4. TIPOGRAFIA ÉPICA */
 [data-theme="medieval"] h1, [data-theme="medieval"] h2, [data-theme="medieval"] h3,
-[data-theme="medieval"] .news-header-top span, 
-[data-theme="medieval"] .vup-title, [data-theme="medieval"] .vip-hdr-title {
+[data-theme="medieval"] .news-header-top span, [data-theme="medieval"] .vup-title, [data-theme="medieval"] .vip-hdr-title {
     font-family: 'Cinzel', serif !important;
     color: var(--gold) !important;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.9) !important;
@@ -94,7 +57,22 @@
 [data-theme="medieval"] .nav-btn { color: #887250 !important; }
 [data-theme="medieval"] .nav-btn.active { color: var(--gold) !important; }
 
-/* 6. BOTÕES GERAIS */
+/* 5. TELA DE LOGIN & MODAIS (Pedra e Ouro) */
+[data-theme="medieval"] .modal-box, [data-theme="medieval"] .vup-box, [data-theme="medieval"] .vip-sheet {
+    background: linear-gradient(135deg, #1f1710, #0a0704) !important;
+    border: 2px solid var(--gold-dark) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(212,175,55,0.1) !important;
+    color: var(--parchment) !important;
+}
+[data-theme="medieval"] .inp, [data-theme="medieval"] .gs-input {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border: 1px solid var(--gold-dark) !important;
+    color: var(--parchment) !important;
+    border-radius: 4px !important;
+}
+[data-theme="medieval"] .inp:focus { border-color: var(--gold) !important; }
+
 [data-theme="medieval"] .btn-main {
     background: linear-gradient(135deg, #6b4c1a, #3d2b0e) !important;
     border: 1px solid var(--gold) !important;
@@ -102,87 +80,43 @@
     font-family: 'Cinzel', serif !important;
     font-weight: bold !important;
     border-radius: 4px !important;
-    letter-spacing: 2px !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;
-}
-[data-theme="medieval"] .btn-main:hover {
-    background: linear-gradient(135deg, #8c6525, #5a4015) !important;
-    box-shadow: 0 0 15px var(--gold-glow) !important;
 }
 
-/* 7. CARDS (Notícias e Inbox) */
-[data-theme="medieval"] .news-card, 
-[data-theme="medieval"] .comm-card, 
-[data-theme="medieval"] .fav-item,
-[data-theme="medieval"] #inbox-list > div {
+/* 6. CARDS (Notícias e Inbox) */
+[data-theme="medieval"] .news-card, [data-theme="medieval"] .comm-card, 
+[data-theme="medieval"] .fav-item, [data-theme="medieval"] #inbox-list > div {
     background: linear-gradient(135deg, rgba(42,32,21,0.8), rgba(21,15,10,0.9)) !important;
     border: 1px solid var(--gold-dark) !important;
     border-radius: 4px !important;
-    backdrop-filter: blur(4px) !important;
 }
 [data-theme="medieval"] .news-card-title, [data-theme="medieval"] .dm-name {
     color: var(--gold) !important;
     font-family: 'Cinzel', serif !important;
-    font-weight: bold !important;
-}
-[data-theme="medieval"] .news-card-desc, [data-theme="medieval"] .dm-preview {
-    color: #a89f91 !important;
 }
 
-/* =========================================
-   FUNDO MEDIEVAL E CHAT PERGAMINHO
-   ========================================= */
-
-/* 1. Fundo do Castelo Online (Garantido de aparecer) */
-[data-theme="medieval"] body,
-[data-theme="medieval"] #app,
-[data-theme="medieval"] .app-shell {
-    background: #000 url('https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?q=80&w=1920') center/cover fixed !important;
-}
-
-/* Deixa as telas levemente transparentes para ver o castelo */
-[data-theme="medieval"] #content-area,
-[data-theme="medieval"] .view,
-[data-theme="medieval"] .news-panel,
-[data-theme="medieval"] #view-profile {
-    background: rgba(20, 14, 8, 0.8) !important;
-    backdrop-filter: blur(4px) !important;
-    background-image: none !important;
-}
-
-/* 2. O CHAT DM EM FORMATO DE PERGAMINHO */
+/* 7. O CHAT DM EM FORMATO DE PERGAMINHO */
 [data-theme="medieval"] .chat-box-centered {
-    background-color: #e8d5a7 !important; /* Cor base do pergaminho */
+    background-color: #e8d5a7 !important;
     background-image: url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42 0 0 0 0 0.3 0 0 0 0 0.05 0 0 0 0.15 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23p)'/%3E%3C/svg%3E") !important;
-    border: 6px solid #8a6008 !important; /* Borda grossa simulando couro/madeira */
+    border: 6px solid #8a6008 !important; 
     border-radius: 4px !important;
     box-shadow: inset 0 0 50px rgba(100, 60, 10, 0.6), 0 20px 40px rgba(0,0,0,0.9) !important;
 }
-
-/* Cabeçalho do Chat Pergaminho */
 [data-theme="medieval"] .dm-topbar {
     background: rgba(138, 96, 8, 0.15) !important;
     border-bottom: 2px solid #a67b1e !important;
-    backdrop-filter: none !important;
 }
-[data-theme="medieval"] .dm-topbar-name { color: #2e1e0d !important; font-family: 'Cinzel', serif !important; font-weight: 900 !important; font-size: 18px !important; }
-[data-theme="medieval"] .dm-topbar-sub { color: #5c3a21 !important; font-family: 'IM Fell English', serif !important; }
-[data-theme="medieval"] .dm-back-btn { background: transparent !important; color: #5c3a21 !important; border-color: #a67b1e !important; }
-[data-theme="medieval"] .dm-back-btn:hover { background: rgba(138, 96, 8, 0.3) !important; color: #2e1e0d !important; }
-
-/* Área de Digitar do Pergaminho */
+[data-theme="medieval"] .dm-topbar-name { color: #2e1e0d !important; font-family: 'Cinzel', serif !important; font-weight: 900 !important; }
+[data-theme="medieval"] .dm-topbar-sub { color: #5c3a21 !important; }
 [data-theme="medieval"] .chat-input-area {
     background: rgba(138, 96, 8, 0.15) !important;
     border-top: 2px solid #a67b1e !important;
-    backdrop-filter: none !important;
 }
 [data-theme="medieval"] .chat-msg {
     background: rgba(255,255,255,0.4) !important;
     color: #1c1309 !important;
     border: 1px solid #8a6008 !important;
     font-family: 'IM Fell English', serif !important;
-    font-size: 16px !important;
 }
-[data-theme="medieval"] .chat-msg::placeholder { color: #6b4e33 !important; }
-[data-theme="medieval"] .chat-input-area .icon-btn { color: #5c3a21 !important; border-color: #a67b1e !important; background: transparent !important;}
-[data-theme="medieval"] .chat-input-area .btn-send-msg { background: linear-gradient(135deg, #8a6008, #5c3a21) !important; border: 1px solid #d4af37 !important; color: #e8d5a7 !important; }
+[data-theme="medieval"] .msg-bubble { background: #2a2015 !important; border: 1px solid #4a3825 !important; color: var(--parchment) !important; }
+[data-theme="medieval"] .msg-row.mine .msg-bubble { background: #3d2b0e !important; border-color: var(--gold-dark) !important; }
