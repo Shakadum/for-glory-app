@@ -1,250 +1,267 @@
 /* ═══════════════════════════════════════════════════════════════════
-   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL v2
-   Inspirado em: pergaminhos iluminados, bordas de pedra entalhada,
-   cidades medievais com tochas e estandartes
+   FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL v3  (RADICAL)
+   Pergaminhos · Pedra · Ferro · Cera · Brasões · Tochas
    Ativar: document.documentElement.setAttribute('data-theme','medieval')
 ═══════════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&family=IM+Fell+English:ital@0;1&display=swap');
 
-/* ── Pergaminho SVG inline como data URI ── */
-
+/* ══════════════════════════════════════════════════
+   VARIÁVEIS GLOBAIS
+══════════════════════════════════════════════════ */
 [data-theme="medieval"] {
-  --parch:     #f2e8c9;   /* pergaminho claro */
-  --parch-dk:  #ddd0a0;   /* pergaminho escuro */
-  --parch-ddl: #c8b87a;   /* borda pergaminho */
-  --stone:     #2e2416;   /* pedra escura */
-  --stone-md:  #3d3020;   /* pedra média */
-  --stone-lt:  #5a4530;   /* pedra clara */
-  --gold:      #c8960a;   /* dourado */
-  --gold-lt:   #e8b820;   /* dourado claro */
-  --gold-glow: rgba(200,150,10,0.35);
-  --ink:       #1a0e04;   /* tinta escura */
-  --ink-md:    #3d2810;   /* tinta média */
-  --ink-lt:    #6b4c28;   /* tinta clara */
-  --red-seal:  #8b1a1a;   /* selo vermelho */
-  --border-gold: rgba(200,150,10,0.6);
-  --border-stone: rgba(90,69,48,0.5);
+  --parch:       #d4bc88;   /* pergaminho suavizado */
+  --parch-lt:    #dfc99a;   /* pergaminho claro */
+  --parch-dk:    #b8a06a;   /* pergaminho escuro */
+  --parch-edge:  #9a8250;   /* borda pergaminho */
+  --stone:       #1a1208;   /* pedra muito escura */
+  --stone-md:    #2e2010;   /* pedra média */
+  --stone-lt:    #4a3518;   /* pedra clara */
+  --stone-top:   #5e4828;   /* pedra mais clara */
+  --gold:        #c8960a;
+  --gold-lt:     #e8c030;
+  --gold-pale:   #f0d878;
+  --gold-glow:   rgba(200,150,10,0.35);
+  --ink:         #150e04;
+  --ink-md:      #3a2510;
+  --ink-lt:      #6b4828;
+  --seal-red:    #8b1a1a;
+  --seal-wax:    #6b1010;
+  --iron:        #3a3530;
+  --b-gold:      rgba(200,150,10,0.55);
+  --b-stone:     rgba(90,72,40,0.45);
+  --shadow-deep: rgba(0,0,0,0.7);
 }
 
 /* ══════════════════════════════════════════════════
-   BACKGROUND GERAL — PEDRA COM TEXTURA
+   CURSOR MEDIEVAL
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] button,
+[data-theme="medieval"] a,
+[data-theme="medieval"] [onclick],
+[data-theme="medieval"] .nav-btn { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M4 0 L4 16 L8 12 L12 20 L14 19 L10 11 L16 11Z' fill='%23c8960a' stroke='%23150e04' stroke-width='1'/%3E%3C/svg%3E") 4 0, pointer !important; }
+
+/* ══════════════════════════════════════════════════
+   SCROLLBAR
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] * { scrollbar-color: rgba(200,150,10,0.4) rgba(0,0,0,0.2) !important; }
+[data-theme="medieval"] ::-webkit-scrollbar { width: 6px; }
+[data-theme="medieval"] ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+[data-theme="medieval"] ::-webkit-scrollbar-thumb { background: linear-gradient(180deg,var(--gold-lt),var(--gold)); border-radius: 0; border: 1px solid var(--stone); }
+
+/* ══════════════════════════════════════════════════
+   APP SHELL — PEDRA ESCURA DE FUNDO
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] #app,
-[data-theme="medieval"] .app-shell {
-  background-color: #1e1509 !important;
+[data-theme="medieval"] .app-shell,
+[data-theme="medieval"] body {
+  background: var(--stone) !important;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.035' numOctaves='4' seed='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.12  0 0 0 0 0.08  0 0 0 0 0.02  0 0 0 0.25 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
-    repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(200,150,10,0.04) 60px),
-    repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(200,150,10,0.04) 60px) !important;
+    url("data:image/svg+xml,%3Csvg width='160' height='80' viewBox='0 0 160 80' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='80' height='40' fill='none' stroke='rgba(200,150,10,0.04)' stroke-width='1'/%3E%3Crect x='80' y='0' width='80' height='40' fill='none' stroke='rgba(200,150,10,0.04)' stroke-width='1'/%3E%3Crect x='40' y='40' width='80' height='40' fill='none' stroke='rgba(200,150,10,0.04)' stroke-width='1'/%3E%3Crect x='0' y='40' width='40' height='40' fill='none' stroke='rgba(200,150,10,0.04)' stroke-width='1'/%3E%3Crect x='120' y='40' width='40' height='40' fill='none' stroke='rgba(200,150,10,0.04)' stroke-width='1'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.04' numOctaves='5' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.1  0 0 0 0 0.06  0 0 0 0 0  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E") !important;
 }
 
 /* ══════════════════════════════════════════════════
-   SIDEBAR — PEDRA ENTALHADA
+   SIDEBAR — TORRE DE PEDRA
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] #sidebar {
-  background: linear-gradient(180deg, #1e1509 0%, #2a1c08 50%, #1e1509 100%) !important;
-  border-right: 2px solid var(--gold) !important;
-  box-shadow: 2px 0 12px rgba(0,0,0,0.7), inset -1px 0 0 rgba(200,150,10,0.1) !important;
+  background:
+    linear-gradient(180deg, #0e0904 0%, #1a1208 40%, #221508 80%, #0e0904 100%) !important;
+  border-right: 3px solid var(--gold) !important;
+  box-shadow: 3px 0 20px rgba(0,0,0,0.8), inset -2px 0 0 rgba(200,150,10,0.08) !important;
   position: relative !important;
 }
-[data-theme="medieval"] #sidebar::before {
+/* Ornamento lateral dourado */
+[data-theme="medieval"] #sidebar::after {
   content: '';
-  position: absolute; top: 0; bottom: 0; right: -1px; width: 1px;
-  background: linear-gradient(180deg, transparent, var(--gold-lt) 20%, var(--gold) 50%, var(--gold-lt) 80%, transparent);
+  position: absolute; top: 0; bottom: 0; right: 0; width: 3px;
+  background: linear-gradient(180deg,
+    transparent 0%, var(--gold) 8%, var(--gold-lt) 12%,
+    var(--gold) 25%, var(--gold) 75%,
+    var(--gold-lt) 88%, var(--gold) 92%, transparent 100%);
 }
 [data-theme="medieval"] .nav-btn {
-  color: var(--ink-lt) !important;
-  transition: all .2s !important;
+  color: var(--stone-top) !important;
+  transition: all .25s ease !important;
+  position: relative !important;
+}
+[data-theme="medieval"] .nav-btn::before {
+  content: '';
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 0;
+  background: var(--gold);
+  transition: height .2s ease;
+}
+[data-theme="medieval"] .nav-btn:hover::before,
+[data-theme="medieval"] .nav-btn.active::before {
+  height: 60%;
 }
 [data-theme="medieval"] .nav-btn:hover,
 [data-theme="medieval"] .nav-btn.active {
   color: var(--gold-lt) !important;
-  filter: drop-shadow(0 0 6px var(--gold-glow)) !important;
+  filter: drop-shadow(0 0 8px var(--gold-glow)) !important;
 }
 [data-theme="medieval"] #nav-vip-btn {
   color: var(--gold) !important;
-  filter: drop-shadow(0 0 4px rgba(200,150,10,0.4)) !important;
-}
-[data-theme="medieval"] #nav-vip-btn:hover {
-  color: var(--gold-lt) !important;
-  filter: drop-shadow(0 0 10px var(--gold-glow)) !important;
+  filter: drop-shadow(0 0 5px rgba(200,150,10,0.5)) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   CONTENT AREA — PERGAMINHO
+   CONTENT AREA — PERGAMINHO ENVELHECIDO (MAIS ESCURO)
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] #content-area {
   background-color: var(--parch) !important;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='400' height='400' viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.15  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23p)'/%3E%3C/svg%3E"),
-    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(255,240,180,0.4) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 60% at 80% 80%, rgba(200,160,80,0.2) 0%, transparent 60%) !important;
-  border-left: 4px solid var(--gold) !important;
-  box-shadow: inset 0 0 40px rgba(0,0,0,0.15) !important;
+    url("data:image/svg+xml,%3Csvg width='400' height='400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23p)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 80% 50% at 15% 5%, rgba(220,190,100,0.35) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 70% at 85% 90%, rgba(160,110,40,0.2) 0%, transparent 55%) !important;
+  border-left: 3px solid var(--gold) !important;
+  overflow: hidden !important;
 }
 
 /* ══════════════════════════════════════════════════
-   CABEÇALHO DE NOTÍCIAS — BANNER MEDIEVAL
+   CABEÇALHOS DE VIEWS
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] .news-header {
-  background:
-    linear-gradient(180deg, #1e1509 0%, #2e1c08 60%, rgba(46,28,8,0.92) 100%) !important;
+
+/* Mixin reutilizável para headers medievais */
+[data-theme="medieval"] .news-header,
+[data-theme="medieval"] #view-inbox > div:first-child,
+[data-theme="medieval"] #view-mycomms > div:first-child,
+[data-theme="medieval"] #view-explore > div:first-child,
+[data-theme="medieval"] #view-history > div:first-child,
+[data-theme="medieval"] #view-vip-panel > div:first-child {
+  background: linear-gradient(180deg, #0e0904 0%, #1e1408 60%, rgba(30,20,8,0.95) 100%) !important;
   border-bottom: 3px solid var(--gold) !important;
-  box-shadow:
-    0 4px 0 rgba(0,0,0,0.5),
-    0 5px 0 rgba(200,150,10,0.2),
-    0 6px 20px rgba(0,0,0,0.4),
-    inset 0 1px 0 rgba(200,150,10,0.3) !important;
   position: relative !important;
   overflow: visible !important;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.6), 0 4px 0 rgba(200,150,10,0.15), 0 6px 20px rgba(0,0,0,0.4) !important;
 }
-/* Borda dourada superior */
-[data-theme="medieval"] .news-header::before {
+/* Faixa dourada no topo */
+[data-theme="medieval"] .news-header::before,
+[data-theme="medieval"] #view-inbox > div:first-child::before,
+[data-theme="medieval"] #view-mycomms > div:first-child::before,
+[data-theme="medieval"] #view-explore > div:first-child::before {
   content: '';
-  position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg,
-    transparent 0%,
-    var(--gold) 8%, var(--gold-lt) 12%, var(--gold) 20%,
-    var(--gold) 50%,
-    var(--gold) 80%, var(--gold-lt) 88%, var(--gold) 92%,
-    transparent 100%);
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--gold) 15%, var(--gold-lt) 50%, var(--gold) 85%, transparent 100%);
 }
-/* Escudo central ornamental */
+/* Símbolo ornamental no centro-baixo */
 [data-theme="medieval"] .news-header::after {
   content: '⚜';
-  position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
-  font-size: 16px; color: var(--gold);
-  background: #1e1509; padding: 0 8px;
-  z-index: 2; text-shadow: 0 0 8px var(--gold-glow);
+  position: absolute; bottom: -13px; left: 50%; transform: translateX(-50%);
+  font-size: 14px; color: var(--gold);
+  background: #0e0904; padding: 0 10px;
+  z-index: 3; text-shadow: 0 0 10px var(--gold-glow);
 }
 
-/* Título "NOTÍCIAS" → fonte Cinzel Decorative */
-[data-theme="medieval"] .news-header-top span {
+/* Títulos dos headers */
+[data-theme="medieval"] .news-header-top span,
+[data-theme="medieval"] #view-inbox > div:first-child div[data-i18n],
+[data-theme="medieval"] #view-mycomms > div:first-child span,
+[data-theme="medieval"] #view-explore > div:first-child span,
+[data-theme="medieval"] #view-history > div:first-child span,
+[data-theme="medieval"] #view-vip-panel > div:first-child span {
   font-family: 'Cinzel Decorative', serif !important;
   color: var(--gold-lt) !important;
-  text-shadow: 0 0 20px var(--gold-glow), 2px 2px 0 rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.9) !important;
-  letter-spacing: 3px !important;
-  font-size: 16px !important;
+  text-shadow: 0 0 20px var(--gold-glow), 2px 2px 0 rgba(0,0,0,0.9) !important;
+  letter-spacing: 2px !important;
+  font-size: 15px !important;
 }
 [data-theme="medieval"] .news-location-badge {
   font-family: 'IM Fell English', serif !important;
   font-style: italic !important;
   color: var(--gold) !important;
-  opacity: 0.9 !important;
-}
-
-/* Zoom bar → botões de pergaminho */
-[data-theme="medieval"] .news-zoom-bar {
-  background: rgba(255,255,255,0.03) !important;
-  padding: 6px 8px !important;
-}
-[data-theme="medieval"] .news-zoom-btn {
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  letter-spacing: 1px !important;
-  color: rgba(220,190,100,0.6) !important;
-  background: transparent !important;
-  border: 1px solid transparent !important;
-  border-radius: 4px !important;
-  padding: 5px 10px !important;
-  transition: all .2s !important;
-}
-[data-theme="medieval"] .news-zoom-btn:hover {
-  color: var(--gold-lt) !important;
-  border-color: rgba(200,150,10,0.3) !important;
-}
-[data-theme="medieval"] .news-zoom-btn.active {
-  color: var(--gold-lt) !important;
-  background: rgba(200,150,10,0.15) !important;
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 8px rgba(200,150,10,0.2), inset 0 0 4px rgba(200,150,10,0.1) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   TABS PRINCIPAIS (Notícias | Transparência | Quiz)
+   TABS
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] .news-main-tabs {
-  background: linear-gradient(180deg, #231509 0%, #1a1006 100%) !important;
+[data-theme="medieval"] .news-main-tabs,
+[data-theme="medieval"] .trans-subtabs {
+  background: linear-gradient(180deg, #1a1208 0%, #120d06 100%) !important;
   border-bottom: 2px solid var(--gold) !important;
-  position: relative !important;
 }
-[data-theme="medieval"] .news-main-tab {
+[data-theme="medieval"] .news-main-tab,
+[data-theme="medieval"] .trans-tab-btn,
+[data-theme="medieval"] .news-zoom-btn {
   font-family: 'Cinzel', serif !important;
+  letter-spacing: 1.2px !important;
+  color: rgba(180,140,50,0.45) !important;
   font-size: 9px !important;
-  letter-spacing: 1.5px !important;
-  text-transform: uppercase !important;
-  color: rgba(180,140,60,0.5) !important;
-  padding: 10px 6px !important;
 }
-[data-theme="medieval"] .news-main-tab.active {
+[data-theme="medieval"] .news-main-tab.active,
+[data-theme="medieval"] .trans-tab-btn.active {
   color: var(--gold-lt) !important;
   border-bottom-color: var(--gold-lt) !important;
   text-shadow: 0 0 10px var(--gold-glow) !important;
 }
-[data-theme="medieval"] .news-main-tab:hover:not(.active) {
-  color: var(--gold) !important;
+[data-theme="medieval"] .news-main-tab:hover:not(.active),
+[data-theme="medieval"] .trans-tab-btn:hover:not(.active) { color: var(--gold) !important; }
+[data-theme="medieval"] .news-zoom-btn.active {
+  color: var(--gold-lt) !important;
+  background: rgba(200,150,10,0.15) !important;
+  border-color: rgba(200,150,10,0.5) !important;
+  box-shadow: 0 0 8px rgba(200,150,10,0.2) !important;
+}
+[data-theme="medieval"] .fav-tab {
+  font-family: 'Cinzel', serif !important;
+  font-size: 9px !important;
+  letter-spacing: .8px !important;
+  color: rgba(180,140,50,0.45) !important;
+}
+[data-theme="medieval"] .fav-tab.active {
+  color: var(--gold-lt) !important;
+  border-bottom-color: var(--gold-lt) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   CARDS CONTAINER — PERGAMINHO CONTÍNUO
+   CONTENT BG — PERGAMINHO
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] .news-cards-container,
 [data-theme="medieval"] .news-panel,
-[data-theme="medieval"] .news-body {
+[data-theme="medieval"] #panel-transparency,
+[data-theme="medieval"] #panel-quiz,
+[data-theme="medieval"] #inbox-list,
+[data-theme="medieval"] #view-mycomms > div:last-child,
+[data-theme="medieval"] #view-explore > div:last-child,
+[data-theme="medieval"] #view-history > div:last-child,
+[data-theme="medieval"] #view-vip-panel > div:last-child {
   background-color: var(--parch) !important;
-  background-image:
-    url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.15  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
-  scrollbar-color: rgba(200,150,10,0.3) rgba(200,150,10,0.05) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
 }
 
 /* ══════════════════════════════════════════════════
-   CARD DESTAQUE — ROLO DE PERGAMINHO ILUMINADO
+   CARDS DE NOTÍCIAS
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] .news-card-featured {
   border: 2px solid var(--gold) !important;
-  border-radius: 4px !important;
-  box-shadow:
-    0 6px 0 rgba(0,0,0,0.5),
-    0 7px 0 rgba(150,110,20,0.4),
-    0 8px 24px rgba(0,0,0,0.5),
-    inset 0 0 0 3px rgba(200,150,10,0.12) !important;
+  border-radius: 3px !important;
+  box-shadow: 4px 5px 0 rgba(0,0,0,0.5), 5px 6px 0 rgba(150,110,20,0.3), 0 8px 24px rgba(0,0,0,0.4) !important;
   position: relative !important;
 }
-/* Cantos ornamentais */
 [data-theme="medieval"] .news-card-featured::before {
   content: '';
-  position: absolute; inset: 3px; z-index: 1; pointer-events: none;
-  border: 1px solid rgba(200,150,10,0.25);
-  border-radius: 2px;
+  position: absolute; inset: 4px; z-index: 1; pointer-events: none;
+  border: 1px solid rgba(200,150,10,0.2); border-radius: 1px;
   background:
-    radial-gradient(6px 6px at 6px 6px, var(--gold) 50%, transparent 50%),
-    radial-gradient(6px 6px at calc(100% - 6px) 6px, var(--gold) 50%, transparent 50%),
-    radial-gradient(6px 6px at 6px calc(100% - 6px), var(--gold) 50%, transparent 50%),
-    radial-gradient(6px 6px at calc(100% - 6px) calc(100% - 6px), var(--gold) 50%, transparent 50%);
+    radial-gradient(7px 7px at 7px 7px, var(--gold) 48%, transparent 50%),
+    radial-gradient(7px 7px at calc(100% - 7px) 7px, var(--gold) 48%, transparent 50%),
+    radial-gradient(7px 7px at 7px calc(100% - 7px), var(--gold) 48%, transparent 50%),
+    radial-gradient(7px 7px at calc(100% - 7px) calc(100% - 7px), var(--gold) 48%, transparent 50%);
 }
 [data-theme="medieval"] .news-card-featured:hover {
   border-color: var(--gold-lt) !important;
-  box-shadow:
-    0 8px 0 rgba(0,0,0,0.55),
-    0 9px 0 rgba(200,150,10,0.5),
-    0 10px 30px rgba(0,0,0,0.6),
-    0 0 20px rgba(200,150,10,0.15) !important;
   transform: translateY(-3px) !important;
+  box-shadow: 6px 8px 0 rgba(0,0,0,0.55), 0 12px 30px rgba(0,0,0,0.5), 0 0 20px rgba(200,150,10,0.12) !important;
 }
 [data-theme="medieval"] .news-card-featured-overlay {
-  background: linear-gradient(0deg,
-    rgba(20,12,2,0.97) 0%,
-    rgba(20,12,2,0.7) 50%,
-    transparent 100%) !important;
+  background: linear-gradient(0deg, rgba(15,9,3,0.97) 0%, rgba(15,9,3,0.65) 55%, transparent 100%) !important;
 }
 [data-theme="medieval"] .news-card-featured-title {
   font-family: 'Cinzel', serif !important;
-  font-size: 15px !important;
-  font-weight: 700 !important;
-  color: var(--parch) !important;
-  text-shadow: 2px 2px 0 rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.8) !important;
-  letter-spacing: .3px !important;
+  font-size: 14px !important;
+  color: var(--parch-lt) !important;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.95), 0 0 20px rgba(0,0,0,0.8) !important;
   line-height: 1.45 !important;
 }
 [data-theme="medieval"] .news-card-featured-meta {
@@ -252,451 +269,600 @@
   font-style: italic !important;
   color: var(--gold) !important;
 }
-
-/* ══════════════════════════════════════════════════
-   CARDS REGULARES — PEDAÇOS DE PERGAMINHO
-══════════════════════════════════════════════════ */
 [data-theme="medieval"] .news-card {
   background-color: var(--parch-dk) !important;
-  background-image:
-    url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.5  0 0 0 0 0.38  0 0 0 0 0.12  0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23p)'/%3E%3C/svg%3E") !important;
-  border: 2px solid var(--parch-ddl) !important;
-  border-radius: 3px !important;
-  box-shadow:
-    2px 3px 0 rgba(0,0,0,0.25),
-    3px 4px 0 rgba(150,110,20,0.15),
-    0 4px 12px rgba(0,0,0,0.2),
-    inset 0 0 0 1px rgba(200,150,10,0.08) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.38  0 0 0 0 0.26  0 0 0 0 0.04  0 0 0 0.14 0'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  border: 2px solid var(--parch-edge) !important;
+  border-radius: 2px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.3), 4px 5px 0 rgba(120,90,20,0.2), 0 6px 14px rgba(0,0,0,0.2) !important;
   position: relative !important;
 }
-/* Linha de rasgo no topo (efeito pergaminho rasgado) */
 [data-theme="medieval"] .news-card::before {
   content: '';
-  position: absolute; top: 0; left: 8%; right: 8%; height: 2px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(200,150,10,0.6) 20%, rgba(200,150,10,0.8) 50%, rgba(200,150,10,0.6) 80%,
-    transparent);
+  position: absolute; top: 0; left: 10%; right: 10%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold) 30%, var(--gold-lt) 50%, var(--gold) 70%, transparent);
 }
 [data-theme="medieval"] .news-card:hover {
-  background-color: #e8d8a8 !important;
+  background-color: #c8aa70 !important;
   border-color: var(--gold) !important;
-  box-shadow:
-    3px 5px 0 rgba(0,0,0,0.3),
-    4px 6px 0 rgba(150,110,20,0.2),
-    0 8px 20px rgba(0,0,0,0.3),
-    0 0 12px rgba(200,150,10,0.12) !important;
   transform: translateY(-2px) !important;
+  box-shadow: 5px 6px 0 rgba(0,0,0,0.35), 0 10px 22px rgba(0,0,0,0.3), 0 0 10px rgba(200,150,10,0.1) !important;
 }
-[data-theme="medieval"] .news-card-img {
-  filter: sepia(20%) contrast(1.05) !important;
-  border-bottom: 1px solid var(--parch-ddl) !important;
-}
-[data-theme="medieval"] .news-card-title {
-  font-family: 'Cinzel', serif !important;
-  font-size: 11px !important;
-  color: var(--ink) !important;
-  line-height: 1.55 !important;
-  font-weight: 700 !important;
-}
-[data-theme="medieval"] .news-card-desc {
-  font-family: 'IM Fell English', serif !important;
-  font-style: italic !important;
-  color: var(--ink-md) !important;
-  font-size: 11px !important;
-}
-[data-theme="medieval"] .news-card-meta {
-  font-family: 'IM Fell English', serif !important;
-  font-style: italic !important;
-  color: var(--ink-lt) !important;
-  border-top: 1px solid rgba(150,110,20,0.2) !important;
-  padding-top: 5px !important;
-  margin-top: 5px !important;
-}
-[data-theme="medieval"] .news-cat-badge {
-  font-family: 'Cinzel', serif !important;
-  font-size: 8px !important;
-  letter-spacing: 1.5px !important;
-  text-transform: uppercase !important;
-  border-radius: 2px !important;
-}
+[data-theme="medieval"] .news-card-img { filter: sepia(25%) contrast(1.05) brightness(0.95) !important; border-bottom: 2px solid var(--parch-edge) !important; }
+[data-theme="medieval"] .news-card-title { font-family: 'Cinzel', serif !important; font-size: 11px !important; font-weight: 700 !important; color: var(--ink) !important; line-height: 1.55 !important; }
+[data-theme="medieval"] .news-card-desc { font-family: 'IM Fell English', serif !important; font-style: italic !important; color: var(--ink-md) !important; font-size: 11px !important; }
+[data-theme="medieval"] .news-card-meta { font-family: 'IM Fell English', serif !important; font-style: italic !important; color: var(--ink-lt) !important; border-top: 1px solid var(--parch-edge) !important; }
+[data-theme="medieval"] .news-cat-badge { font-family: 'Cinzel', serif !important; font-size: 8px !important; letter-spacing: 1.5px !important; border-radius: 1px !important; }
+[data-theme="medieval"] .news-spinner { border-color: rgba(200,150,10,0.15) !important; border-top-color: var(--gold) !important; }
+[data-theme="medieval"] .news-loading, [data-theme="medieval"] .news-empty { font-family: 'IM Fell English', serif !important; color: var(--ink-lt) !important; }
 
 /* ══════════════════════════════════════════════════
-   NAV BAR — PEDRA ENTALHADA
+   INBOX — PERGAMINHOS COM SELOS
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] .nav-bar {
-  background: linear-gradient(0deg, #0e0803 0%, #1e1509 100%) !important;
-  border-top: 2px solid var(--gold) !important;
-  box-shadow: 0 -2px 0 rgba(0,0,0,0.5), 0 -4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,150,10,0.15) !important;
-}
-
-/* ══════════════════════════════════════════════════
-   TRANSPARÊNCIA — PERGAMINHO COM SELOS
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .trans-subtabs {
-  background: linear-gradient(180deg, rgba(46,36,22,0.95), rgba(30,21,9,0.98)) !important;
-  border-bottom: 2px solid var(--gold) !important;
-}
-[data-theme="medieval"] .trans-tab-btn {
-  font-family: 'Cinzel', serif !important;
-  font-size: 8.5px !important;
-  letter-spacing: 1px !important;
-  color: rgba(180,140,60,0.5) !important;
-}
-[data-theme="medieval"] .trans-tab-btn.active {
-  color: var(--gold-lt) !important;
-  border-bottom-color: var(--gold-lt) !important;
-  text-shadow: 0 0 8px var(--gold-glow) !important;
-}
-
-/* Chips de país */
-[data-theme="medieval"] .trans-chip {
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  background: rgba(var(--parch), 0.05) !important;
-  border-color: var(--border-stone) !important;
-  color: var(--ink-lt) !important;
-  border-radius: 3px !important;
-}
-[data-theme="medieval"] .trans-chip.active {
-  background: rgba(200,150,10,0.12) !important;
-  border-color: var(--gold) !important;
-  color: var(--gold) !important;
-}
-
-/* Content area dentro de transparência */
-[data-theme="medieval"] .trans-content-pad,
-[data-theme="medieval"] #panel-transparency {
+[data-theme="medieval"] #view-inbox {
   background-color: var(--parch) !important;
-  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.15  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
 }
-
-/* Cards de políticos */
-[data-theme="medieval"] .trans-card {
+/* Itens de conversa = pergaminhos enrolados */
+[data-theme="medieval"] .conv-item,
+[data-theme="medieval"] [class*="conv-"],
+[data-theme="medieval"] #inbox-list > div,
+[data-theme="medieval"] #inbox-list > a {
   background-color: var(--parch-dk) !important;
-  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.5  0 0 0 0 0.38  0 0 0 0 0.12  0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23p)'/%3E%3C/svg%3E") !important;
-  border: 2px solid var(--parch-ddl) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.38  0 0 0 0 0.26  0 0 0 0 0.04  0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  border: 2px solid var(--parch-edge) !important;
   border-radius: 3px !important;
-  box-shadow: 2px 3px 0 rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.15) !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.15) !important;
+  position: relative !important;
+  overflow: hidden !important;
+  transition: all .2s ease !important;
 }
-[data-theme="medieval"] .trans-card:hover {
-  background-color: #e8d8a8 !important;
+/* Linha de cera (selo) no lado esquerdo */
+[data-theme="medieval"] #inbox-list > div::before,
+[data-theme="medieval"] #inbox-list > a::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: linear-gradient(180deg, var(--seal-wax), var(--seal-red), var(--seal-wax));
+  box-shadow: 1px 0 4px rgba(139,26,26,0.4);
+}
+[data-theme="medieval"] #inbox-list > div:hover,
+[data-theme="medieval"] #inbox-list > a:hover {
+  background-color: #c8aa70 !important;
   border-color: var(--gold) !important;
-  box-shadow: 3px 4px 0 rgba(0,0,0,0.25), 0 0 12px rgba(200,150,10,0.1) !important;
+  transform: translateY(-1px) translateX(1px) !important;
+  box-shadow: 4px 5px 0 rgba(0,0,0,0.3), 0 6px 14px rgba(0,0,0,0.2) !important;
 }
-[data-theme="medieval"] .trans-card-name,
-[data-theme="medieval"] .trans-mini-name,
-[data-theme="medieval"] .trans-exec-name,
-[data-theme="medieval"] .trans-profile-name {
+/* Nome do remetente */
+[data-theme="medieval"] #inbox-list .dm-name,
+[data-theme="medieval"] #inbox-list [class*="name"],
+[data-theme="medieval"] #inbox-list strong {
   font-family: 'Cinzel', serif !important;
   color: var(--ink) !important;
-  font-weight: 700 !important;
+  font-size: 11px !important;
 }
-[data-theme="medieval"] .trans-card-role,
-[data-theme="medieval"] .trans-exec-role,
-[data-theme="medieval"] .trans-mini-party,
-[data-theme="medieval"] .trans-profile-role {
+/* Preview da mensagem */
+[data-theme="medieval"] #inbox-list .dm-preview,
+[data-theme="medieval"] #inbox-list [class*="preview"],
+[data-theme="medieval"] #inbox-list span:not([class*="badge"]):not([class*="time"]) {
   font-family: 'IM Fell English', serif !important;
   font-style: italic !important;
   color: var(--ink-md) !important;
 }
+/* Horário */
+[data-theme="medieval"] #inbox-list [class*="time"],
+[data-theme="medieval"] #inbox-list .dm-time { font-family: 'Cinzel', serif !important; font-size: 9px !important; color: var(--ink-lt) !important; }
 
-[data-theme="medieval"] .trans-mini-card {
-  background-color: var(--parch-dk) !important;
-  border: 1px solid var(--parch-ddl) !important;
-  border-radius: 3px !important;
-  box-shadow: 1px 2px 0 rgba(0,0,0,0.2) !important;
-}
-[data-theme="medieval"] .trans-mini-card:hover {
-  background-color: #e8d8a8 !important;
-  border-color: var(--gold) !important;
+/* ══════════════════════════════════════════════════
+   DM VIEW — CÂMARA DE COMUNICAÇÃO
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] #view-dm,
+[data-theme="medieval"] .dm-view-shell {
+  background-color: var(--parch) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
 }
 
-[data-theme="medieval"] .trans-local-section-title {
+/* Topbar do DM — pergaminho enrolado no topo */
+[data-theme="medieval"] .dm-topbar,
+[data-theme="medieval"] .comm-topbar {
+  background: linear-gradient(180deg, #0e0904 0%, #1e1408 100%) !important;
+  border-bottom: 3px solid var(--gold) !important;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+[data-theme="medieval"] .dm-topbar-name,
+[data-theme="medieval"] #active-comm-name {
   font-family: 'Cinzel Decorative', serif !important;
-  color: var(--ink) !important;
+  color: var(--gold-lt) !important;
+  text-shadow: 0 0 14px var(--gold-glow) !important;
   font-size: 13px !important;
   letter-spacing: 1px !important;
 }
-[data-theme="medieval"] .trans-section-label {
-  font-family: 'Cinzel', serif !important;
-  color: var(--stone-lt) !important;
-  font-size: 9px !important;
-  letter-spacing: 1.5px !important;
+[data-theme="medieval"] .dm-topbar-sub {
+  font-family: 'IM Fell English', serif !important;
+  font-style: italic !important;
+  color: var(--gold) !important;
+  font-size: 11px !important;
 }
-[data-theme="medieval"] .trans-location-title {
-  font-family: 'Cinzel', serif !important;
+[data-theme="medieval"] .dm-topbar-avatar,
+[data-theme="medieval"] .dm-topbar .my-avatar-mini {
+  border: 2px solid var(--gold) !important;
+  box-shadow: 0 0 10px rgba(200,150,10,0.3) !important;
+}
+
+/* Balões de mensagem — pergaminhos enviados */
+[data-theme="medieval"] .msg-out,
+[data-theme="medieval"] [class*="msg-out"],
+[data-theme="medieval"] .bubble-out,
+[data-theme="medieval"] [class*="bubble-out"],
+[data-theme="medieval"] .chat-bubble.mine,
+[data-theme="medieval"] .message.sent .bubble,
+[data-theme="medieval"] .dm-msg.sent,
+[data-theme="medieval"] .msg.sent {
+  background-color: #c8a060 !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.28  0 0 0 0 0.05  0 0 0 0.15 0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 2px 8px 2px 8px !important;
   color: var(--ink) !important;
+  font-family: 'IM Fell English', serif !important;
+  font-style: italic !important;
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.3), 4px 4px 0 rgba(150,100,10,0.2) !important;
+  position: relative !important;
+}
+/* Selo de lacre nas mensagens enviadas */
+[data-theme="medieval"] .msg-out::after,
+[data-theme="medieval"] .bubble-out::after,
+[data-theme="medieval"] .dm-msg.sent::after {
+  content: '🔴';
+  position: absolute; bottom: -8px; right: 8px;
+  font-size: 10px; filter: hue-rotate(0deg) saturate(0.8) brightness(0.6);
 }
 
-/* Botões de comparar */
-[data-theme="medieval"] .trans-compare-btn,
-[data-theme="medieval"] .trans-mini-cmp,
-[data-theme="medieval"] .trans-compare-btn-lg,
-[data-theme="medieval"] .trans-cmp-sm {
-  border-radius: 3px !important;
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  letter-spacing: .5px !important;
-  border-color: var(--parch-ddl) !important;
-  color: var(--ink-lt) !important;
-  background: rgba(200,150,10,0.04) !important;
-}
-[data-theme="medieval"] .trans-compare-btn:hover,
-[data-theme="medieval"] .trans-mini-cmp:hover,
-[data-theme="medieval"] .trans-compare-btn-lg:hover {
-  border-color: var(--gold) !important;
-  color: var(--gold) !important;
-  background: rgba(200,150,10,0.12) !important;
-  box-shadow: 0 0 8px rgba(200,150,10,0.2) !important;
-}
-[data-theme="medieval"] .trans-compare-btn.active,
-[data-theme="medieval"] .trans-mini-cmp.active {
-  border-color: var(--gold) !important;
-  color: var(--gold) !important;
-  background: rgba(200,150,10,0.15) !important;
+/* Balões recebidos — papel simples */
+[data-theme="medieval"] .msg-in,
+[data-theme="medieval"] [class*="msg-in"],
+[data-theme="medieval"] .bubble-in,
+[data-theme="medieval"] [class*="bubble-in"],
+[data-theme="medieval"] .chat-bubble.theirs,
+[data-theme="medieval"] .message.received .bubble,
+[data-theme="medieval"] .dm-msg.received,
+[data-theme="medieval"] .msg.received {
+  background-color: var(--parch-lt) !important;
+  border: 2px solid var(--parch-edge) !important;
+  border-radius: 8px 2px 8px 2px !important;
+  color: var(--ink) !important;
+  font-family: 'IM Fell English', serif !important;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2) !important;
 }
 
-/* Salary / salary hero */
-[data-theme="medieval"] .trans-salary-value {
-  font-family: 'Cinzel', serif !important;
-  color: var(--stone) !important;
-  font-weight: 700 !important;
+/* Input de mensagem */
+[data-theme="medieval"] .chat-input-area,
+[data-theme="medieval"] #dm-input-area,
+[data-theme="medieval"] #comm-input-form {
+  background: linear-gradient(180deg, rgba(20,14,4,0.95), rgba(10,7,2,0.98)) !important;
+  border-top: 2px solid var(--gold) !important;
+  box-shadow: 0 -2px 0 rgba(0,0,0,0.5), 0 -3px 16px rgba(0,0,0,0.3) !important;
 }
-[data-theme="medieval"] .trans-salary-hero {
-  background: rgba(200,150,10,0.08) !important;
+[data-theme="medieval"] .chat-msg,
+[data-theme="medieval"] #dm-msg,
+[data-theme="medieval"] #comm-msg {
+  background: rgba(212,188,136,0.15) !important;
   border: 1px solid rgba(200,150,10,0.3) !important;
-  border-radius: 4px !important;
-}
-
-/* Back button */
-[data-theme="medieval"] .trans-back-btn {
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  letter-spacing: .5px !important;
-  color: var(--ink-lt) !important;
-  border-color: var(--parch-ddl) !important;
-  background: rgba(200,150,10,0.05) !important;
   border-radius: 3px !important;
+  color: var(--parch-lt) !important;
+  font-family: 'IM Fell English', serif !important;
+  font-style: italic !important;
+  font-size: 13px !important;
 }
-[data-theme="medieval"] .trans-back-btn:hover {
+[data-theme="medieval"] .chat-msg::placeholder,
+[data-theme="medieval"] #dm-msg::placeholder,
+[data-theme="medieval"] #comm-msg::placeholder {
+  color: rgba(200,150,10,0.4) !important;
+  font-style: italic !important;
+}
+[data-theme="medieval"] .chat-msg:focus,
+[data-theme="medieval"] #dm-msg:focus,
+[data-theme="medieval"] #comm-msg:focus {
   border-color: var(--gold) !important;
-  color: var(--gold) !important;
+  box-shadow: 0 0 8px rgba(200,150,10,0.2) !important;
+  outline: none !important;
+  background: rgba(212,188,136,0.22) !important;
 }
-
-/* Meta chips */
-[data-theme="medieval"] .trans-meta-chip {
-  background: rgba(200,150,10,0.1) !important;
-  border-color: rgba(200,150,10,0.3) !important;
-  color: var(--ink-md) !important;
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  border-radius: 3px !important;
+[data-theme="medieval"] .icon-btn,
+[data-theme="medieval"] .btn-send-msg {
+  color: var(--stone-top) !important;
+  transition: color .2s, filter .2s !important;
 }
-
-/* Profile photo */
-[data-theme="medieval"] .trans-profile-photo {
-  border: 3px solid var(--gold) !important;
-  box-shadow: 0 0 20px rgba(200,150,10,0.3), 3px 3px 0 rgba(0,0,0,0.3) !important;
-}
-[data-theme="medieval"] .trans-exec-card {
-  border-color: var(--parch-ddl) !important;
-  border-radius: 4px !important;
-  background-color: var(--parch-dk) !important;
+[data-theme="medieval"] .icon-btn:hover,
+[data-theme="medieval"] .btn-send-msg:hover {
+  color: var(--gold-lt) !important;
+  filter: drop-shadow(0 0 5px var(--gold-glow)) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   QUIZ — ROLO ILUMINADO
+   PERFIL — CASTELO COM BRASÃO
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] #panel-quiz,
-[data-theme="medieval"] .quiz-content {
+[data-theme="medieval"] #view-profile,
+[data-theme="medieval"] #view-public-profile {
   background-color: var(--parch) !important;
-  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.15  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+  overflow-y: auto !important;
 }
+/* Cover do perfil — adiciona overlay medieval */
+[data-theme="medieval"] .profile-header-container {
+  position: relative !important;
+}
+[data-theme="medieval"] .profile-header-container::after {
+  content: '';
+  position: absolute; bottom: 0; left: 0; right: 0; height: 60px;
+  background: linear-gradient(0deg, var(--parch) 0%, transparent 100%);
+  pointer-events: none;
+}
+[data-theme="medieval"] .profile-cover { filter: sepia(30%) contrast(1.1) brightness(0.85) !important; }
+[data-theme="medieval"] .profile-pic-lg {
+  border: 4px solid var(--gold) !important;
+  box-shadow: 0 0 0 2px var(--stone), 0 0 0 4px var(--gold), 0 8px 24px rgba(0,0,0,0.6), 0 0 20px rgba(200,150,10,0.3) !important;
+  filter: contrast(1.05) brightness(0.97) !important;
+}
+/* Nome → fonte medieval */
+[data-theme="medieval"] #p-name,
+[data-theme="medieval"] #pub-name {
+  font-family: 'Cinzel Decorative', serif !important;
+  color: var(--ink) !important;
+  text-shadow: 1px 1px 0 rgba(200,150,10,0.3), 2px 2px 6px rgba(0,0,0,0.2) !important;
+  font-size: 22px !important;
+  letter-spacing: 1px !important;
+}
+/* Bio → itálico de escriba */
+[data-theme="medieval"] #p-bio,
+[data-theme="medieval"] #pub-bio {
+  font-family: 'IM Fell English', serif !important;
+  font-style: italic !important;
+  color: var(--ink-md) !important;
+  font-size: 13px !important;
+  position: relative !important;
+  padding: 8px 14px !important;
+  border-left: 3px solid var(--gold) !important;
+  background: rgba(200,150,10,0.05) !important;
+  border-radius: 0 4px 4px 0 !important;
+}
+/* Banner VIP no perfil */
+[data-theme="medieval"] #vip-profile-banner > div {
+  background: linear-gradient(135deg, #1a1208, #2e1c08, #1a1208) !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 4px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.4) !important;
+}
+/* Status dot */
+[data-theme="medieval"] .status-dot.online { background: var(--gold-lt) !important; box-shadow: 0 0 6px var(--gold-glow) !important; }
+
+/* ══════════════════════════════════════════════════
+   BASES (COMMS) — GUILDAS MEDIEVAIS
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] #view-mycomms,
+[data-theme="medieval"] #view-explore {
+  background-color: var(--parch) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+}
+/* Comm cards */
+[data-theme="medieval"] #my-comms-grid > div,
+[data-theme="medieval"] #public-comms-grid > div,
+[data-theme="medieval"] .comm-card,
+[data-theme="medieval"] [class*="comm-card"] {
+  background-color: var(--parch-dk) !important;
+  border: 2px solid var(--parch-edge) !important;
+  border-radius: 2px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.25) !important;
+  transition: all .2s ease !important;
+}
+[data-theme="medieval"] #my-comms-grid > div:hover,
+[data-theme="medieval"] #public-comms-grid > div:hover {
+  border-color: var(--gold) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 4px 6px 0 rgba(0,0,0,0.3), 0 0 10px rgba(200,150,10,0.1) !important;
+}
+[data-theme="medieval"] .comm-topbar {
+  background: linear-gradient(180deg, #0e0904 0%, #1e1408 100%) !important;
+  border-bottom: 2px solid var(--gold) !important;
+}
+[data-theme="medieval"] .comm-channels-bar {
+  background: rgba(15,10,3,0.9) !important;
+  border-bottom: 1px solid rgba(200,150,10,0.2) !important;
+}
+[data-theme="medieval"] .comm-channel-btn {
+  font-family: 'Cinzel', serif !important;
+  font-size: 9px !important;
+  letter-spacing: .5px !important;
+  color: rgba(180,140,50,0.5) !important;
+}
+[data-theme="medieval"] .comm-channel-btn.active { color: var(--gold-lt) !important; }
+
+/* ══════════════════════════════════════════════════
+   GLORIA & QUIZ — SALA DOS TROFÉUS
+══════════════════════════════════════════════════ */
 [data-theme="medieval"] #glory-header {
-  background: linear-gradient(135deg, rgba(200,150,10,0.12), rgba(139,80,20,0.1)) !important;
-  border: 2px solid rgba(200,150,10,0.35) !important;
-  border-radius: 5px !important;
-  box-shadow: 2px 3px 0 rgba(0,0,0,0.2) !important;
+  background:
+    linear-gradient(135deg, rgba(200,150,10,0.12), rgba(100,60,10,0.08)) !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 4px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.25), inset 0 0 30px rgba(200,150,10,0.04) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+[data-theme="medieval"] #glory-header::before {
+  content: '⚔';
+  position: absolute; top: 10px; left: 14px;
+  font-size: 20px; color: rgba(200,150,10,0.15);
+}
+[data-theme="medieval"] #glory-header::after {
+  content: '⚔';
+  position: absolute; top: 10px; right: 14px;
+  font-size: 20px; color: rgba(200,150,10,0.15);
+  transform: scaleX(-1);
 }
 [data-theme="medieval"] #glory-rank-name {
   font-family: 'Cinzel Decorative', serif !important;
   color: var(--ink) !important;
+  font-size: 18px !important;
   text-shadow: 1px 1px 0 rgba(200,150,10,0.4) !important;
+  letter-spacing: .5px !important;
 }
+[data-theme="medieval"] #glory-rank-icon { filter: sepia(80%) hue-rotate(-10deg) !important; }
+[data-theme="medieval"] #glory-plan-name { font-family: 'Cinzel', serif !important; color: var(--ink-lt) !important; }
 [data-theme="medieval"] #glory-progress-bar {
-  background: linear-gradient(90deg, var(--gold), #a07010) !important;
+  background: linear-gradient(90deg, var(--gold), var(--gold-lt), var(--gold)) !important;
+  box-shadow: 0 0 8px rgba(200,150,10,0.4) !important;
 }
 
-/* ══════════════════════════════════════════════════
-   INPUTS E BOTÕES
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .gs-input,
-[data-theme="medieval"] .trans-search-input {
-  background: rgba(242,232,201,0.8) !important;
-  border: 2px solid var(--parch-ddl) !important;
+/* Quiz items — perguntas num rolo */
+[data-theme="medieval"] #quiz-list > div,
+[data-theme="medieval"] .quiz-item,
+[data-theme="medieval"] [id^="quiz-"] > div {
+  background-color: var(--parch-dk) !important;
+  border: 2px solid var(--parch-edge) !important;
+  border-radius: 2px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.2) !important;
+  position: relative !important;
+}
+[data-theme="medieval"] #quiz-list > div::before {
+  content: '';
+  position: absolute; top: 0; left: 10%; right: 10%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold) 30%, var(--gold-lt) 50%, var(--gold) 70%, transparent);
+}
+
+/* Quiz text */
+[data-theme="medieval"] .quiz-question,
+[data-theme="medieval"] [class*="quiz-q"],
+[data-theme="medieval"] #quiz-list .quiz-text,
+[data-theme="medieval"] #quiz-list p,
+[data-theme="medieval"] #quiz-list div > span:first-of-type {
+  font-family: 'IM Fell English', serif !important;
   color: var(--ink) !important;
+  font-size: 13px !important;
+}
+
+/* Opções de resposta */
+[data-theme="medieval"] .quiz-option,
+[data-theme="medieval"] [class*="quiz-opt"],
+[data-theme="medieval"] .quiz-btn {
+  background: rgba(200,150,10,0.08) !important;
+  border: 1px solid var(--parch-edge) !important;
+  border-radius: 2px !important;
   font-family: 'IM Fell English', serif !important;
   font-style: italic !important;
-  border-radius: 3px !important;
+  color: var(--ink) !important;
+  transition: all .2s !important;
 }
-[data-theme="medieval"] .gs-input:focus,
-[data-theme="medieval"] .trans-search-input:focus {
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 8px rgba(200,150,10,0.2) !important;
-  outline: none !important;
-  background: rgba(240,225,185,0.95) !important;
-}
-[data-theme="medieval"] .gs-input::placeholder { color: var(--ink-lt) !important; opacity: .7; }
-
-[data-theme="medieval"] .btn-main {
-  background: linear-gradient(135deg, #a07010, #7a5508) !important;
-  border: 2px solid var(--gold) !important;
-  color: var(--parch) !important;
-  font-family: 'Cinzel', serif !important;
-  font-size: 10px !important;
-  letter-spacing: 1px !important;
-  border-radius: 4px !important;
-  box-shadow: 2px 3px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.6) !important;
-}
-[data-theme="medieval"] .btn-main:hover {
-  background: linear-gradient(135deg, #c09020, #9a6510) !important;
-  box-shadow: 3px 4px 0 rgba(0,0,0,0.45), 0 0 14px rgba(200,150,10,0.25) !important;
-  transform: translateY(-1px) !important;
-}
-
-[data-theme="medieval"] .glass-btn {
-  background: rgba(200,150,10,0.08) !important;
-  border-color: rgba(200,150,10,0.3) !important;
-  color: var(--ink-lt) !important;
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  border-radius: 3px !important;
-}
-[data-theme="medieval"] .glass-btn:hover {
+[data-theme="medieval"] .quiz-option:hover,
+[data-theme="medieval"] [class*="quiz-opt"]:hover {
   background: rgba(200,150,10,0.18) !important;
   border-color: var(--gold) !important;
+}
+[data-theme="medieval"] .quiz-option.correct { background: rgba(50,120,30,0.18) !important; border-color: #5a8030 !important; }
+[data-theme="medieval"] .quiz-option.wrong   { background: rgba(139,26,26,0.18) !important; border-color: var(--seal-red) !important; }
+
+/* Ranking semanal — lista de cavaleiros */
+[data-theme="medieval"] #quiz-ranking > div,
+[data-theme="medieval"] .ranking-item {
+  background-color: var(--parch-dk) !important;
+  border: 1px solid var(--parch-edge) !important;
+  border-radius: 2px !important;
+  box-shadow: 2px 3px 0 rgba(0,0,0,0.15) !important;
+  font-family: 'Cinzel', serif !important;
+  font-size: 11px !important;
+  color: var(--ink) !important;
+}
+[data-theme="medieval"] #quiz-ranking > div:first-child {
+  border-color: var(--gold) !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.2), 0 0 10px rgba(200,150,10,0.1) !important;
+}
+
+/* Labels das seções */
+[data-theme="medieval"] [style*="QUIZZES DISPONÍVEIS"],
+[data-theme="medieval"] [style*="RANKING SEMANAL"] {
+  font-family: 'Cinzel Decorative', serif !important;
   color: var(--ink) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   FAVORITOS / VIEWS DARK
+   TRANSPARÊNCIA
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] #view-history,
-[data-theme="medieval"] #view-vip-panel {
-  background: linear-gradient(180deg, #1e1509 0%, #2a1c08 100%) !important;
+[data-theme="medieval"] .trans-chip {
+  font-family: 'Cinzel', serif !important; font-size: 9px !important;
+  background: rgba(200,150,10,0.06) !important;
+  border-color: var(--parch-edge) !important; color: var(--ink-lt) !important; border-radius: 2px !important;
 }
-[data-theme="medieval"] #view-history > div:first-child,
-[data-theme="medieval"] #view-vip-panel > div:first-child {
-  background: rgba(10,6,2,0.8) !important;
-  border-bottom: 2px solid var(--gold) !important;
+[data-theme="medieval"] .trans-chip.active { background: rgba(200,150,10,0.15) !important; border-color: var(--gold) !important; color: var(--gold) !important; }
+[data-theme="medieval"] .trans-card, [data-theme="medieval"] .trans-mini-card, [data-theme="medieval"] .trans-exec-card {
+  background-color: var(--parch-dk) !important;
+  border: 2px solid var(--parch-edge) !important; border-radius: 2px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.22) !important;
 }
-[data-theme="medieval"] #view-history > div:first-child span,
-[data-theme="medieval"] #view-vip-panel > div:first-child span {
-  font-family: 'Cinzel Decorative', serif !important;
-  color: var(--gold-lt) !important;
-  text-shadow: 0 0 14px var(--gold-glow) !important;
+[data-theme="medieval"] .trans-card:hover, [data-theme="medieval"] .trans-mini-card:hover {
+  background-color: #c8aa70 !important; border-color: var(--gold) !important;
+  transform: translateY(-1px) !important; box-shadow: 4px 5px 0 rgba(0,0,0,0.28) !important;
 }
-[data-theme="medieval"] .fav-tab {
-  font-family: 'Cinzel', serif !important;
-  font-size: 9px !important;
-  letter-spacing: .8px !important;
-  color: rgba(180,140,60,0.5) !important;
+[data-theme="medieval"] .trans-card-name, [data-theme="medieval"] .trans-mini-name,
+[data-theme="medieval"] .trans-exec-name, [data-theme="medieval"] .trans-profile-name {
+  font-family: 'Cinzel', serif !important; color: var(--ink) !important; font-weight: 700 !important;
 }
-[data-theme="medieval"] .fav-tab.active {
-  color: var(--gold-lt) !important;
-  border-bottom-color: var(--gold-lt) !important;
+[data-theme="medieval"] .trans-card-role, [data-theme="medieval"] .trans-exec-role,
+[data-theme="medieval"] .trans-mini-party, [data-theme="medieval"] .trans-profile-role {
+  font-family: 'IM Fell English', serif !important; font-style: italic !important; color: var(--ink-md) !important;
 }
-[data-theme="medieval"] .fav-item {
-  background: rgba(35,22,8,0.85) !important;
-  border-color: rgba(150,110,20,0.3) !important;
-  border-radius: 3px !important;
+[data-theme="medieval"] .trans-local-section-title { font-family: 'Cinzel Decorative', serif !important; color: var(--ink) !important; font-size: 12px !important; }
+[data-theme="medieval"] .trans-section-label { font-family: 'Cinzel', serif !important; color: var(--stone-lt) !important; font-size: 9px !important; letter-spacing: 1.5px !important; }
+[data-theme="medieval"] .trans-compare-btn, [data-theme="medieval"] .trans-mini-cmp, [data-theme="medieval"] .trans-compare-btn-lg {
+  font-family: 'Cinzel', serif !important; font-size: 9px !important; letter-spacing: .5px !important;
+  border-color: var(--parch-edge) !important; color: var(--ink-lt) !important;
+  background: rgba(200,150,10,0.05) !important; border-radius: 2px !important;
 }
-[data-theme="medieval"] .fav-item:hover {
-  background: rgba(50,32,10,0.95) !important;
-  border-color: var(--gold) !important;
+[data-theme="medieval"] .trans-compare-btn:hover, [data-theme="medieval"] .trans-mini-cmp:hover,
+[data-theme="medieval"] .trans-compare-btn-lg:hover {
+  border-color: var(--gold) !important; color: var(--gold) !important;
+  background: rgba(200,150,10,0.15) !important; box-shadow: 2px 3px 0 rgba(0,0,0,0.2) !important;
+}
+[data-theme="medieval"] .trans-compare-btn.active, [data-theme="medieval"] .trans-mini-cmp.active {
+  border-color: var(--gold) !important; color: var(--gold) !important; background: rgba(200,150,10,0.15) !important;
+}
+[data-theme="medieval"] .trans-profile-photo {
+  border: 4px solid var(--gold) !important;
+  box-shadow: 0 0 0 2px var(--stone), 0 0 20px rgba(200,150,10,0.3), 4px 4px 0 rgba(0,0,0,0.4) !important;
+}
+[data-theme="medieval"] .trans-salary-value { font-family: 'Cinzel', serif !important; color: var(--ink) !important; }
+[data-theme="medieval"] .trans-back-btn { font-family: 'Cinzel', serif !important; font-size: 9px !important; letter-spacing: .5px !important; color: var(--ink-lt) !important; border-color: var(--parch-edge) !important; background: rgba(200,150,10,0.05) !important; border-radius: 2px !important; }
+[data-theme="medieval"] .trans-back-btn:hover { border-color: var(--gold) !important; color: var(--gold) !important; }
+[data-theme="medieval"] .trans-meta-chip { background: rgba(200,150,10,0.08) !important; border-color: rgba(200,150,10,0.3) !important; color: var(--ink-md) !important; font-family: 'Cinzel', serif !important; font-size: 9px !important; border-radius: 2px !important; }
+[data-theme="medieval"] .trans-legal-notice { background: rgba(139,26,26,0.07) !important; border-color: rgba(139,26,26,0.22) !important; color: var(--seal-red) !important; font-family: 'IM Fell English', serif !important; font-style: italic !important; }
+[data-theme="medieval"] .trans-cmp-label { font-family: 'Cinzel', serif !important; color: var(--ink) !important; background: rgba(200,150,10,0.07) !important; border-color: rgba(200,150,10,0.2) !important; }
+[data-theme="medieval"] .trans-cmp-cell { color: var(--ink-md) !important; font-family: 'IM Fell English', serif !important; border-color: rgba(150,110,20,0.15) !important; }
+
+/* ══════════════════════════════════════════════════
+   BOTÕES
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] .btn-main {
+  background: linear-gradient(135deg, #8a6008, #6a4806, #8a6008) !important;
+  border: 2px solid var(--gold) !important; color: var(--parch-lt) !important;
+  font-family: 'Cinzel', serif !important; font-size: 10px !important; letter-spacing: 1px !important;
+  border-radius: 2px !important;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08) !important;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.7) !important;
+  transition: all .2s !important;
+}
+[data-theme="medieval"] .btn-main:hover {
+  background: linear-gradient(135deg, #b08020, #9a6810, #b08020) !important;
+  box-shadow: 4px 5px 0 rgba(0,0,0,0.55), 0 0 14px rgba(200,150,10,0.25) !important;
+  transform: translateY(-1px) !important;
+}
+[data-theme="medieval"] .glass-btn {
+  background: rgba(200,150,10,0.08) !important; border-color: rgba(200,150,10,0.3) !important;
+  color: var(--ink-lt) !important; font-family: 'Cinzel', serif !important;
+  font-size: 9px !important; letter-spacing: .5px !important; border-radius: 2px !important;
+}
+[data-theme="medieval"] .glass-btn:hover { background: rgba(200,150,10,0.2) !important; border-color: var(--gold) !important; color: var(--ink) !important; box-shadow: 2px 3px 0 rgba(0,0,0,0.2) !important; }
+[data-theme="medieval"] .dm-call-btn { background: linear-gradient(135deg,#8a1010,#6a0808) !important; border: 1px solid #c03030 !important; border-radius: 2px !important; }
+
+/* ══════════════════════════════════════════════════
+   INPUTS
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] .gs-input, [data-theme="medieval"] .search-glass input,
+[data-theme="medieval"] #search-comm-input, [data-theme="medieval"] .inp,
+[data-theme="medieval"] input[type="text"], [data-theme="medieval"] textarea {
+  background: rgba(212,188,136,0.4) !important; border: 2px solid var(--parch-edge) !important;
+  color: var(--ink) !important; font-family: 'IM Fell English', serif !important; font-style: italic !important;
+  border-radius: 2px !important;
+}
+[data-theme="medieval"] .gs-input:focus, [data-theme="medieval"] input[type="text"]:focus,
+[data-theme="medieval"] textarea:focus {
+  border-color: var(--gold) !important; background: rgba(212,188,136,0.6) !important;
+  box-shadow: 0 0 8px rgba(200,150,10,0.2), 2px 2px 0 rgba(0,0,0,0.1) !important; outline: none !important;
+}
+[data-theme="medieval"] .gs-input::placeholder, [data-theme="medieval"] input::placeholder { color: var(--ink-lt) !important; opacity: .7 !important; }
+
+/* ══════════════════════════════════════════════════
+   NAV BAR INFERIOR
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] .nav-bar {
+  background: linear-gradient(0deg, #080503 0%, #120d06 100%) !important;
+  border-top: 3px solid var(--gold) !important;
+  box-shadow: 0 -3px 0 rgba(0,0,0,0.6), 0 -4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,150,10,0.12) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   TOAST
+   FAVORITOS & VIP
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] #toast {
-  background: rgba(20,12,3,0.97) !important;
-  border: 2px solid var(--gold) !important;
-  color: var(--gold-lt) !important;
-  font-family: 'Cinzel', serif !important;
-  font-size: 10px !important;
-  letter-spacing: .5px !important;
-  box-shadow: 3px 3px 0 rgba(0,0,0,0.5), 0 0 14px var(--gold-glow) !important;
+[data-theme="medieval"] #view-history, [data-theme="medieval"] #view-vip-panel {
+  background: linear-gradient(180deg, #1a1208 0%, #231508 100%) !important;
+}
+[data-theme="medieval"] #view-history > div:last-child, [data-theme="medieval"] #view-vip-panel > div:last-child {
+  background-color: var(--parch) !important;
+  background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.3  0 0 0 0 0.05  0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E") !important;
+}
+[data-theme="medieval"] .fav-item { background-color: var(--parch-dk) !important; border: 2px solid var(--parch-edge) !important; border-radius: 2px !important; box-shadow: 2px 3px 0 rgba(0,0,0,0.2) !important; }
+[data-theme="medieval"] .fav-item:hover { background-color: #c8aa70 !important; border-color: var(--gold) !important; }
+[data-theme="medieval"] .fav-empty { font-family: 'IM Fell English', serif !important; font-style: italic !important; color: var(--ink-lt) !important; }
+
+/* VIP section titles */
+[data-theme="medieval"] #fav-vip-section div[style*="c5c6c7"],
+[data-theme="medieval"] #fav-themes-section div[style*="c5c6c7"] {
+  font-family: 'Cinzel', serif !important; color: var(--parch-edge) !important; letter-spacing: 1px !important;
 }
 
 /* ══════════════════════════════════════════════════
    MODAL VIP
 ══════════════════════════════════════════════════ */
 [data-theme="medieval"] .vup-box {
-  background: linear-gradient(180deg, #1e1509, #140e04) !important;
-  border: 2px solid var(--gold) !important;
+  background: linear-gradient(180deg, #1a1208, #100d05) !important;
+  border: 2px solid var(--gold) !important; border-radius: 4px !important;
+  box-shadow: 6px 8px 0 rgba(0,0,0,0.6) !important;
 }
-[data-theme="medieval"] .vup-section-title {
-  font-family: 'Cinzel', serif !important;
-  color: var(--gold-lt) !important;
-  letter-spacing: 2px !important;
+[data-theme="medieval"] .vup-section-title { font-family: 'Cinzel', serif !important; color: var(--gold-lt) !important; letter-spacing: 2px !important; }
+[data-theme="medieval"] .vup-plan-name { font-family: 'Cinzel', serif !important; }
+[data-theme="medieval"] .vup-price-val { font-family: 'Cinzel', serif !important; color: var(--parch-lt) !important; }
+
+/* ══════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════ */
+[data-theme="medieval"] #toast {
+  background: rgba(15,10,3,0.97) !important;
+  border: 2px solid var(--gold) !important; border-radius: 2px !important;
+  color: var(--gold-lt) !important; font-family: 'Cinzel', serif !important;
+  font-size: 11px !important; letter-spacing: .5px !important;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.6), 0 0 16px var(--gold-glow) !important;
 }
 
 /* ══════════════════════════════════════════════════
-   SCROLLBAR GLOBAL
+   ANIMAÇÕES
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] * {
-  scrollbar-color: rgba(200,150,10,0.3) rgba(200,150,10,0.05) !important;
-}
-[data-theme="medieval"] ::-webkit-scrollbar { width: 5px; }
-[data-theme="medieval"] ::-webkit-scrollbar-track { background: rgba(200,150,10,0.04); }
-[data-theme="medieval"] ::-webkit-scrollbar-thumb { background: rgba(200,150,10,0.3); border-radius: 2px; }
-[data-theme="medieval"] ::-webkit-scrollbar-thumb:hover { background: rgba(200,150,10,0.5); }
-
-/* ══════════════════════════════════════════════════
-   ANIMAÇÃO ENTRADA
-══════════════════════════════════════════════════ */
-@keyframes scroll-reveal {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); filter: brightness(0.8); }
-  to   { opacity: 1; transform: none; filter: brightness(1); }
+@keyframes scroll-unfurl {
+  from { opacity: 0; transform: translateY(10px) scaleY(0.96); filter: brightness(0.8) sepia(0.3); }
+  to   { opacity: 1; transform: none; filter: brightness(1) sepia(0); }
 }
 [data-theme="medieval"] .news-card,
 [data-theme="medieval"] .news-card-featured,
 [data-theme="medieval"] .trans-card,
 [data-theme="medieval"] .trans-mini-card,
-[data-theme="medieval"] .trans-exec-card {
-  animation: scroll-reveal 0.4s ease-out both !important;
+[data-theme="medieval"] #inbox-list > div,
+[data-theme="medieval"] #inbox-list > a,
+[data-theme="medieval"] #quiz-list > div,
+[data-theme="medieval"] #quiz-ranking > div {
+  animation: scroll-unfurl 0.4s ease-out both !important;
 }
-[data-theme="medieval"] .news-card:nth-child(2) { animation-delay: .05s !important; }
-[data-theme="medieval"] .news-card:nth-child(3) { animation-delay: .10s !important; }
-[data-theme="medieval"] .news-card:nth-child(4) { animation-delay: .15s !important; }
-[data-theme="medieval"] .trans-card:nth-child(2) { animation-delay: .05s !important; }
-[data-theme="medieval"] .trans-card:nth-child(3) { animation-delay: .10s !important; }
+[data-theme="medieval"] .news-card:nth-child(2) { animation-delay: .06s !important; }
+[data-theme="medieval"] .news-card:nth-child(3) { animation-delay: .12s !important; }
+[data-theme="medieval"] .news-card:nth-child(4) { animation-delay: .18s !important; }
+[data-theme="medieval"] #inbox-list > div:nth-child(2) { animation-delay: .07s !important; }
+[data-theme="medieval"] #inbox-list > div:nth-child(3) { animation-delay: .14s !important; }
+[data-theme="medieval"] #quiz-list > div:nth-child(2) { animation-delay: .06s !important; }
+[data-theme="medieval"] #quiz-ranking > div:nth-child(2) { animation-delay: .06s !important; }
+[data-theme="medieval"] #quiz-ranking > div:nth-child(3) { animation-delay: .12s !important; }
 
 /* ══════════════════════════════════════════════════
-   COMPARE TABLE
+   TEXTOS SOLTOS (p, span, div sem classe)
 ══════════════════════════════════════════════════ */
-[data-theme="medieval"] .trans-cmp-label {
-  font-family: 'Cinzel', serif !important;
-  color: var(--ink) !important;
-  background: rgba(200,150,10,0.08) !important;
-  border-color: rgba(200,150,10,0.2) !important;
-}
-[data-theme="medieval"] .trans-cmp-cell {
+[data-theme="medieval"] #content-area p,
+[data-theme="medieval"] #content-area .text-sm,
+[data-theme="medieval"] #content-area [style*="color:#888"],
+[data-theme="medieval"] #content-area [style*="color:#6b7280"],
+[data-theme="medieval"] #content-area [style*="color:#4b5563"] {
   color: var(--ink-md) !important;
   font-family: 'IM Fell English', serif !important;
-  border-color: rgba(150,110,20,0.15) !important;
-}
-
-/* ══════════════════════════════════════════════════
-   LEGAL / CHARGES
-══════════════════════════════════════════════════ */
-[data-theme="medieval"] .trans-legal-notice {
-  background: rgba(139,26,26,0.08) !important;
-  border-color: rgba(139,26,26,0.25) !important;
-  color: var(--red-seal) !important;
-  font-family: 'IM Fell English', serif !important;
-  font-style: italic !important;
 }
