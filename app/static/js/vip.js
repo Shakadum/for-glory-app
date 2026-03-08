@@ -1,15 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
 // FOR GLORY — VIP — Planos, Assinatura, Glory Multiplier
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
 
 async function loadVipPanel() {
     await loadGloryHeader(); // shares glory data
     await loadVipPlans();
-}
 
 async function loadVipPlans() {
     const container = document.getElementById('vip-plans');
@@ -111,9 +108,4 @@ async function cancelSubscription() {
         if (r.ok) { showToast('Assinatura cancelada.'); loadVipPanel(); }
     } catch(e) { showToast('Erro ao cancelar.'); }
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  DIAGNOSTICS (Admin)
-// ═══════════════════════════════════════════════════════════════
-
-// [loadDiagnostics movida para módulo canônico]
+}

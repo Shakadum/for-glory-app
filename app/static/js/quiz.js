@@ -1,17 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
 // FOR GLORY — QUIZ — Quizzes, Glory, Ranking
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
-
 
 async function loadQuizPanel() {
     await loadGloryHeader();
     await loadQuizzes();
     await loadQuizRanking();
-}
 
 async function loadGloryHeader() {
     try {
@@ -49,7 +45,7 @@ async function loadQuizzes() {
         if (!r.ok) { container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Sem quizzes disponíveis.</div>'; return; }
         const quizzes = await r.json();
         if (!quizzes.length) {
-            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:'DM Sans';font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
+            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:DM Sans,sans-serif;font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
             return;
         }
         const catColors = {news:'#ef4444',politicians:'#3b82f6',constitution:'#8b5cf6',community:'#10b981',general:'#6b7280'};
@@ -61,7 +57,7 @@ async function loadQuizzes() {
                     ${q.category==='news'?'📰':q.category==='politicians'?'🏛️':q.category==='constitution'?'📜':q.category==='community'?'👥':'🧠'}
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <div style="font-family:'DM Sans';font-weight:600;font-size:13px;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(q.title)}</div>
+                    <div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:13px;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(q.title)}</div>
                     <div style="display:flex;gap:8px;align-items:center;margin-top:5px;">
                         <span style="font-size:10px;color:${col};font-family:'Rajdhani';font-weight:700;letter-spacing:0.5px;">${(q.category||'').toUpperCase()}</span>
                         <span style="font-size:10px;color:#4b5563;">·</span>
@@ -94,16 +90,12 @@ async function loadQuizRanking() {
             return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">
                 <span style="font-size:${i<3?'18':'13'}px;width:24px;text-align:center;flex-shrink:0;">${medal}</span>
                 <img src="${safeAvatarUrl(entry.avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" onerror="this.src='/static/default-avatar.svg'">
-                <span style="flex:1;font-family:'DM Sans';font-size:13px;color:#e5e7eb;">${escapeHtml(entry.username)}</span>
+                <span style="flex:1;font-family:DM Sans,sans-serif;font-size:13px;color:#e5e7eb;">${escapeHtml(entry.username)}</span>
                 <span style="font-family:'Rajdhani';font-weight:700;font-size:14px;color:#66fcf1;">${(entry.score_week||0).toLocaleString('pt-BR')} pts</span>
             </div>`;
         }).join('');
     } catch(e) { console.warn('loadQuizRanking:', e); }
 }
-
-// Quiz modal
-let __quizData = null;
-let __quizStartTime = null;
 
 async function startQuiz(quizId, title) {
     try {
@@ -139,10 +131,10 @@ function renderQuizModal(quiz) {
                 <div style="background:rgba(102,252,241,0.05);border-radius:20px;height:4px;margin-bottom:20px;overflow:hidden;">
                     <div style="height:100%;background:#66fcf1;border-radius:20px;width:${progress}%;transition:width 0.3s;"></div>
                 </div>
-                <div style="font-family:'DM Sans';font-weight:600;font-size:15px;color:#f3f4f6;line-height:1.5;margin-bottom:20px;">${escapeHtml(q.question)}</div>
+                <div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:15px;color:#f3f4f6;line-height:1.5;margin-bottom:20px;">${escapeHtml(q.question)}</div>
                 <div id="quiz-options" style="display:flex;flex-direction:column;gap:10px;">
                     ${q.options.map((opt, i) => `
-                    <button onclick="selectAnswer(${i})" id="quiz-opt-${i}" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 16px;text-align:left;color:#e5e7eb;font-family:'DM Sans';font-size:13px;cursor:pointer;transition:all 0.15s;width:100%;"
+                    <button onclick="selectAnswer(${i})" id="quiz-opt-${i}" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 16px;text-align:left;color:#e5e7eb;font-family:DM Sans,sans-serif;font-size:13px;cursor:pointer;transition:all 0.15s;width:100%;"
                         onmouseover="if(!this.dataset.locked)this.style.borderColor='rgba(102,252,241,0.4)'"
                         onmouseout="if(!this.dataset.locked)this.style.borderColor='rgba(255,255,255,0.1)'">
                         <span style="color:#66fcf1;margin-right:10px;font-weight:700;">${['A','B','C','D'][i]}.</span>${escapeHtml(opt)}
@@ -223,7 +215,7 @@ async function submitQuizAnswers(quizId, answers) {
                     <div style="font-family:'Syne';font-weight:800;font-size:20px;color:#f3f4f6;margin-bottom:8px;">
                         ${d.correct}/${d.total} corretas
                     </div>
-                    <div style="font-family:'DM Sans';font-size:13px;color:#6b7280;margin-bottom:20px;">${timeSec}s · ${d.multiplier > 1 ? `${d.multiplier}x multiplicador VIP` : 'sem multiplicador'}</div>
+                    <div style="font-family:DM Sans,sans-serif;font-size:13px;color:#6b7280;margin-bottom:20px;">${timeSec}s · ${d.multiplier > 1 ? `${d.multiplier}x multiplicador VIP` : 'sem multiplicador'}</div>
                     <div style="background:rgba(102,252,241,0.08);border:1px solid rgba(102,252,241,0.2);border-radius:12px;padding:16px;margin-bottom:20px;">
                         <div style="font-family:'Rajdhani';font-weight:800;font-size:28px;color:#66fcf1;">+${d.glory_earned}</div>
                         <div style="font-size:12px;color:#6b7280;">pontos de glória</div>
@@ -238,11 +230,4 @@ async function submitQuizAnswers(quizId, answers) {
         // Refresh glory header
         loadGloryHeader();
     } catch(e) { console.error('submitQuizAnswers:', e); showToast('Erro ao enviar respostas.'); }
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  VIP PANEL
-// ═══════════════════════════════════════════════════════════════
-
-// [loadVipPanel movida para módulo canônico]
-
+}}

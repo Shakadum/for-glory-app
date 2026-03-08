@@ -1,10 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
-// FOR GLORY — CALL — Agora RTC, Call Panel, Draggable Button
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// FOR GLORY — CALL — Agora RTC, Call Panel, Botão Flutuante
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
 
 function initDraggableFloatingCallButton() {
     const btn = document.getElementById('floating-call-btn');
@@ -185,7 +183,6 @@ function initDraggableFloatingCallButton() {
     }, true);
 }
 
-// ── Convidar para call em andamento ───────────────────────────────────
 function openCallInvite() {
     document.getElementById('modal-call-invite').classList.remove('hidden');
     document.getElementById('call-invite-username').value = '';
@@ -222,7 +219,6 @@ async function sendCallInvite() {
     }
 }
 
-// Entrar em call já em andamento (sem ring)
 async function joinActiveCall(channel, type) {
     if (rtc.client) return showToast("Você já está em uma call!");
     window.isCaller = false;
@@ -490,7 +486,6 @@ function leaveCall() {
     })();
 }
 
-window.callUsersCache = {};
 async function renderCallPanel(rtc, localUid) {
     try {
         const panel = document.getElementById('expanded-call-panel');
@@ -616,10 +611,6 @@ async function renderCallPanel(rtc, localUid) {
     }
 }
 
-
-// ===== Remote audio controls (mute other + volume 0..200) =====
-window.__remoteAudioState = window.__remoteAudioState || {};
-
 function __getRemoteState(uid) {
     uid = Number(uid);
     if (!window.__remoteAudioState[uid]) window.__remoteAudioState[uid] = { muted:false, volume:100, remoteUnpub:false, prevVolume:100 };
@@ -655,11 +646,8 @@ async function toggleRemoteMute(uid) {
     }
 }
 
-// Backward compatibility (old name used elsewhere)
 function changeRemoteVol(uid, val) { setRemoteVolume(uid, val); }
 
-
-let isMicMuted = false;
 async function toggleMuteCall() { 
     if(rtc.localAudioTrack) { 
         isMicMuted = !isMicMuted;
@@ -672,14 +660,17 @@ async function toggleMuteCall() {
 
 function toggleCallPanel() { let p = document.getElementById('expanded-call-panel'); p.style.display = (p.style.display === 'flex') ? 'none' : 'flex'; }
 
-// Mostra/esconde botão de convidar conforme tipo da call
 function updateCallInviteBtn() {
     const btn = document.querySelector('.cp-ctrl-invite');
     if (!btn) return;
     const isGroup = (window.pendingCallType === 'group' || window.pendingCallType === 'channel');
     btn.style.display = isGroup ? 'flex' : 'none';
 }
+
 function showCallPanel() { document.getElementById('expanded-call-panel').style.display = 'flex'; updateCallInviteBtn(); callDuration = 0; document.getElementById('call-hud-time').innerText = "00:00"; clearInterval(callInterval); callInterval = setInterval(() => { callDuration++; let m = String(Math.floor(callDuration / 60)).padStart(2, '0'); let s = String(callDuration % 60).padStart(2, '0'); document.getElementById('call-hud-time').innerText = `${m}:${s}`; }, 1000); renderCallPanel(rtc, user.id); }
+
 function kickFromCall(targetUid) { if(confirm("Expulsar soldado da ligação?")) { if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("KICK_CALL:" + targetUid); } } }
 
 function showToast(m){ let x=document.getElementById("toast"); x.innerText=m; x.className="show"; setTimeout(()=>{x.className=""},5000); }
+
+function toggleAuth(m){ ['login','register','forgot','reset'].forEach(f=>document.getElementById(f+'-form').classList.add('hidden')); document.getElementById(m+'-form').classList.remove('hidden'); }

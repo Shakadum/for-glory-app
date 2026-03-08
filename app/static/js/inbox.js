@@ -1,12 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
-// FOR GLORY — INBOX — DMs, Grupos, Status Online, Unread, Typing
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// FOR GLORY — INBOX — DMs, Grupos, Status Online, Unread
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
 
-function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
+async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
 
 async function fetchUnread(){
     if(!user) return;
@@ -85,6 +83,7 @@ async function loadInbox(){
 }
 
 async function openCreateGroupModal(){ try{ let r=await authFetch(`/inbox?nocache=${new Date().getTime()}`); let d=await r.json(); let list=document.getElementById('group-friends-list'); if((d.friends||[]).length===0){list.innerHTML=`<p style='color:#ff5555;font-size:13px;'>Adicione amigos primeiro.</p>`;}else{list.innerHTML=d.friends.map(f=>`<label style="display:flex;align-items:center;gap:10px;color:white;margin-bottom:10px;cursor:pointer;"><input type="checkbox" class="grp-friend-cb" value="${f.id}" style="width:18px;height:18px;"><img src="${safeAvatarUrl(f.avatar, f.name)}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;" onerror="this.src='/static/default-avatar.svg'"> ${f.name}</label>`).join('');} document.getElementById('new-group-name').value=''; document.getElementById('modal-create-group').classList.remove('hidden'); }catch(e){ console.error(e); } }
+
 async function submitCreateGroup(){
   let name = document.getElementById('new-group-name').value.trim();
   if(!name) return;
@@ -110,9 +109,13 @@ async function submitCreateGroup(){
     showToast('Erro ao criar grupo.');
   }
 }
+
 async function toggleRequests(type){ let b=document.getElementById('requests-list'); if(b.style.display==='block'){b.style.display='none';return;} b.style.display='block'; try{ let r=await authFetch(`/friend/requests?nocache=${new Date().getTime()}`); let d=await r.json(); if(type==='requests'){b.innerHTML=(d.requests||[]).length?d.requests.map(r=>`<div style="padding:10px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">${r.username} <button class="glass-btn" style="padding:5px 10px;flex:none;" onclick="handleReq(${r.id},'accept')">${t('accept_ally')}</button></div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;}else{b.innerHTML=(d.friends||[]).length?d.friends.map(f=>`<div style="padding:10px;border-bottom:1px solid #333;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="openPublicProfile(${f.id})"><div class="av-wrap"><img src="${safeAvatarUrl(f.avatar, f.username)}" style="width:30px;height:30px;border-radius:50%;" onerror="this.src='/static/default-avatar.svg'"><div class="status-dot" data-uid="${f.id}" style="width:10px;height:10px;"></div></div>${f.username}</div>`).join(''):`<p style="padding:10px;color:#888;">Vazio.</p>`;} updateStatusDots(); }catch(e){ console.error(e); } }
+
 async function sendRequest(tid){try{let r=await authFetch('/friend/request',{method:'POST',body:JSON.stringify({target_id:tid})});if(r.ok){openPublicProfile(tid);}}catch(e){ console.error(e); }}
+
 async function handleReq(rid,act){try{let r=await authFetch('/friend/handle',{method:'POST',body:JSON.stringify({request_id:rid,action:act})});if(r.ok){toggleRequests('requests');fetchUnread();}}catch(e){ console.error(e); }}
+
 async function handleCommReq(rid,act){try{let r=await authFetch('/community/request/handle',{method:'POST',body:JSON.stringify({req_id:rid,action:act})});if(r.ok){showToast("Membro atualizado!");fetchUnread();await openCommunity(activeCommId, true);}}catch(e){ console.error(e); }}
 
 async function unfriend(fid) {
@@ -123,9 +126,6 @@ async function unfriend(fid) {
         } catch(e) { console.error(e); }
     }
 }
-
-// [submitCreateComm movida para módulo canônico]
-
 
 async function fetchChatMessages(id, type, loadToken) {
     let list = document.getElementById('dm-list');
@@ -409,6 +409,7 @@ function sendDM(){
     }
   }
 }
+
 async function uploadDMImage(){
   let f = document.getElementById('dm-file').files[0];
   if(!f) return;
@@ -435,14 +436,6 @@ async function uploadDMImage(){
     showToast("Erro no upload da imagem.");
   }
 }
-// [loadMyComms movida para módulo canônico]
-
-// [loadPublicComms movida para módulo canônico]
-
-// [clearCommSearch movida para módulo canônico]
-
-// [searchComms movida para módulo canônico]
-
 
 function applyRemoteDelete(msgNumericId){
     const candidates = [
@@ -465,9 +458,7 @@ function applyRemoteDelete(msgNumericId){
         el.querySelectorAll('.del-msg-btn').forEach(b=>b.remove());
     }
 }
-}
 
-// ===================== Group Settings Modal =====================
 function openGroupSettings(){
     try{
         if (currentChatType !== 'group' || !currentChatId) return;
@@ -478,6 +469,7 @@ function openGroupSettings(){
         loadGroupSettings();
     }catch(e){ console.error(e); }
 }
+
 function closeGroupSettings(){
     const modal = document.getElementById('modal-group-settings');
     if (modal) modal.classList.add('hidden');
@@ -641,10 +633,3 @@ async function changeGroupAvatar(){
         gsError('Não foi possível trocar a foto do grupo.');
     }
 }
-
-
-// ═══════════════════════════════════════════════════════════════
-//  QUIZ & GLORY PANEL
-// ═══════════════════════════════════════════════════════════════
-
-// [loadQuizPanel movida para módulo canônico]

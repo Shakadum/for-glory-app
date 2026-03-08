@@ -1,23 +1,28 @@
 // ═══════════════════════════════════════════════════════════════
-// FOR GLORY — CORE — Globals, i18n, Utils, AuthFetch, WebSocket
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// FOR GLORY — CORE — Globals, i18n, Utils, AuthFetch, WebSocket, Lifecycle
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
-
 
 
 window.dmSendQueue = window.dmSendQueue || [];
 window.dmWSChatKey = window.dmWSChatKey || null;
-function sendSystemDmMessage(text) {
-  try {
-    if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
-      dmWS.send(String(text));
-    }
-  } catch (e) { console.warn('system dm message failed', e); }
-}
-// ===== Emoji data (fallback) =====
+window.deleteTarget = {type: null, id: null};
+window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
+window.FEED_ENABLED = false;
+var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, 
+    lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
+var currentChatLoadToken = 0;
+var activeCommId=null, activeChannelId=null;
+let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
+let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
+let callDuration = 0, callInterval = null; 
+window.pendingCallChannel = null; window.pendingCallType = null;
+window.currentAgoraChannel = null;
+window.isCaller = false;
+window.callTargetId = null;
+
+
 const EMOJIS = window.EMOJIS || [
   "😀","😁","😂","🤣","😊","😍","😘","😎","🤔","😅","😭","😡",
   "👍","👎","🙏","💪","🔥","⭐","🎉","❤️","💔","😴","🤯","🥶",
@@ -25,89 +30,6 @@ const EMOJIS = window.EMOJIS || [
 ];
 window.EMOJIS = EMOJIS;
 
-window.deleteTarget = {type: null, id: null};
-// ===== Helpers (safety) =====
-function escapeHtml(input) {
-    const s = String(input ?? "");
-    return s.replace(/[&<>"']/g, (ch) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-    }[ch]));
-}
-window.escapeHtml = escapeHtml;
-
-
-function safeDisplayName(u) {
-    const name =
-        (u && (u.username || u.name || u.display_name || u.nickname || u.user)) ||
-        "";
-    const trimmed = String(name).trim();
-    return trimmed ? trimmed : "Usuário";
-}
-
-
-
-
-// Picks the best URL field returned by /upload.
-// Backend returns {url: "...", ...}. Older code expected secure_url.
-function pickUploadedUrl(data) {
-  try {
-    const cand = (data && (data.secure_url || data.url || data.secureUrl || data.secureURL || data.location)) || "";
-    const s = String(cand || "").trim();
-    if (!s || s === "undefined" || s === "null") return null;
-    if (s.startsWith("http://") || s.startsWith("https://")) return s;
-    return s;
-  } catch (e) {
-    return null;
-  }
-}
-
-
-function normalizeUserBasic(u, fallbackUid = null) {
-    const id = (u && (u.id ?? u.uid)) ?? fallbackUid;
-    const name = safeDisplayName(u);
-    const avatar = safeAvatarUrl(u && (u.avatar_url || u.avatar || u.photo_url || u.photo || u.picture || u.profile_pic));
-    return { id, name, avatar };
-}
-
-const __userBasicCache = window.__userBasicCache || (window.__userBasicCache = {});
-async function getUserBasic(uid) {
-    if (!uid && uid !== 0) return normalizeUserBasic({}, uid);
-    if (__userBasicCache[uid]) return __userBasicCache[uid];
-    try {
-        const r = await fetch(`/users/basic/${uid}`);
-        if (r.ok) {
-            const data = await r.json();
-            __userBasicCache[uid] = normalizeUserBasic(data, uid);
-            return __userBasicCache[uid];
-        }
-    } catch (e) {}
-    __userBasicCache[uid] = normalizeUserBasic({ username: `Usuário ${uid}` }, uid);
-    return __userBasicCache[uid];
-}
-
-
-function showRanksModal() {
-    const modal =
-        document.getElementById('ranks-modal') ||
-        document.getElementById('rank-modal') ||
-        document.getElementById('modal-ranks');
-    if (modal) {
-        modal.style.display = 'block';
-        modal.classList.add('open');
-        return;
-    }
-    alert('Ranks: em breve.');
-}
-window.showRanksModal = showRanksModal;
-
-
-
-
-// CLOUDINARY - NÃO USADO DIRETAMENTE (UPLOAD VIA BACKEND)
 const T = {
     'pt': {
         'login_title': 'FOR GLORY', 'login': 'ENTRAR', 'create_acc': 'Criar Conta', 'forgot': 'Esqueci Senha',
@@ -189,6 +111,7 @@ const T = {
     }
 };
 
+
 let sysLang = navigator.language ? navigator.language.substring(0,2) : 'en';
 let validLangs = ['pt', 'en', 'es'];
 window.currentLang = 'en';
@@ -198,8 +121,9 @@ try {
     else { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; localStorage.setItem('lang', window.currentLang); }
 } catch(e) { window.currentLang = validLangs.includes(sysLang) ? sysLang : 'en'; }
 
+
 function t(key) { let dict = T[window.currentLang]; if (!dict) dict = T['en']; return dict[key] || key; }
-// Salva o idioma e recarrega a página (compatível com handlers inline do HTML)
+
 function changeLanguage(lang) {
     try { localStorage.setItem('lang', lang); } catch (e) {}
     location.reload();
@@ -229,6 +153,197 @@ function initLangDropdown(){
             if(e.key === 'Escape') dd.classList.remove('open');
         });
     }
+}
+
+function escapeHtml(input) {
+    const s = String(input ?? "");
+    return s.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    }[ch]));
+}
+window.escapeHtml = escapeHtml;
+
+
+function safeDisplayName(u) {
+    const name =
+        (u && (u.username || u.name || u.display_name || u.nickname || u.user)) ||
+        "";
+    const trimmed = String(name).trim();
+    return trimmed ? trimmed : "Usuário";
+}
+
+
+
+
+// Picks the best URL field returned by /upload.
+// Backend returns {url: "...", ...}. Older code expected secure_url.
+function pickUploadedUrl(data) {
+  try {
+    const cand = (data && (data.secure_url || data.url || data.secureUrl || data.secureURL || data.location)) || "";
+    const s = String(cand || "").trim();
+    if (!s || s === "undefined" || s === "null") return null;
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+function safeDisplayName(u) {
+    const name =
+        (u && (u.username || u.name || u.display_name || u.nickname || u.user)) ||
+        "";
+    const trimmed = String(name).trim();
+    return trimmed ? trimmed : "Usuário";
+}
+
+function pickUploadedUrl(data) {
+  try {
+    const cand = (data && (data.secure_url || data.url || data.secureUrl || data.secureURL || data.location)) || "";
+    const s = String(cand || "").trim();
+    if (!s || s === "undefined" || s === "null") return null;
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeUserBasic(u, fallbackUid = null) {
+    const id = (u && (u.id ?? u.uid)) ?? fallbackUid;
+    const name = safeDisplayName(u);
+    const avatar = safeAvatarUrl(u && (u.avatar_url || u.avatar || u.photo_url || u.photo || u.picture || u.profile_pic));
+    return { id, name, avatar };
+}
+
+const __userBasicCache = window.__userBasicCache || (window.__userBasicCache = {});
+
+async function getUserBasic(uid) {
+    if (!uid && uid !== 0) return normalizeUserBasic({}, uid);
+    if (__userBasicCache[uid]) return __userBasicCache[uid];
+    try {
+        const r = await fetch(`/users/basic/${uid}`);
+        if (r.ok) {
+            const data = await r.json();
+            __userBasicCache[uid] = normalizeUserBasic(data, uid);
+            return __userBasicCache[uid];
+        }
+    } catch (e) {}
+    __userBasicCache[uid] = normalizeUserBasic({ username: `Usuário ${uid}` }, uid);
+    return __userBasicCache[uid];
+}
+
+function showRanksModal() {
+    const modal =
+        document.getElementById('ranks-modal') ||
+        document.getElementById('rank-modal') ||
+        document.getElementById('modal-ranks');
+    if (modal) {
+        modal.style.display = 'block';
+        modal.classList.add('open');
+        return;
+    }
+    alert('Ranks: em breve.');
+}
+
+
+document.body.addEventListener('click', () => {
+    if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
+}, { once: true });
+window.ringtone = new Audio('/static/sounds/ringtone.wav'); window.ringtone.loop = true;
+window.callingSound = new Audio('/static/sounds/calling.wav'); window.callingSound.loop = true;
+window.msgSound = new Audio('/static/sounds/message.wav');
+
+
+function safePlaySound(snd) {
+    try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado", e)); } } catch(err){}
+}
+
+function stopSounds() {
+    try {
+        if (window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
+    } catch (e) {}
+    try {
+        if (window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
+    } catch (e) {}
+}
+
+function buildDmCallChannel(a, b) {
+    const x = Number(a), y = Number(b);
+    const low = Math.min(x, y), high = Math.max(x, y);
+    return `dm_${low}_${high}`;
+}
+
+function safeAvatarUrl(url, fallbackName){
+  try{
+    const s = (url === undefined || url === null) ? "" : String(url).trim();
+    if(!s || s === "undefined" || s === "null"){
+      return "/static/default-avatar.svg";
+    }
+    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:")) return s;
+    if (s.startsWith("/")) return s;
+    return "/" + s;
+  }catch(e){
+    return "/static/default-avatar.svg";
+  }
+}
+
+window.safeAvatarUrl = safeAvatarUrl;
+window.safeDisplayName = safeDisplayName;
+window.escapeHtml = escapeHtml;
+window.showRanksModal = showRanksModal;
+
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('token');
+    if (token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (Date.now() >= payload.exp * 1000) {
+                localStorage.removeItem('token');
+                showToast('⚠️ Sessão expirada. Faça login novamente.');
+                goView('auth');
+                return new Response(null, { status: 401 });
+            }
+        } catch(e) {}
+    }
+    if (!token) {
+        document.getElementById('modal-login').classList.remove('hidden');
+        throw new Error('No token');
+    }
+    const isFormData = options.body instanceof FormData;
+    options.headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' })
+    };
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        localStorage.removeItem('token');
+        user = null;
+        showToast('⚠️ Sessão expirada. Faça login novamente.');
+        showLoginScreen();
+        throw new Error('Unauthorized');
+    }
+    return res;
+}
+
+function sendSystemDmMessage(text) {
+  try {
+    if (window.dmWS && dmWS.readyState === WebSocket.OPEN) {
+      dmWS.send(String(text));
+    }
+  } catch (e) { console.warn('system dm message failed', e); }
+}
+
+function showLoginScreen() {
+    setLangDropdownVisible(true);
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('modal-login').classList.remove('hidden');
+    toggleAuth('login');
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -263,122 +378,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch(e) {}
         localStorage.removeItem('token');
     }
-    // Modal de login já está visível no HTML por padrão — não precisa fazer nada
 });
-
-function showLoginScreen() {
-    setLangDropdownVisible(true);
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('modal-login').classList.remove('hidden');
-    toggleAuth('login');
-}
-
-var user=null, dmWS=null, commWS=null, globalWS=null, syncInterval=null, lastFeedHash="", currentEmojiTarget=null, currentChatId=null, currentChatType=null;
-
-// ===== Feature toggles =====
-// Remoção do FEED (timeline) solicitada: mantemos posts/perfil e outras funções,
-// mas desativamos a navegação e o carregamento do feed.
-window.FEED_ENABLED = false;
-// Prevent race conditions when switching chats quickly (especially on mobile).
-// Any async fetch/WS handler must check this token before mutating the DOM.
-var currentChatLoadToken = 0;
-var activeCommId=null, activeChannelId=null;
-window.onlineUsers = []; window.unreadData = {}; window.lastTotalUnread = 0;
-let mediaRecorders = {}; let audioChunks = {}; let recordTimers = {}; let recordSeconds = {};
-
-let rtc = { localAudioTrack: null, client: null, remoteUsers: {} };
-let callDuration = 0, callInterval = null; 
-window.pendingCallChannel = null; window.pendingCallType = null;
-window.currentAgoraChannel = null;
-window.isCaller = false;
-window.callTargetId = null;
-
-// Desbloqueador de Áudio Automático
-document.body.addEventListener('click', () => {
-    if(window.ringtone && window.ringtone.state === 'suspended') window.ringtone.resume();
-}, { once: true });
-
-window.ringtone = new Audio('/static/sounds/ringtone.wav'); window.ringtone.loop = true;
-window.callingSound = new Audio('/static/sounds/calling.wav'); window.callingSound.loop = true;
-window.msgSound = new Audio('/static/sounds/message.wav');
-
-function safePlaySound(snd) {
-    try { let p = snd.play(); if (p !== undefined) { p.catch(e => console.log("Áudio bloqueado", e)); } } catch(err){}
-}
-function stopSounds() {
-    try {
-        if (window.callingSound) { window.callingSound.pause(); window.callingSound.currentTime = 0; }
-    } catch (e) {}
-    try {
-        if (window.ringtone) { window.ringtone.pause(); window.ringtone.currentTime = 0; }
-    } catch (e) {}
-}
-
-function buildDmCallChannel(a, b) {
-    const x = Number(a), y = Number(b);
-    const low = Math.min(x, y), high = Math.max(x, y);
-    return `dm_${low}_${high}`;
-}
-
-function safeAvatarUrl(url, fallbackName){
-  try{
-    const s = (url === undefined || url === null) ? "" : String(url).trim();
-    if(!s || s === "undefined" || s === "null"){
-      return "/static/default-avatar.svg";
-    }
-    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:")) return s;
-    if (s.startsWith("/")) return s;
-    return "/" + s;
-  }catch(e){
-    return "/static/default-avatar.svg";
-  }
-}
-
-
-// [2ª cópia de safeDisplayName removida — era duplicata do app.js original]
-
-// expõe helpers para handlers que rodam antes (evita "not defined" se algo falhar no parse parcial)
-window.safeAvatarUrl = safeAvatarUrl;
-window.safeDisplayName = safeDisplayName;
-
-
-async function authFetch(url, options = {}) {
-    const token = localStorage.getItem('token');
-    if (token) {
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            if (Date.now() >= payload.exp * 1000) {
-                localStorage.removeItem('token');
-                showToast('⚠️ Sessão expirada. Faça login novamente.');
-                goView('auth');
-                return new Response(null, { status: 401 });
-            }
-        } catch(e) {}
-    }
-    if (!token) {
-        document.getElementById('modal-login').classList.remove('hidden');
-        throw new Error('No token');
-    }
-    // Não forçar Content-Type quando for FormData (upload de arquivos)
-    const isFormData = options.body instanceof FormData;
-    options.headers = {
-        ...options.headers,
-        'Authorization': `Bearer ${token}`,
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' })
-    };
-    const res = await fetch(url, options);
-    if (res.status === 401) {
-        localStorage.removeItem('token');
-        user = null;
-        showToast('⚠️ Sessão expirada. Faça login novamente.');
-        showLoginScreen();
-        throw new Error('Unauthorized');
-    }
-    return res;
-}
-
-
-// ===== Draggable floating call button (mobile + desktop) =====
 
 function renderMedals(boxId, medalsData, isPublic = false) {
     let box = document.getElementById(boxId); 
@@ -423,11 +423,236 @@ function connectGlobalWS(){
     globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}?token=${token}`);
 
     globalWS.onmessage = (e) => {
+        let d = JSON.parse(e.data);
+        if(d.type === 'pong') return; 
+        if(d.type === 'ping') { fetchUnread(); }
 
-// [2ª cópia de startApp removida — era duplicata do app.js original]
+        if(d.type === 'sync_bg' && window.currentAgoraChannel === d.channel) {
+            document.getElementById('expanded-call-panel').style.backgroundImage = `url('${d.bg_url}')`;
+        }
 
+        if(d.type === 'new_dm') {
+            let isDmActive = document.getElementById('view-dm').classList.contains('active');
+            if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
+            else { safePlaySound(window.msgSound); fetchUnread(); }
+        }
+
+        if(d.type === 'kick_call' && d.target_id === user.id) {
+            showToast("Você foi removido da chamada."); leaveCall();
+        }
+
+        if(d.type === 'call_accepted') {
+            stopSounds();
+            window.currentAgoraChannel = sanitizeChannelName(d.channel || window.pendingCallChannel);
+            connectToAgora(window.currentAgoraChannel, window.pendingCallType);
+        }
+
+        if(d.type === 'call_rejected') {
+            showToast("❌ Chamada recusada.");
+            leaveCall();
+        }
+
+        if(d.type === 'call_cancelled') {
+            showToast("⚠️ A chamada foi cancelada.");
+            document.getElementById('modal-incoming-call').classList.add('hidden'); 
+            stopSounds();
+        }
+        if(d.type === 'message_deleted') {
+            applyRemoteDelete(d.msg_id);
+        }
+
+
+        if(d.type === 'incoming_call') {
+            window.pendingCallerId = d.caller_id;
+            document.getElementById('incoming-call-name').innerText = d.caller_name || 'Usuário';
+            document.getElementById('incoming-call-av').src = safeAvatarUrl(d.caller_avatar, d.caller_name);
+
+            // Canal: nunca pode ser null (Agora exige nome válido <= 64 bytes)
+            let ch = d.channel_name;
+            if(!ch && d.call_type === 'dm') ch = buildDmCallChannel(user.id, d.caller_id);
+            if(!ch) ch = `call_${Date.now()}_${d.caller_id}_${user.id}`;
+            window.pendingCallChannel = sanitizeChannelName(ch);
+            window.currentAgoraChannel = window.pendingCallChannel;
+            window.pendingCallType = d.call_type;
+
+            document.getElementById('modal-incoming-call').classList.remove('hidden');
+            safePlaySound(window.ringtone);
+        }
+    };
+
+    globalWS.onclose = () => { 
+        // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
+        setTimeout(() => { if(user) connectGlobalWS();
+// ── Reconexão ao voltar do segundo plano ──────────────────────────────
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'hidden' && rtc.client && window.currentAgoraChannel) {
+        try {
+            // Verifica se o audio track ainda está publicado
+            if (rtc.localAudioTrack && rtc.localAudioTrack.enabled === false) {
+                await rtc.localAudioTrack.setEnabled(true);
+            }
+            // Se o cliente desconectou, tenta reconectar
+            const state = rtc.client.connectionState;
+            if (state === 'DISCONNECTED' || state === 'DISCONNECTING') {
+                showToast('🔄 Reconectando call...');
+                await connectToAgora(window.currentAgoraChannel, window.pendingCallType);
+            }
+        } catch(e) { console.warn('visibilitychange reconnect:', e); }
+    }
+});
+
+// Mantém AudioContext ativo no mobile (evita suspensão pelo browser)
+let _keepAliveInterval = null;
+function _startCallKeepAlive() {
+    if (_keepAliveInterval) return;
+    _keepAliveInterval = setInterval(() => {
+        try {
+            if (rtc.client && AgoraRTC) {
+                // Agora SDK mantém conexão — apenas verificamos estado
+                const s = rtc.client.connectionState;
+                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
+                    console.warn('Keep-alive: state =', s);
+                }
+            }
+        } catch(_) {}
+    }, 8000);
+}
+function _stopCallKeepAlive() {
+    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
+}
+
+ }, 4000); 
+    };
+}
+connectGlobalWS();
+
+if(!window._globalPingInterval){
+    window._globalPingInterval = setInterval(()=>{ 
+        if(globalWS && globalWS.readyState === WebSocket.OPEN) { globalWS.send("ping"); } 
+    }, 20000);
+}
+    syncInterval=setInterval(()=>{ 
+        if(window.FEED_ENABLED && document.getElementById('view-feed').classList.contains('active')) loadFeed();
+        fetchOnlineUsers();
+    },4000);
+}
+
+function connectGlobalWS(){
+    try{ if(globalWS) globalWS.close(); }catch(e){}
+    let p = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let token = localStorage.getItem('token');
+    globalWS = new WebSocket(`${p}//${location.host}/ws/Geral/${user.id}?token=${token}`);
+
+    globalWS.onmessage = (e) => {
+        let d = JSON.parse(e.data);
+        if(d.type === 'pong') return; 
+        if(d.type === 'ping') { fetchUnread(); }
+
+        if(d.type === 'sync_bg' && window.currentAgoraChannel === d.channel) {
+            document.getElementById('expanded-call-panel').style.backgroundImage = `url('${d.bg_url}')`;
+        }
+
+        if(d.type === 'new_dm') {
+            let isDmActive = document.getElementById('view-dm').classList.contains('active');
+            if(isDmActive && currentChatType === '1v1' && currentChatId === d.sender_id) {} 
+            else { safePlaySound(window.msgSound); fetchUnread(); }
+        }
+
+        if(d.type === 'kick_call' && d.target_id === user.id) {
+            showToast("Você foi removido da chamada."); leaveCall();
+        }
+
+        if(d.type === 'call_accepted') {
+            stopSounds();
+            window.currentAgoraChannel = sanitizeChannelName(d.channel || window.pendingCallChannel);
+            connectToAgora(window.currentAgoraChannel, window.pendingCallType);
+        }
+
+        if(d.type === 'call_rejected') {
+            showToast("❌ Chamada recusada.");
+            leaveCall();
+        }
+
+        if(d.type === 'call_cancelled') {
+            showToast("⚠️ A chamada foi cancelada.");
+            document.getElementById('modal-incoming-call').classList.add('hidden'); 
+            stopSounds();
+        }
+        if(d.type === 'message_deleted') {
+            applyRemoteDelete(d.msg_id);
+        }
+
+
+        if(d.type === 'incoming_call') {
+            window.pendingCallerId = d.caller_id;
+            document.getElementById('incoming-call-name').innerText = d.caller_name || 'Usuário';
+            document.getElementById('incoming-call-av').src = safeAvatarUrl(d.caller_avatar, d.caller_name);
+
+            // Canal: nunca pode ser null (Agora exige nome válido <= 64 bytes)
+            let ch = d.channel_name;
+            if(!ch && d.call_type === 'dm') ch = buildDmCallChannel(user.id, d.caller_id);
+            if(!ch) ch = `call_${Date.now()}_${d.caller_id}_${user.id}`;
+            window.pendingCallChannel = sanitizeChannelName(ch);
+            window.currentAgoraChannel = window.pendingCallChannel;
+            window.pendingCallType = d.call_type;
+
+            document.getElementById('modal-incoming-call').classList.remove('hidden');
+            safePlaySound(window.ringtone);
+        }
+    };
+
+    globalWS.onclose = () => { 
+        // reconecta só o websocket, sem reiniciar app (evita loops e múltiplos intervals)
+        setTimeout(() => { if(user) connectGlobalWS();
+// ── Reconexão ao voltar do segundo plano ──────────────────────────────
+// [visibilitychange duplicado removido]
+
+
+// Mantém AudioContext ativo no mobile (evita suspensão pelo browser)
+let _keepAliveInterval = null;
+function _startCallKeepAlive() {
+    if (_keepAliveInterval) return;
+    _keepAliveInterval = setInterval(() => {
+        try {
+            if (rtc.client && AgoraRTC) {
+                // Agora SDK mantém conexão — apenas verificamos estado
+                const s = rtc.client.connectionState;
+                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
+                    console.warn('Keep-alive: state =', s);
+                }
+            }
+        } catch(_) {}
+    }, 8000);
+}
+function _stopCallKeepAlive() {
+    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
+}
+
+ }, 4000); 
+    };
+}
+
+function _startCallKeepAlive() {
+    if (_keepAliveInterval) return;
+    _keepAliveInterval = setInterval(() => {
+        try {
+            if (rtc.client && AgoraRTC) {
+                // Agora SDK mantém conexão — apenas verificamos estado
+                const s = rtc.client.connectionState;
+                if (s !== 'CONNECTED' && s !== 'CONNECTING' && window.currentAgoraChannel) {
+                    console.warn('Keep-alive: state =', s);
+                }
+            }
+        } catch(_) {}
+    }, 8000);
+}
+
+function _stopCallKeepAlive() {
+    if (_keepAliveInterval) { clearInterval(_keepAliveInterval); _keepAliveInterval = null; }
+}
 
 function logout(){ localStorage.removeItem('token'); user = null; if(syncInterval) clearInterval(syncInterval); if(globalWS) globalWS.close(); showLoginScreen(); }
+
 function goView(v, btnElem){
     // Feed removido: redireciona qualquer tentativa para a caixa de entrada.
     if(v === 'feed' && !window.FEED_ENABLED){

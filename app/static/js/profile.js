@@ -1,10 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
-// FOR GLORY — PROFILE — Perfil Público/Privado, Busca, Edição
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// FOR GLORY — PROFILE — Perfil Público/Privado, Busca, Edição, Stealth
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
 
 async function openPublicProfile(uid){
     try{
@@ -56,4 +54,64 @@ async function openPublicProfile(uid){
     }catch(e){ console.error(e); }
 }
 
-// [uploadToCloudinary movida para módulo canônico]
+async function updateProfile(){
+    let btn=document.getElementById('btn-save-profile');
+    btn.disabled=true;
+    try{
+        let f=document.getElementById('avatar-upload').files[0];
+        let c=document.getElementById('cover-upload').files[0];
+        let b=document.getElementById('bio-update').value;
+        let au=null,cu=null;
+        if(f) au=await uploadToCloudinary(f);
+        if(c) cu=await uploadToCloudinary(c);
+        let payload={avatar_url:au,cover_url:cu,bio:b};
+        let r=await authFetch('/profile/update_meta',{method:'POST',body:JSON.stringify(payload)});
+        if(r.ok){updateProfileState();document.getElementById('modal-profile').classList.add('hidden');}
+    }catch(e){ console.error(e); }
+    finally{ btn.disabled=false; }
+}
+
+function clearSearch(){
+    document.getElementById('search-input').value='';
+    document.getElementById('search-results').innerHTML='';
+}
+
+async function searchUsers(){
+    let q=document.getElementById('search-input').value.trim();
+    if(!q)return;
+    try{
+        let r=await authFetch(`/users/search?q=${encodeURIComponent(q)}`);
+        let d=await r.json();
+        let res=document.getElementById('search-results');
+        if(!d||d.length===0){res.innerHTML=`<p style='color:#888;text-align:center;margin-top:10px;'>${t('no_results')}</p>`;return;}
+        res.innerHTML=d.map(u=>`<div class="friend-row" onclick="openPublicProfile(${u.id})" style="cursor:pointer;"><div class="av-wrap"><img src="${safeAvatarUrl(u.avatar_url)}" class="friend-av" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'"><div class="status-dot" data-uid="${u.id}"></div></div><div style="flex:1"><b style="color:white;">${u.username}</b></div><button class="glass-btn" style="padding:5px 12px;margin:0;" onclick="event.stopPropagation();sendRequest(${u.id})">${t('add_friend')}</button></div>`).join('');
+        updateStatusDots();
+    }catch(e){ console.error(e); }
+
+
+function applyRemoteDelete(msgNumericId){
+    const candidates = [
+        `dm_msg-${msgNumericId}`,
+        `comm_msg-${msgNumericId}`,
+        `geral_msg-${msgNumericId}`,
+        `msg-${msgNumericId}`,
+    ];
+    for(const id of candidates){
+        const el = document.getElementById(id);
+        if(!el) continue;
+        // marca visualmente como apagada
+        const bubble = el.querySelector('.msg-bubble');
+        if(bubble){
+            bubble.innerHTML = '<span style="color:#888;font-style:italic;">[mensagem apagada]</span>';
+        } else {
+            el.innerHTML = '<span style="color:#888;font-style:italic;">[mensagem apagada]</span>';
+        }
+        // remove botão de delete se existir
+        el.querySelectorAll('.del-msg-btn').forEach(b=>b.remove());
+    }
+}
+}
+
+async function toggleStealth(){try{let r=await authFetch('/profile/stealth', {method:'POST'}); if(r.ok){let d=await r.json(); user.is_invisible=d.is_invisible; updateStealthUI(); fetchOnlineUsers();}}catch(e){ console.error(e); }}
+
+function updateStealthUI(){let btn=document.getElementById('btn-stealth');let myDot=document.getElementById('my-status-dot');if(user.is_invisible){btn.innerText=t('stealth_on');btn.style.borderColor="#ffaa00";btn.style.color="#ffaa00";myDot.classList.remove('online');}else{btn.innerText=t('stealth_off');btn.style.borderColor="rgba(102, 252, 241, 0.3)";btn.style.color="var(--primary)";myDot.classList.add('online');}}

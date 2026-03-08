@@ -1,10 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
-// FOR GLORY — MISC — Formatadores, Emoji, Sanitize, Diagnóstico
-// Extraído de app.js — não editar este arquivo manualmente.
-// Editar os blocos originais e rodar o splitter novamente.
+// FOR GLORY — MISC — Formatadores, Emoji, Sanitize, Diagnóstico, Typing
+// Gerado por splitter v2 — extração correta por profundidade de chaves
 // ═══════════════════════════════════════════════════════════════
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
-'use strict';
 
 function isCallSystemMsg(text) {
     return typeof text === 'string' && (
@@ -14,7 +12,6 @@ function isCallSystemMsg(text) {
     );
 }
 
-// Gera HTML especial para mensagens de sistema (centralizadas, sem avatar)
 function buildCallEventHtml(msgId, text, timeHtml) {
     // Separa ícone e texto para estilizar melhor
     const clean = text.replace('📞 ', '');
@@ -27,8 +24,6 @@ function buildCallEventHtml(msgId, text, timeHtml) {
     </div>`;
 }
 
-
-// Sanitiza channel name pro Agora (<=64 bytes e caracteres permitidos)
 function sanitizeChannelName(raw){
     if(raw===null || raw===undefined) return null;
     let s = String(raw).trim();
@@ -44,31 +39,15 @@ function sanitizeChannelName(raw){
     return s;
 }
 
-function initEmojis(){let g=document.getElementById('emoji-grid'); if(!g) return; if(!window.EMOJIS||!Array.isArray(window.EMOJIS)){console.warn('EMOJIS missing'); return;} window.EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); } initEmojis();
-function checkToken(){ const urlParams=new URLSearchParams(window.location.search); const token=urlParams.get('token'); if(token){ toggleAuth('reset'); window.history.replaceState({}, document.title, "/"); window.resetToken=token; } }
+function initEmojis(){let g=document.getElementById('emoji-grid'); if(!g) return; if(!window.EMOJIS||!Array.isArray(window.EMOJIS)){console.warn('EMOJIS missing'); return;} window.EMOJIS.forEach(e=>{ let s=document.createElement('div'); s.style.cssText="font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:5px;transition:0.2s;"; s.innerText=e; s.onclick=()=>{ if(currentEmojiTarget){ let inp=document.getElementById(currentEmojiTarget); inp.value+=e; inp.focus(); } }; s.onmouseover=()=>s.style.background="rgba(102,252,241,0.2)"; s.onmouseout=()=>s.style.background="transparent"; g.appendChild(s); }); }
+
 function closeUpload(){ document.getElementById('modal-upload').classList.add('hidden'); document.getElementById('file-upload').value=''; document.getElementById('caption-upload').value=''; }
+
 function openEmoji(id){ currentEmojiTarget=id; document.getElementById('emoji-picker').style.display='flex'; }
+
 function toggleEmoji(forceClose){ let e=document.getElementById('emoji-picker'); if(forceClose===true) e.style.display='none'; else e.style.display = e.style.display==='flex'?'none':'flex'; }
 
-document.addEventListener("visibilitychange", ()=>{ 
-    if(document.visibilityState==="visible" && user){ 
-        fetchUnread();
-        fetchOnlineUsers();
-        if(window.FEED_ENABLED && document.getElementById('view-feed').classList.contains('active')) loadFeed();
-        if(activeChannelId && commWS && commWS.readyState!==WebSocket.OPEN) connectCommWS(activeChannelId);
-    }
-});
-
-// Garante liberação do microfone ao sair/fechar aba (privacidade)
-window.addEventListener('pagehide', ()=>{
-    try{ if(rtc && (rtc.client || rtc.localAudioTrack)) leaveCall(); }catch(e){}
-});
-window.addEventListener('beforeunload', ()=>{
-    try{ if(rtc && (rtc.client || rtc.localAudioTrack)) leaveCall(); }catch(e){}
-});
-async function fetchOnlineUsers(){ if(!user)return; try{ let r=await fetch(`/users/online?nocache=${new Date().getTime()}`); window.onlineUsers=await r.json(); updateStatusDots(); }catch(e){ console.error(e); } }
-// [updateStatusDots movida para módulo canônico]
-
+function updateStatusDots(){ document.querySelectorAll('.status-dot').forEach(dot=>{ let uid=parseInt(dot.getAttribute('data-uid')); if(!uid)return; if(window.onlineUsers.includes(uid)) dot.classList.add('online'); else dot.classList.remove('online'); }); }
 
 async function loadDiagnostics() {
     const panel = document.getElementById('diagnostics-panel');
@@ -119,10 +98,6 @@ async function loadDiagnostics() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TYPING INDICATORS
-// ═══════════════════════════════════════════════════════════════
-
 let __typingTimer = null;
 
 function onDmInputTyping() {
@@ -135,7 +110,6 @@ function onDmInputTyping() {
         }
     }, 2000);
 }
-window.onDmInputTyping = onDmInputTyping;
 
 function showTypingIndicator(username) {
     const list = document.getElementById('dm-list');
@@ -153,4 +127,3 @@ function showTypingIndicator(username) {
         if (el) el.remove();
     }, 3000);
 }
-window.showTypingIndicator = showTypingIndicator;
