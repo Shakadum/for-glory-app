@@ -1,0 +1,109 @@
+/* ============================================================
+   FOR GLORY — TEMA RETRO 16-BIT (JRPG CLASSIC)
+   Fundo azul, bordas brancas duras, fonte pixelada
+   Ativar: document.documentElement.setAttribute('data-theme','retro')
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+[data-theme="retro"] {
+    --retro-bg: #000000;
+    --retro-menu: #0000a8;    /* Azul clássico de JRPG */
+    --retro-border: #ffffff;
+    --retro-text: #ffffff;
+    --retro-accent: #f8b800;  /* Amarelo ouro 8-bit */
+}
+
+/* Fundo Global */
+[data-theme="retro"] body, [data-theme="retro"] #app {
+    background: var(--retro-bg) url('/caminho/para/fundo-pixel-mapa.png') center/cover !important;
+    color: var(--retro-text) !important;
+    font-family: 'Press Start 2P', monospace !important;
+    font-size: 10px !important; /* Fontes pixel precisam ser menores */
+    image-rendering: pixelated !important; /* Deixa imagens pontiagudas */
+}
+
+/* Tipografia e Títulos */
+[data-theme="retro"] h1, [data-theme="retro"] h2, [data-theme="retro"] h3,
+[data-theme="retro"] .news-header-top span, [data-theme="retro"] .vup-title,
+[data-theme="retro"] span, [data-theme="retro"] p, [data-theme="retro"] div {
+    font-family: 'Press Start 2P', monospace !important;
+    text-shadow: 2px 2px 0 #000 !important;
+    letter-spacing: 0 !important;
+}
+
+/* Sidebar & Nav */
+[data-theme="retro"] #sidebar {
+    background: var(--retro-menu) !important;
+    border-right: 4px solid var(--retro-border) !important;
+}
+[data-theme="retro"] .nav-btn { color: #888888 !important; border-radius: 0 !important; }
+[data-theme="retro"] .nav-btn.active {
+    color: var(--retro-accent) !important;
+    background: #000000 !important;
+    border: 2px solid var(--retro-border) !important;
+}
+
+/* Todos os Cards, Painéis e Modais (O clássico Menu Azul) */
+[data-theme="retro"] .news-card, [data-theme="retro"] .comm-card, [data-theme="retro"] .fav-item,
+[data-theme="retro"] #inbox-list > div, [data-theme="retro"] .chat-box-centered,
+[data-theme="retro"] .modal-box, [data-theme="retro"] .news-panel {
+    background: var(--retro-menu) !important;
+    border: 4px solid var(--retro-border) !important;
+    border-radius: 0 !important; /* Sem cantos arredondados */
+    box-shadow: 4px 4px 0 #000 !important; /* Sombra dura */
+    color: var(--retro-text) !important;
+}
+
+/* Removendo transparências modernas */
+[data-theme="retro"] .news-header, [data-theme="retro"] .dm-topbar, [data-theme="retro"] .comm-topbar,
+[data-theme="retro"] .chat-input-area {
+    background: #000055 !important;
+    border-bottom: 4px solid var(--retro-border) !important;
+    backdrop-filter: none !important;
+}
+
+/* Textos dentro dos menus */
+[data-theme="retro"] .news-card-title, [data-theme="retro"] .dm-name, [data-theme="retro"] .dm-topbar-name {
+    color: var(--retro-accent) !important;
+    font-size: 12px !important;
+    line-height: 1.8 !important;
+}
+[data-theme="retro"] .news-card-desc, [data-theme="retro"] .dm-preview { color: #aaaaaa !important; font-size: 8px !important; line-height: 1.5 !important; }
+
+/* Balões de Chat */
+[data-theme="retro"] .msg-bubble { 
+    background: #000000 !important; 
+    border: 2px solid var(--retro-border) !important; 
+    border-radius: 0 !important;
+    color: white !important;
+}
+[data-theme="retro"] .msg-row.mine .msg-bubble { 
+    background: var(--retro-menu) !important; 
+    border-color: var(--retro-accent) !important;
+}
+
+/* Botões e Inputs */
+[data-theme="retro"] .btn-main {
+    background: #000000 !important;
+    color: var(--retro-text) !important;
+    border: 2px solid var(--retro-border) !important;
+    border-radius: 0 !important;
+    font-family: 'Press Start 2P', monospace !important;
+    font-size: 10px !important;
+}
+[data-theme="retro"] .btn-main:hover {
+    background: var(--retro-accent) !important;
+    color: #000 !important;
+    border-color: #000 !important;
+}
+[data-theme="retro"] .inp, [data-theme="retro"] .chat-msg {
+    background: #000 !important;
+    border: 2px solid var(--retro-border) !important;
+    border-radius: 0 !important;
+    color: white !important;
+    font-family: 'Press Start 2P', monospace !important;
+}
+
+/* Avatares quadrados */
+[data-theme="retro"] img { border-radius: 0 !important; border: 2px solid var(--retro-border) !important; }

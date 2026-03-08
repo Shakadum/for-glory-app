@@ -1,0 +1,95 @@
+/* ============================================================
+   FOR GLORY — TEMA ANIME (JRPG / GLASSMORPHISM)
+   Cores claras, vidro fosco, bordas arredondadas e neon suave
+   Ativar: document.documentElement.setAttribute('data-theme','anime')
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Nunito:wght@400;600;700&display=swap');
+
+[data-theme="anime"] {
+    --primary: #00e1ff;       /* Cyan brilhante mágico */
+    --accent: #ff77e9;        /* Rosa mágico */
+    --anime-bg: #e0f7fa;      /* Fundo claro base */
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.8);
+    --text-dark: #1e293b;
+    --text-muted: #64748b;
+}
+
+/* Fundo Geral com a imagem da pasta static */
+[data-theme="anime"] body,
+[data-theme="anime"] #app {
+    background: var(--anime-bg) url('/static/bg-anime.jpg') center/cover fixed !important;
+    color: var(--text-dark) !important;
+    font-family: 'Nunito', sans-serif !important;
+}
+
+/* Modificando a tipografia global */
+[data-theme="anime"] h1, [data-theme="anime"] h2, [data-theme="anime"] h3,
+[data-theme="anime"] .news-header-top span, [data-theme="anime"] .vup-title {
+    font-family: 'M PLUS Rounded 1c', sans-serif !important;
+    color: #0284c7 !important;
+    text-shadow: 0 0 10px rgba(0, 225, 255, 0.4) !important;
+    font-weight: 800 !important;
+}
+
+/* Sidebar & Nav */
+[data-theme="anime"] #sidebar {
+    background: rgba(255, 255, 255, 0.4) !important;
+    backdrop-filter: blur(20px) !important;
+    border-right: 1px solid var(--glass-border) !important;
+    box-shadow: 4px 0 24px rgba(0, 150, 255, 0.1) !important;
+}
+[data-theme="anime"] .nav-btn { color: #64748b !important; }
+[data-theme="anime"] .nav-btn:hover, [data-theme="anime"] .nav-btn.active {
+    color: var(--primary) !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 12px rgba(0, 225, 255, 0.3) !important;
+}
+
+/* Cards (Notícias, Inbox, Comms) - Glassmorphism */
+[data-theme="anime"] .news-card, [data-theme="anime"] .comm-card, [data-theme="anime"] .fav-item,
+[data-theme="anime"] #inbox-list > div, [data-theme="anime"] .news-panel, [data-theme="anime"] .chat-box-centered {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(16px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1) !important;
+    color: var(--text-dark) !important;
+}
+
+/* Headers e Topbars */
+[data-theme="anime"] .news-header, [data-theme="anime"] .dm-topbar, [data-theme="anime"] .comm-topbar {
+    background: rgba(255, 255, 255, 0.5) !important;
+    backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* Textos dentro dos cards */
+[data-theme="anime"] .news-card-title, [data-theme="anime"] .dm-name, [data-theme="anime"] .squad-name,
+[data-theme="anime"] .dm-topbar-name {
+    color: #0f172a !important;
+    font-family: 'M PLUS Rounded 1c', sans-serif !important;
+}
+[data-theme="anime"] .news-card-desc, [data-theme="anime"] .dm-preview, [data-theme="anime"] .msg-bubble {
+    color: #334155 !important;
+}
+
+/* Balões de Chat */
+[data-theme="anime"] .msg-bubble { background: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 20px 20px 20px 4px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;}
+[data-theme="anime"] .msg-row.mine .msg-bubble { background: linear-gradient(135deg, #00e1ff, #0077ff) !important; color: white !important; border-radius: 20px 20px 4px 20px !important; border: none !important;}
+
+/* Botões Principais */
+[data-theme="anime"] .btn-main {
+    background: linear-gradient(135deg, #00e1ff, #ff77e9) !important;
+    color: white !important;
+    border-radius: 30px !important;
+    border: none !important;
+    font-family: 'M PLUS Rounded 1c', sans-serif !important;
+    box-shadow: 0 8px 20px rgba(0, 225, 255, 0.4) !important;
+}
+[data-theme="anime"] .btn-main:hover { transform: translateY(-2px) scale(1.02) !important; }
+
+/* Modal Background */
+[data-theme="anime"] .modal-box { background: rgba(255,255,255,0.85) !important; backdrop-filter: blur(24px) !important; border: 1px solid white !important; }
