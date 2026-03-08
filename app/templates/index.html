@@ -1998,20 +1998,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = _billing === 'monthly' ? p.monthly : (p.yearly / 12);
             const isSel = _selectedPlan === p.slug;
             const isCur = _currentPlan === p.slug;
-            return \`
-            <div class="vup-plan-card \${isSel?'selected':''} \${isCur?'current-plan':''}"
-                 style="--pc:\${p.color};--pcr:\${p.colorRgb};"
-                 onclick="selectVupPlan('\${p.slug}')">
-                <div class="vup-plan-icon">\${p.icon}</div>
-                <div class="vup-plan-name">\${p.name}</div>
+            return `
+            <div class="vup-plan-card ${isSel?'selected':''} ${isCur?'current-plan':''}"
+                 style="--pc:${p.color};--pcr:${p.colorRgb};"
+                 onclick="selectVupPlan('${p.slug}')">
+                <div class="vup-plan-icon">${p.icon}</div>
+                <div class="vup-plan-name">${p.name}</div>
                 <div class="vup-plan-price">
-                    \${p.monthly === 0 ? 'Grátis' : 'R$ ' + price.toFixed(2).replace('.',',')}
-                    \${p.monthly > 0 ? '<span>/mês</span>' : ''}
+                    ${p.monthly === 0 ? 'Grátis' : 'R$ ' + price.toFixed(2).replace('.',',')}
+                    ${p.monthly > 0 ? '<span>/mês</span>' : ''}
                 </div>
-                \${_billing === 'yearly' && p.monthly > 0 ?
-                    \`<div class="vup-plan-yearly">R$ \${p.yearly.toFixed(2).replace('.',',')} /ano</div>\` : ''}
-                <div class="vup-plan-mult">\${p.mult} Glory</div>
-            </div>\`;
+                ${_billing === 'yearly' && p.monthly > 0 ?
+                    `<div class="vup-plan-yearly">R$ ${p.yearly.toFixed(2).replace('.',',')} /ano</div>` : ''}
+                <div class="vup-plan-mult">${p.mult} Glory</div>
+            </div>`;
         }).join('');
     }
 
@@ -2034,18 +2034,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (usernameEl) {
             usernameEl.style.color = plan.features.includes('name_color') ? plan.color : '#e5e7eb';
             const fonts = {vip1:'Rajdhani', vip2:'Syne', vip3:'Orbitron'};
-            usernameEl.style.fontFamily = fonts[plan.slug] ? \`'\${fonts[plan.slug]}'\` : 'inherit';
+            usernameEl.style.fontFamily = fonts[plan.slug] ? `'${fonts[plan.slug]}'` : 'inherit';
         }
         if (faceplateEl) {
             faceplateEl.style.display = plan.features.includes('faceplate_name') ? '' : 'none';
-            faceplateEl.style.background = \`rgba(\${plan.colorRgb},0.15)\`;
+            faceplateEl.style.background = `rgba(${plan.colorRgb},0.15)`;
             faceplateEl.style.color = plan.color;
-            faceplateEl.style.borderColor = \`rgba(\${plan.colorRgb},0.3)\`;
+            faceplateEl.style.borderColor = `rgba(${plan.colorRgb},0.3)`;
         }
         if (bioEl) {
             if (plan.features.includes('bio_style')) {
-                bioEl.style.background = \`rgba(\${plan.colorRgb},0.08)\`;
-                bioEl.style.borderLeft = \`3px solid \${plan.color}\`;
+                bioEl.style.background = `rgba(${plan.colorRgb},0.08)`;
+                bioEl.style.borderLeft = `3px solid ${plan.color}`;
                 bioEl.style.borderRadius = '0 10px 10px 0';
                 bioEl.style.padding = '8px 12px';
                 bioEl.style.color = '#e5e7eb';
@@ -2055,8 +2055,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (bubbleEl) {
             if (plan.features.includes('bubble')) {
-                bubbleEl.style.background = \`rgba(\${plan.colorRgb},0.15)\`;
-                bubbleEl.style.borderColor = \`rgba(\${plan.colorRgb},0.3)\`;
+                bubbleEl.style.background = `rgba(${plan.colorRgb},0.15)`;
+                bubbleEl.style.borderColor = `rgba(${plan.colorRgb},0.3)`;
                 bubbleEl.style.color = plan.color;
             } else {
                 bubbleEl.style.cssText = '';
@@ -2064,8 +2064,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (avatarEl) {
             if (plan.features.includes('border')) {
-                avatarEl.style.border = \`3px solid \${plan.color}\`;
-                avatarEl.style.boxShadow = \`0 0 16px rgba(\${plan.colorRgb},0.4)\`;
+                avatarEl.style.border = `3px solid ${plan.color}`;
+                avatarEl.style.boxShadow = `0 0 16px rgba(${plan.colorRgb},0.4)`;
             } else {
                 avatarEl.style.border = '2px solid rgba(255,255,255,0.1)';
                 avatarEl.style.boxShadow = 'none';
@@ -2094,8 +2094,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
             const price = _billing === 'monthly' ? plan.monthly : plan.yearly;
             const period = _billing === 'monthly' ? '/mês' : '/ano';
-            btn.textContent = \`ASSINAR · R$ \${price.toFixed(2).replace('.',',')} \${period}\`;
-            btn.style.background = \`linear-gradient(135deg, \${plan.color}, \${plan.color}99)\`;
+            btn.textContent = `ASSINAR · R$ ${price.toFixed(2).replace('.',',')} ${period}`;
+            btn.style.background = `linear-gradient(135deg, ${plan.color}, ${plan.color}99)`;
             btn.style.color = '#0b0c10';
             if (note) note.textContent = 'Pagamento seguro · Cancele quando quiser · Sem taxas ocultas';
         }
