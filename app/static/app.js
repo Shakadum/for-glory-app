@@ -2411,7 +2411,7 @@ async function loadQuizzes() {
         if (!r.ok) { container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Sem quizzes disponíveis.</div>'; return; }
         const quizzes = await r.json();
         if (!quizzes.length) {
-            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;font-family:'DM Sans';font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>';
+            container.innerHTML = `<div style="color:#888;text-align:center;padding:30px;font-family:'DM Sans';font-size:13px;">Nenhum quiz disponível ainda.<br><span style="font-size:11px;opacity:0.6;">Admins podem criar quizzes via API.</span></div>`;
             return;
         }
         const catColors = {news:'#ef4444',politicians:'#3b82f6',constitution:'#8b5cf6',community:'#10b981',general:'#6b7280'};
