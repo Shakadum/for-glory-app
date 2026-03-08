@@ -319,3 +319,33 @@
     color: #0f172a !important;
     opacity: 1 !important;
 }
+/* =========================================
+   DESTRUINDO A TARJA BRANCA DOS TROFÉUS
+   ========================================= */
+
+/* Remove a cor de fundo do container inteiro */
+[data-theme="anime"] #p-progression-box,
+[data-theme="anime"] #p-progression-box > div,
+[data-theme="anime"] #pub-progression-box,
+[data-theme="anime"] #pub-progression-box > div {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Deixa os quadradinhos dos troféus com efeito de vidro para leitura */
+[data-theme="anime"] #p-progression-box > div > div > div,
+[data-theme="anime"] #p-progression-box [style*="border-radius"],
+[data-theme="anime"] #p-progression-box [style*="background"] {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(4px) !important;
+}
+
+/* Força as letras da sala de troféus a ficarem escuras */
+[data-theme="anime"] #p-progression-box *,
+[data-theme="anime"] #pub-progression-box * {
+    color: #0f172a !important;
+    text-shadow: none !important;
+}
