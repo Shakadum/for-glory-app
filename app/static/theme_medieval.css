@@ -1,40 +1,36 @@
 /* ============================================================
    FOR GLORY — TEMA FANTASIA ÉPICA MEDIEVAL (REMASTERIZADO)
-   Elegante, sombrio, focado na imagem de fundo e sem poluição.
+   Elegante, Sombrio, Castelo de Fundo, Sem Poluição Visual.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&family=IM+Fell+English:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IM+Fell+English:ital@0;1&display=swap');
 
 [data-theme="medieval"] {
     --gold: #d4af37;
-    --gold-dark: #aa8529;
+    --gold-dark: #8a6c1c;
     --gold-glow: rgba(212, 175, 55, 0.3);
     --parchment: #e8d5a7;
-    --stone: #1a1510;
-    --blood: #8b1a1a;
-    --glass-dark: rgba(20, 14, 8, 0.85); /* Vidro escuro para ver a imagem */
+    --glass-dark: rgba(15, 10, 5, 0.85); 
 }
 
-/* 1. REMOVER POLUIÇÃO ANTIGA (Dragões, Tochas, Cantoneiras) */
+/* 1. ESCONDER A POLUIÇÃO ANTIGA (Adeus Dragões e Tochas) */
 [data-theme="medieval"] .med-corner,
 [data-theme="medieval"] .med-torch,
-[data-theme="medieval"] .med-dragon-l,
-[data-theme="medieval"] .med-dragon-r,
 [data-theme="medieval"] .med-title-banner,
 [data-theme="medieval"] .news-cards-container::before,
-[data-theme="medieval"] .news-cards-container::after {
+[data-theme="medieval"] .news-cards-container::after,
+[data-theme="medieval"] #app::before {
     display: none !important;
 }
 
-/* 2. FUNDO GERAL (A Imagem vai aqui) */
+/* 2. FUNDO GERAL ONLINE GARANTIDO (Castelo Sombrio) */
 [data-theme="medieval"] body,
-[data-theme="medieval"] #app,
-[data-theme="medieval"] .app-shell {
-    background: #000 url('/static/bg-medieval.jpg') center/cover fixed !important;
+[data-theme="medieval"] #app {
+    background: #000 url('https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?q=80&w=1920') center/cover fixed !important;
     color: var(--parchment) !important;
 }
 
-/* 3. PAINÉIS PRINCIPAIS (Translúcidos para ver a imagem de fundo) */
+/* 3. PAINÉIS PRINCIPAIS (Vidro escuro para ver o castelo atrás) */
 [data-theme="medieval"] #content-area,
 [data-theme="medieval"] .view,
 [data-theme="medieval"] .news-panel,
@@ -45,52 +41,33 @@
 [data-theme="medieval"] #view-explore {
     background: var(--glass-dark) !important;
     background-image: none !important;
-    backdrop-filter: blur(6px) !important; /* Embaça levemente a imagem atrás */
+    backdrop-filter: blur(5px) !important; 
     border-left: 2px solid var(--gold-dark) !important;
 }
 
-/* Headers / Topos de Tela */
+/* Headers e Topos */
 [data-theme="medieval"] .news-header,
 [data-theme="medieval"] .dm-topbar,
 [data-theme="medieval"] .comm-topbar,
+[data-theme="medieval"] #sidebar,
 [data-theme="medieval"] #view-history > div:first-child,
 [data-theme="medieval"] #view-vip-panel > div:first-child {
-    background: linear-gradient(180deg, rgba(15,10,5,0.95), rgba(20,15,10,0.8)) !important;
+    background: linear-gradient(180deg, rgba(10,5,0,0.95), rgba(15,10,5,0.9)) !important;
     border-bottom: 2px solid var(--gold-dark) !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.8) !important;
 }
 
-/* 4. TIPOGRAFIA ÉPICA */
-[data-theme="medieval"] h1, [data-theme="medieval"] h2, [data-theme="medieval"] h3,
-[data-theme="medieval"] .news-header-top span, 
-[data-theme="medieval"] .vup-title, [data-theme="medieval"] .vip-hdr-title {
-    font-family: 'Cinzel Decorative', serif !important;
-    color: var(--gold) !important;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.9) !important;
-    letter-spacing: 1px !important;
-}
-
-[data-theme="medieval"] p, [data-theme="medieval"] span, [data-theme="medieval"] div {
-    font-family: 'IM Fell English', serif !important;
-}
-
-[data-theme="medieval"] .nav-btn { color: #887250 !important; }
-[data-theme="medieval"] .nav-btn:hover, [data-theme="medieval"] .nav-btn.active {
-    color: var(--gold) !important;
-    filter: drop-shadow(0 0 8px var(--gold-glow)) !important;
-}
-
-/* 5. TELA DE LOGIN & MODAIS (Estilo Livro de Feitiços / Pedra) */
+/* 4. TELA DE LOGIN & MODAIS (Placa de Pedra e Ouro) */
 [data-theme="medieval"] .modal-box,
 [data-theme="medieval"] .vup-box,
 [data-theme="medieval"] .vip-sheet {
-    background: linear-gradient(135deg, #1f1710, #0f0a05) !important;
+    background: linear-gradient(135deg, #1f1710, #0a0704) !important;
     border: 2px solid var(--gold-dark) !important;
     border-radius: 8px !important;
     box-shadow: 0 0 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(212,175,55,0.1) !important;
     color: var(--parchment) !important;
 }
 
+/* Inputs da tela de login e chats */
 [data-theme="medieval"] .inp, 
 [data-theme="medieval"] .gs-input, 
 [data-theme="medieval"] .chat-msg {
@@ -101,8 +78,23 @@
     font-family: 'IM Fell English', serif !important;
     font-size: 16px !important;
 }
-[data-theme="medieval"] .inp:focus { border-color: var(--gold) !important; box-shadow: 0 0 10px var(--gold-glow) !important; }
+[data-theme="medieval"] .inp:focus { border-color: var(--gold) !important; }
 
+/* 5. TIPOGRAFIA ÉPICA */
+[data-theme="medieval"] h1, [data-theme="medieval"] h2, [data-theme="medieval"] h3,
+[data-theme="medieval"] .news-header-top span, 
+[data-theme="medieval"] .vup-title, [data-theme="medieval"] .vip-hdr-title {
+    font-family: 'Cinzel', serif !important;
+    color: var(--gold) !important;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.9) !important;
+}
+[data-theme="medieval"] p, [data-theme="medieval"] span:not(.nav-btn):not(.btn-main), [data-theme="medieval"] div {
+    font-family: 'IM Fell English', serif !important;
+}
+[data-theme="medieval"] .nav-btn { color: #887250 !important; }
+[data-theme="medieval"] .nav-btn.active { color: var(--gold) !important; }
+
+/* 6. BOTÕES GERAIS */
 [data-theme="medieval"] .btn-main {
     background: linear-gradient(135deg, #6b4c1a, #3d2b0e) !important;
     border: 1px solid var(--gold) !important;
@@ -118,41 +110,21 @@
     box-shadow: 0 0 15px var(--gold-glow) !important;
 }
 
-/* 6. CARDS (Notícias, Inbox, Guildas) */
+/* 7. CARDS (Notícias e Inbox) */
 [data-theme="medieval"] .news-card, 
 [data-theme="medieval"] .comm-card, 
 [data-theme="medieval"] .fav-item,
 [data-theme="medieval"] #inbox-list > div {
-    background: linear-gradient(135deg, #2a2015, #150f0a) !important;
+    background: linear-gradient(135deg, rgba(42,32,21,0.8), rgba(21,15,10,0.9)) !important;
     border: 1px solid var(--gold-dark) !important;
     border-radius: 4px !important;
-    box-shadow: 2px 4px 10px rgba(0,0,0,0.6) !important;
+    backdrop-filter: blur(4px) !important;
 }
-[data-theme="medieval"] .news-card:hover, 
-[data-theme="medieval"] #inbox-list > div:hover {
-    border-color: var(--gold) !important;
-    transform: translateY(-2px) !important;
-}
-[data-theme="medieval"] .news-card-title, 
-[data-theme="medieval"] .dm-name {
+[data-theme="medieval"] .news-card-title, [data-theme="medieval"] .dm-name {
     color: var(--gold) !important;
     font-family: 'Cinzel', serif !important;
     font-weight: bold !important;
 }
-[data-theme="medieval"] .news-card-desc, 
-[data-theme="medieval"] .dm-preview {
+[data-theme="medieval"] .news-card-desc, [data-theme="medieval"] .dm-preview {
     color: #a89f91 !important;
-}
-
-/* Balões de Chat */
-[data-theme="medieval"] .msg-bubble { 
-    background: #2a2015 !important; 
-    border: 1px solid #4a3825 !important; 
-    color: var(--parchment) !important; 
-    border-radius: 12px 12px 12px 2px !important;
-}
-[data-theme="medieval"] .msg-row.mine .msg-bubble { 
-    background: #3d2b0e !important; 
-    border-color: var(--gold-dark) !important; 
-    border-radius: 12px 12px 2px 12px !important;
 }

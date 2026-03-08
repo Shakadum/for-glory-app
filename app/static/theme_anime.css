@@ -185,3 +185,48 @@
     background-color: rgba(255,255,255,0.85) !important;
     border-color: #cbd5e1 !important;
 }
+
+/* =========================================
+   CORREÇÃO EXTREMA DE LEGIBILIDADE (ANIME)
+   ========================================= */
+
+/* Portal da Transparência e VIP - Forçando textos para Azul Escuro */
+[data-theme="anime"] .trans-mini-name, [data-theme="anime"] .trans-card-name, 
+[data-theme="anime"] .trans-cmp-name, [data-theme="anime"] .trans-profile-name, 
+[data-theme="anime"] .trans-exec-name, [data-theme="anime"] .trans-data-value, 
+[data-theme="anime"] .loc-cityname, [data-theme="anime"] .loc-state-tag, 
+[data-theme="anime"] .trans-cmp-cell, [data-theme="anime"] .vup-plan-name, 
+[data-theme="anime"] .vup-price-val, [data-theme="anime"] .vup-benefit-name, 
+[data-theme="anime"] .vup-title, [data-theme="anime"] .vip-pcard-name, 
+[data-theme="anime"] .vip-pcard-price, [data-theme="anime"] .vip-benefit-name, 
+[data-theme="anime"] .vip-hdr-title {
+    color: #0f172a !important;
+    text-shadow: none !important;
+}
+
+/* Subtítulos e Descrições - Forçando para Cinza Escuro */
+[data-theme="anime"] .trans-mini-party, [data-theme="anime"] .trans-exec-role, 
+[data-theme="anime"] .trans-card-role, [data-theme="anime"] .trans-cmp-role, 
+[data-theme="anime"] .vup-plan-sub, [data-theme="anime"] .vup-benefit-desc, 
+[data-theme="anime"] .vup-subtitle, [data-theme="anime"] .vip-benefit-desc,
+[data-theme="anime"] #pub-bio, [data-theme="anime"] #p-bio {
+    color: #475569 !important;
+}
+
+/* Abas de Navegação (Notícias, Transparência, Favoritos) */
+[data-theme="anime"] .news-main-tab, [data-theme="anime"] .trans-tab-btn, [data-theme="anime"] .fav-tab {
+    color: #64748b !important;
+}
+[data-theme="anime"] .news-main-tab.active, [data-theme="anime"] .trans-tab-btn.active, [data-theme="anime"] .fav-tab.active {
+    color: #0284c7 !important;
+    border-bottom-color: #0284c7 !important;
+}
+
+/* TELA DE LOGIN */
+[data-theme="anime"] #login-form .btn-link, [data-theme="anime"] #register-form .btn-link, 
+[data-theme="anime"] #forgot-form h3 { color: #0f172a !important; }
+[data-theme="anime"] .inp {
+    background-color: rgba(255,255,255,0.9) !important;
+    color: #0f172a !important;
+    border: 1px solid #94a3b8 !important;
+}

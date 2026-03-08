@@ -14,13 +14,22 @@
     --retro-accent: #f8b800;  /* Amarelo ouro 8-bit */
 }
 
-/* Fundo Global */
+/* Fundo Global 16-bit Garantido */
 [data-theme="retro"] body, [data-theme="retro"] #app {
-    background: var(--retro-bg) url('/static/bg-retro.png') center/cover fixed !important;
+    background-color: #000055 !important;
+    background-image: 
+        linear-gradient(#0000a8 2px, transparent 2px), 
+        linear-gradient(90deg, #0000a8 2px, transparent 2px) !important;
+    background-size: 30px 30px !important;
     color: var(--retro-text) !important;
     font-family: 'Press Start 2P', monospace !important;
     font-size: 10px !important; 
-    image-rendering: pixelated !important; 
+}
+
+/* Deixa o meio transparente para ver a grade */
+[data-theme="retro"] #content-area, [data-theme="retro"] .view, [data-theme="retro"] .news-panel,
+[data-theme="retro"] #view-history > div:last-child, [data-theme="retro"] #view-vip-panel > div:last-child {
+    background: transparent !important;
 }
 
 /* Tipografia e Títulos */
