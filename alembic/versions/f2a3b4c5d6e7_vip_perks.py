@@ -14,10 +14,9 @@ depends_on = None
 
 
 def upgrade():
-    # Novos campos no User
-    with op.batch_alter_table('users') as batch:
-        batch.add_column(sa.Column('vip_border',     sa.String(20),  nullable=True, server_default='none'))
-        batch.add_column(sa.Column('vip_name_color', sa.String(10),  nullable=True))
+    # Novos campos no User (op.add_column direto — PostgreSQL)
+    op.add_column('users', sa.Column('vip_border',     sa.String(20), nullable=True, server_default='none'))
+    op.add_column('users', sa.Column('vip_name_color', sa.String(10), nullable=True))
 
     # Tabela VipPerk
     op.create_table(
@@ -35,6 +34,5 @@ def upgrade():
 
 def downgrade():
     op.drop_table('vip_perks')
-    with op.batch_alter_table('users') as batch:
-        batch.drop_column('vip_name_color')
-        batch.drop_column('vip_border')
+    op.drop_column('users', 'vip_name_color')
+    op.drop_column('users', 'vip_border')
