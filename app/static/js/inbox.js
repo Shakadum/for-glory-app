@@ -177,7 +177,7 @@ async function fetchChatMessages(id, type, loadToken) {
                 }
             });
             if (isAtBottom) list.scrollTop = list.scrollHeight;
-            if(typeof applyAllVipBorders==="function") applyAllVipBorders();
+            if(typeof applyAllVipBorders==="function") setTimeout(applyAllVipBorders, 50);
         }
     } catch (e) { console.error(e); }
 }

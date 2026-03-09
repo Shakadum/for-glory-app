@@ -489,7 +489,9 @@ def get_user_badges(xp, user_id, role):
 
 def format_user_summary(user: User):
     if not user:
-        return {"id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?", "rank": "Recruta", "color": "#888", "special_emblem": ""}
+        return {"id": 0, "username": "Desconhecido", "avatar_url": "https://ui-avatars.com/api/?name=?",
+                "rank": "Recruta", "color": "#888", "special_emblem": "",
+                "vip_border": "none", "vip_name_color": None}
     b = get_user_badges(user.xp, user.id, getattr(user, 'role', 'membro'))
     return {
         "id": user.id,
@@ -497,7 +499,9 @@ def format_user_summary(user: User):
         "avatar_url": user.avatar_url,
         "rank": b['rank'],
         "color": b['color'],
-        "special_emblem": b['special_emblem']
+        "special_emblem": b['special_emblem'],
+        "vip_border": getattr(user, 'vip_border', 'none') or 'none',
+        "vip_name_color": getattr(user, 'vip_name_color', None),
     }
 
 # ----------------------------------------------------------------------

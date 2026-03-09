@@ -5,8 +5,13 @@
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
 
 async function loadVipPanel() {
-    await loadGloryHeader(); // shares glory data
+    await loadGloryHeader();
     await loadVipPlans();
+    // Renderizar painel de bordas VIP
+    setTimeout(() => {
+        const el = document.getElementById('vip-border-panel');
+        if (el && typeof renderVipBorderPanel === 'function') renderVipBorderPanel(el);
+    }, 200);
 
 async function loadVipPlans() {
     const container = document.getElementById('vip-plans');
