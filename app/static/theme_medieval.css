@@ -15,7 +15,17 @@
 [data-theme="medieval"] .med-corner,
 [data-theme="medieval"] .med-torch {
     display: block !important;
+    position: fixed !important;
+    z-index: 9999 !important;
+    pointer-events: none !important;
+    font-size: 22px !important;
 }
+[data-theme="medieval"] .med-corner-tl { top: 8px !important; left: 68px !important; }
+[data-theme="medieval"] .med-corner-tr { top: 8px !important; right: 8px !important; }
+[data-theme="medieval"] .med-corner-bl { bottom: 8px !important; left: 68px !important; }
+[data-theme="medieval"] .med-corner-br { bottom: 8px !important; right: 8px !important; }
+[data-theme="medieval"] .med-torch-l   { top: 50% !important; left: 68px !important; transform: translateY(-50%) !important; font-size: 20px !important; }
+[data-theme="medieval"] .med-torch-r   { top: 50% !important; right: 8px !important; transform: translateY(-50%) !important; font-size: 20px !important; }
 
 /* Esconder poluição de código antigo */
 [data-theme="medieval"] .med-title-banner,

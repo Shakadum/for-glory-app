@@ -85,8 +85,11 @@
             document.documentElement.setAttribute('data-theme', themeId);
         }
         // Toggle medieval decorative elements
-        // Decorações medievais v2 (glass theme): CSS cuida do display, JS só limpa inline style
-        document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => { el.style.display = 'none'; });
+        const isMedieval = (themeId === 'medieval');
+        document.querySelectorAll('.med-corner,.med-torch').forEach(el => {
+            el.style.display = isMedieval ? '' : 'none';
+        });
+        document.querySelectorAll('.med-title-banner').forEach(el => { el.style.display = 'none'; });
 
         try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
         _updateThemeBtns(themeId);
