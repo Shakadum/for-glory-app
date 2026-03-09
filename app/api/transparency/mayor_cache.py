@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from .models import MayorCache
+from .sources import _wikidata_sparql, _parse_politician_binding, _get
 from .data.mayors import _norm, MAYORS_BY_CITY
 from .enrichment import enrich_with_photo, get_wiki_data
 from .sources import _get
