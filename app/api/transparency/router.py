@@ -1,5 +1,8 @@
 """Rotas FastAPI do Portal da Transparência."""
 import asyncio
+import traceback
+import logging
+_log = logging.getLogger(__name__)
 import json as _json
 from typing import Optional
 from fastapi import APIRouter, Query, Depends, Body, Request as FARequest, BackgroundTasks
@@ -192,7 +195,11 @@ async def get_local_politicians(
     uf_override: Optional[str] = Query(None),
     city_override: Optional[str] = Query(None),
 ):
-    return await _get_local_impl(request, uf_override, city_override)
+    try:
+        return await _get_local_impl(request, uf_override, city_override)
+    except Exception as exc:
+        _log.error(f"[/transparency/local] ERRO: {exc}\n{traceback.format_exc()}")
+        raise
 
 
 
