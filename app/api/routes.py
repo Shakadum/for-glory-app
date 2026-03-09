@@ -16,6 +16,7 @@ from app.api.routers.ws            import router as ws_router
 from app.api.routers.news          import router as news_router
 from app.api.transparency          import router as transparency_router
 from app.api.routers.vip           import router as vip_router
+from app.api.routers.vip_perks     import router as vip_perks_router
 from app.api.routers.quiz          import router as quiz_router
 from app.api.routers.reactions     import router as reactions_router
 from app.api.routers.diagnostics   import router as diagnostics_router
