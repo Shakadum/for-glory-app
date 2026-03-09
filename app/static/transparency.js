@@ -281,6 +281,42 @@ function renderProfile(p, d, container) {
     const ratingHtml=`<div class="trans-section"><div class="trans-section-label">⭐ Avaliação da Comunidade</div>${avgR?`<div class="trans-rating-summary"><div class="trans-rating-big-score">${avgR}</div><div>${_stars(avgR)}<div style="color:#6b7280;font-size:12px;margin-top:4px;">${r.count} avaliação${r.count!==1?'ões':''}</div></div></div>`:'<div style="color:#6b7280;font-size:13px;margin-bottom:12px;">Seja o primeiro a avaliar!</div>'}<div class="trans-rating-widget" id="trans-rating-widget-${p.id}"><div style="color:#9ca3af;font-size:12px;margin-bottom:10px;">Sua avaliação:</div><div class="trans-stars-input" id="trans-stars-${p.id}">${[1,2,3,4,5].map(n=>`<span class="trans-star" data-val="${n}" onmouseover="hoverRatingStar('${escapeHtml(p.id)}',${n})" onmouseout="unhoverRatingStar('${escapeHtml(p.id)}')" onclick="setRatingStar('${escapeHtml(p.id)}',${n})">☆</span>`).join('')}</div><textarea id="trans-rating-comment-${p.id}" placeholder="Comentário público sobre a atuação deste político (opcional)..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#c5c6c7;padding:10px;font-family:\'DM Sans\';font-size:13px;resize:none;height:80px;margin-top:10px;outline:none;"></textarea><button class="btn-main" style="margin-top:8px;padding:8px 20px;" onclick="submitRating('${escapeHtml(p.id)}')">📤 Enviar Avaliação</button></div>${(r.comments||[]).length?`<div class="trans-section-label" style="margin-top:16px;font-size:11px;">AVALIAÇÕES RECENTES</div><div class="trans-comments-list">${r.comments.map(c=>`<div class="trans-comment"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">${_stars(c.score)}<span style="color:#4b5563;font-size:11px;">${escapeHtml(c.date)}</span></div>${c.comment?`<div style="color:#9ca3af;font-size:12px;margin-top:4px;">"${escapeHtml(c.comment)}"</div>`:''}</div>`).join('')}</div>`:''}</div>`;
 
     const _profileAvatar = _safeAvatarUrl(p.name, '66fcf1');
+
+    // ── Blocos da Enciclopédia Viva ──────────────────────────────────────
+    const trustContainerId = `trust-${p.id.replace(/[^a-z0-9]/gi,'-')}`;
+    const editsContainerId = `edits-${p.id.replace(/[^a-z0-9]/gi,'-')}`;
+    const histContainerId  = `hist-${p.id.replace(/[^a-z0-9]/gi,'-')}`;
+
+    const encyclopediaHtml = `
+      <div class="trans-section" id="enc-trust-${p.id.replace(/[^a-z0-9]/gi,'-')}">
+        <div class="trans-section-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>🔍 Confiabilidade dos dados</span>
+          <button onclick="openSuggestModal('${escapeHtml(p.id)}','${escapeHtml(p.name||'')}')"
+            style="background:rgba(102,252,241,0.1);border:1px solid var(--primary);color:var(--primary);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">
+            ✏️ Sugerir edição
+          </button>
+        </div>
+        <div id="${trustContainerId}"><div style="color:#555;font-size:12px;">Carregando score...</div></div>
+      </div>
+      <div class="trans-section">
+        <div class="trans-section-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>💡 Sugestões da comunidade</span>
+          <div style="display:flex;gap:6px;">
+            <button onclick="document.getElementById('${editsContainerId}').style.display='block';loadEdits('${escapeHtml(p.id)}',document.getElementById('${editsContainerId}'),window.__currentUser)"
+              style="background:rgba(255,255,255,0.05);border:1px solid #444;color:#aaa;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Ver sugestões</button>
+          </div>
+        </div>
+        <div id="${editsContainerId}" style="display:none;margin-top:8px;"></div>
+      </div>
+      <div class="trans-section">
+        <div class="trans-section-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>📜 Histórico de revisões</span>
+          <button onclick="document.getElementById('${histContainerId}').style.display='block';loadHistory('${escapeHtml(p.id)}',document.getElementById('${histContainerId}'))"
+            style="background:rgba(255,255,255,0.05);border:1px solid #444;color:#aaa;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Ver histórico</button>
+        </div>
+        <div id="${histContainerId}" style="display:none;margin-top:8px;"></div>
+      </div>`;
+
     container.innerHTML=`<div class="trans-profile-wrap">
         <button class="trans-back-btn" onclick="renderTransparencyView('search')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Voltar
@@ -300,7 +336,7 @@ function renderProfile(p, d, container) {
             </div>
             <button class="trans-compare-btn-lg ${inCmp?'active':''}" onclick="toggleCompare(window.__polStore['${_pk}'])">${inCmp?'✓ No comparativo':'+ Comparar'}</button>
         </div>
-        ${bioHtml}${dadosHtml}${cargosHtml}${salHtml}${despHtml}${votHtml}${chargesHtml}${ratingHtml}
+        ${bioHtml}${dadosHtml}${cargosHtml}${salHtml}${despHtml}${votHtml}${chargesHtml}${ratingHtml}${encyclopediaHtml}
     </div>`;
     window.__transState.currentRating = 0;
 }

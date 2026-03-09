@@ -19,6 +19,11 @@ from .data.fallback_photos import _FALLBACK_PHOTOS
 from .sources import search_wikidata_politicians, _get, _wikidata_sparql, _parse_politician_binding, get_executive_actions, get_deputado_details, get_senador_details, get_wikidata_entity
 from .mayor_cache import _get_mayor_dynamic, _populate_uf_cache, search_city_politicians_wikidata, _db_mayor_get, _UF_QID, _MAYOR_MEM
 from .geo import get_local_politicians as _get_local_impl, STF_MINISTERS
+from .encyclopedia import (
+    create_edit_suggestion, vote_on_edit, moderate_edit,
+    get_edits_for_politician, get_revision_history, get_pending_edits,
+    get_trust_score, EDITABLE_FIELDS, SOURCE_KINDS,
+)
 
 
 router = APIRouter()
@@ -294,3 +299,130 @@ async def featured_politicians():
         {"id":"wd-Q22686","name":"Donald Trump","role":"Presidente dos EUA","country":"EUA","party":"Republicano","source":"wikidata","photo":""},
         {"id":"wd-Q47468","name":"Emmanuel Macron","role":"Presidente da França","country":"França","party":"Renaissance","source":"wikidata","photo":""},
     ]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENCICLOPÉDIA VIVA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/transparency/politician/{politician_id}/trust")
+async def get_politician_trust(politician_id: str, db: Session = Depends(get_db)):
+    """Score de confiança do político."""
+    return get_trust_score(db, politician_id)
+
+
+@router.get("/transparency/politician/{politician_id}/edits")
+async def list_politician_edits(
+    politician_id: str,
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Lista sugestões de edição de um político."""
+    return {"edits": get_edits_for_politician(db, politician_id, status)}
+
+
+@router.get("/transparency/politician/{politician_id}/history")
+async def list_politician_history(politician_id: str, db: Session = Depends(get_db)):
+    """Histórico de revisões aprovadas."""
+    return {"history": get_revision_history(db, politician_id)}
+
+
+@router.post("/transparency/politician/{politician_id}/suggest")
+async def suggest_edit(
+    politician_id: str,
+    data: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Sugerir uma edição para um campo do político."""
+    user_id = int(data.get("user_id", 0))
+    field   = str(data.get("field", ""))
+    new_val = data.get("new_value")
+    old_val = data.get("old_value")
+    reason  = str(data.get("reason", ""))[:500]
+    sources = data.get("sources", [])
+
+    if not user_id:
+        return {"error": "Autenticação necessária"}
+    if not field or new_val is None:
+        return {"error": "Campo e novo valor são obrigatórios"}
+
+    try:
+        edit = create_edit_suggestion(
+            db, politician_id, user_id, field, new_val, old_val, reason, sources
+        )
+        return {"status": "ok", "edit_id": edit.id, "message": "Sugestão enviada para moderação!"}
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@router.post("/transparency/edit/{edit_id}/vote")
+async def vote_edit(edit_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+    """Votar numa sugestão (+1 apoia, -1 contesta)."""
+    user_id = int(data.get("user_id", 0))
+    value   = int(data.get("value", 1))
+    if not user_id:
+        return {"error": "Autenticação necessária"}
+    try:
+        return vote_on_edit(db, edit_id, user_id, value)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/transparency/edit/{edit_id}/moderate")
+async def moderate_edit_route(
+    edit_id: int,
+    data: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Aprovar ou rejeitar uma sugestão (requer is_staff=True no usuário)."""
+    mod_id  = int(data.get("moderator_id", 0))
+    approve = bool(data.get("approve", False))
+    note    = str(data.get("note", ""))[:400]
+
+    if not mod_id:
+        return {"error": "Autenticação necessária"}
+
+    # Verificar se usuário é staff
+    from app.db.session import SessionLocal as _SL
+    from app.models import User
+    db2 = _SL()
+    try:
+        mod = db2.query(User).filter_by(id=mod_id).first()
+        if not mod or not getattr(mod, "is_staff", False):
+            return {"error": "Permissão insuficiente"}
+    finally:
+        db2.close()
+
+    try:
+        edit = moderate_edit(db, edit_id, mod_id, approve, note)
+        return {
+            "status": "ok",
+            "edit_status": edit.status,
+            "message": "Aprovado ✅" if approve else "Rejeitado ❌",
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@router.get("/transparency/moderation/queue")
+async def moderation_queue(
+    moderator_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Fila de moderação — todas as sugestões pendentes."""
+    from app.db.session import SessionLocal as _SL
+    from app.models import User
+    db2 = _SL()
+    try:
+        mod = db2.query(User).filter_by(id=moderator_id).first()
+        if not mod or not getattr(mod, "is_staff", False):
+            return {"error": "Permissão insuficiente"}
+    finally:
+        db2.close()
+    return {"queue": get_pending_edits(db), "fields": EDITABLE_FIELDS, "source_kinds": SOURCE_KINDS}
+
+
+@router.get("/transparency/fields")
+async def list_editable_fields():
+    """Campos editáveis pela comunidade."""
+    return {"fields": EDITABLE_FIELDS, "source_kinds": SOURCE_KINDS}

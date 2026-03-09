@@ -184,3 +184,15 @@
         <button id="btn-save-profile" onclick="updateProfile()" class="btn-main" data-i18n="save">SALVAR</button>
         <button onclick="document.getElementById('modal-profile').classList.add('hidden')" class="btn-link" style="display:block;width:100%;border:1px solid #444;border-radius:10px;padding:12px;text-decoration:none" data-i18n="cancel">FECHAR</button>
     </div>
+
+<!-- Modal de sugestão da comunidade -->
+<div id="modal-suggest" class="hidden" style="position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#0d1117;border:1px solid #30363d;border-radius:16px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 id="modal-suggest-title" style="color:var(--primary);margin:0;font-size:15px;">Sugerir edição</h3>
+      <button onclick="document.getElementById('modal-suggest').classList.add('hidden')"
+        style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div id="modal-suggest-body"></div>
+  </div>
+</div>
