@@ -11,10 +11,17 @@
     --glass-dark: rgba(10, 6, 2, 0.4); /* Muito transparente para ver o castelo */
 }
 
-/* 1. ESCONDER QUALQUER POLUIÇÃO DO CÓDIGO ANTIGO */
-[data-theme="medieval"] .med-corner, [data-theme="medieval"] .med-torch,
-[data-theme="medieval"] .med-title-banner, [data-theme="medieval"] #app::before,
-[data-theme="medieval"] .news-cards-container::before, [data-theme="medieval"] .news-cards-container::after {
+/* 1. MOSTRAR ELEMENTOS DECORATIVOS MEDIEVAIS (ocultos por padrão via inline style) */
+[data-theme="medieval"] .med-corner,
+[data-theme="medieval"] .med-torch {
+    display: block !important;
+}
+
+/* Esconder poluição de código antigo */
+[data-theme="medieval"] .med-title-banner,
+[data-theme="medieval"] #app::before,
+[data-theme="medieval"] .news-cards-container::before,
+[data-theme="medieval"] .news-cards-container::after {
     display: none !important;
 }
 

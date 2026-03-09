@@ -8,6 +8,10 @@ from .enrichment import enrich_with_photo
 from .mayor_cache import _get_mayor_dynamic, search_city_politicians_wikidata
 from .sources import _get
 
+CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
+SENADO_BASE = "https://legis.senado.leg.br/dadosabertos"
+_HDR = {"User-Agent": "ForGloryApp/2.0 (transparency@forglory.online)"}
+
 
 STF_MINISTERS = [
     {"id":"wd-Q10319857","name":"Luís Roberto Barroso","role":"Presidente do STF","party":"","state":"Nacional","country":"Brasil","source":"wikidata","email":"",
