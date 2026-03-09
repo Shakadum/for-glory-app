@@ -313,7 +313,8 @@ async def _startup():
     ensure_chat_group_schema()
     # Cria tabela MayorCache se não existir (idempotente)
     try:
-        from app.api.routers.transparency import MayorCache, on_startup as transp_startup
+        from app.api.transparency.models import MayorCache
+        from app.api.transparency.router import on_startup as transp_startup
         from app.db.base import Base
         Base.metadata.create_all(bind=engine, tables=[MayorCache.__table__], checkfirst=True)
         import asyncio

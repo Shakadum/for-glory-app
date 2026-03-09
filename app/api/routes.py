@@ -14,7 +14,7 @@ from app.api.routers.communities   import router as communities_router
 from app.api.routers.calls         import router as calls_router
 from app.api.routers.ws            import router as ws_router
 from app.api.routers.news          import router as news_router
-from app.api.routers.transparency  import router as transparency_router
+from app.api.transparency          import router as transparency_router
 from app.api.routers.vip           import router as vip_router
 from app.api.routers.quiz          import router as quiz_router
 from app.api.routers.reactions     import router as reactions_router
