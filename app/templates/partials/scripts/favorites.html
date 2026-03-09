@@ -84,12 +84,7 @@
             await new Promise(res => { link.onload=res; link.onerror=res; setTimeout(res,1200); });
             document.documentElement.setAttribute('data-theme', themeId);
         }
-        // Toggle medieval decorative elements
-        const isMedieval = (themeId === 'medieval');
-        document.querySelectorAll('.med-corner,.med-torch').forEach(el => {
-            el.style.display = isMedieval ? '' : 'none';
-        });
-        document.querySelectorAll('.med-title-banner').forEach(el => { el.style.display = 'none'; });
+        // Elementos decorativos medievais removidos
 
         try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
         _updateThemeBtns(themeId);
