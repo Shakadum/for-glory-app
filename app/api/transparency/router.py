@@ -15,12 +15,20 @@ from .data.mayors import _norm, get_mayor_data, GOVERNORS_BY_UF, UF_NAMES, COUNT
 from .data.charges import _CHARGES_DB
 from .data.salaries import SALARY_BR
 from .enrichment import get_photo, get_wiki_data, enrich_with_photo, _warmup_photo_cache, _PHOTO_CACHE
-from .sources import search_wikidata_politicians, _get, _wikidata_sparql, _parse_politician_binding
+from .data.fallback_photos import _FALLBACK_PHOTOS
+from .sources import search_wikidata_politicians, _get, _wikidata_sparql, _parse_politician_binding, get_executive_actions, get_deputado_details, get_senador_details, get_wikidata_entity
 from .mayor_cache import _get_mayor_dynamic, _populate_uf_cache, search_city_politicians_wikidata, _db_mayor_get, _UF_QID, _MAYOR_MEM
 from .geo import get_local_politicians as _get_local_impl, STF_MINISTERS
 
 
 router = APIRouter()
+
+def _get_charges(name: str, full_name: str = "") -> list:
+    for key, charges in _CHARGES_DB.items():
+        if key.lower() in name.lower() or key.lower() in (full_name or "").lower():
+            return charges
+    return []
+
 
 
 @router.on_event("startup")
