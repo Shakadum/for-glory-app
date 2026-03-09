@@ -2,7 +2,7 @@
 For Glory — Portal da Transparência
 Módulo: Enriquecimento de dados — fotos, bio, Wikipedia
 """
-import asyncio, time
+import asyncio, time, urllib.parse
 import httpx
 from .data.fallback_photos import _FALLBACK_PHOTOS
 from .data.politicians import CURATED_POLITICIANS
