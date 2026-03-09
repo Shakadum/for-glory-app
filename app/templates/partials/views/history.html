@@ -1,0 +1,24 @@
+        <div id="view-history" class="view">
+            <!-- Header + sub-tabs -->
+            <div style="background:rgba(0,0,0,0.3);border-bottom:1px solid #222;flex-shrink:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;">
+                    <span style="color:white;font-family:'Rajdhani';font-weight:800;font-size:22px;letter-spacing:1px;">⭐ MEUS FAVORITOS</span>
+                    <button id="fav-clear-btn" onclick="clearAllFavorites()" style="background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#4b5563;padding:5px 10px;font-size:11px;cursor:pointer;">Limpar</button>
+                </div>
+                <div style="display:flex;overflow-x:auto;scrollbar-width:none;padding:0 8px;">
+                    <button class="fav-tab active" data-tab="quizzes" onclick="switchFavTab('quizzes',this)">🧠 Quizzes</button>
+                    <button class="fav-tab" data-tab="noticias" onclick="switchFavTab('noticias',this)">📰 Notícias</button>
+                    <button class="fav-tab" data-tab="politicos" onclick="switchFavTab('politicos',this)">🏛️ Políticos</button>
+                    <button class="fav-tab" data-tab="comparacoes" onclick="switchFavTab('comparacoes',this)">⚖️ Comparações</button>
+                </div>
+            </div>
+            <!-- Panels (scrollable, ocupa tudo) -->
+            <div style="flex:1;overflow-y:auto;padding:16px;">
+                <div id="fav-panel-quizzes" class="fav-panel"></div>
+                <div id="fav-panel-noticias" class="fav-panel" style="display:none;"></div>
+                <div id="fav-panel-politicos" class="fav-panel" style="display:none;"></div>
+                <div id="fav-panel-comparacoes" class="fav-panel" style="display:none;"></div>
+            </div>
+        </div>
+        
+        

@@ -1,0 +1,49 @@
+        <div id="view-comm-dashboard" class="view comm-layout">
+            <div class="comm-topbar" id="comm-header">
+                <button onclick="closeComm()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:50%;width:36px;height:36px;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <div id="active-comm-name">NOME DA BASE</div>
+                <button onclick="showCommInfo()" class="glass-btn" style="padding:6px 12px; margin:0; flex:none; background:rgba(255,255,255,0.1); color:white; border-color:#555;">ℹ️ INFO</button>
+            </div>
+            <div class="comm-channels-bar" id="comm-channels-bar"></div>
+            
+            <div id="comm-chat-area" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                <div id="comm-chat-list" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;"></div>
+                <form id="comm-input-form" class="chat-input-area" onsubmit="sendCommMsg(); return false;">
+                    <input type="file" id="comm-file" class="hidden" onchange="uploadCommImage()" accept="image/*,video/*,audio/*">
+                    <button type="button" id="btn-comm-clip" class="icon-btn" onclick="document.getElementById('comm-file').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                    <button type="button" id="btn-comm-mic" class="icon-btn" onclick="toggleRecord('comm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                    <input id="comm-msg" class="chat-msg" placeholder="Mensagem" data-i18n="base_msg_placeholder" autocomplete="off">
+                    <button type="button" id="btn-comm-emoji" class="icon-btn" onclick="openEmoji('comm-msg')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                    <button type="submit" id="btn-comm-send" class="btn-send-msg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+                </form>
+            </div>
+            
+            <div id="comm-info-area" style="display:none; flex:1; overflow-y:auto; padding-bottom:30px; align-items:flex-start; justify-content:center; flex-direction:row; background: var(--dark-bg);">
+                <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:16px; width:100%; max-width:600px; margin-top:20px; overflow:hidden; box-shadow:0 15px 35px rgba(0,0,0,0.5);">
+                    <div id="c-info-banner" style="width:100%; height:160px; background-size:cover; background-position:center; position:relative; background-color:#111; border-bottom:1px solid #333;">
+                        <div style="position:absolute; bottom:-40px; left:25px;">
+                            <img id="c-info-av" src="" style="width:100px; height:100px; border-radius:24px; object-fit:cover; border:4px solid var(--card-bg); background:#0b0c10; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                        </div>
+                    </div>
+                    <div style="padding: 50px 25px 25px 25px;">
+                        <h2 id="c-info-name" style="color:white; margin:0; font-family:'Rajdhani'; font-size:32px; letter-spacing:1px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">...</h2>
+                        <p id="c-info-desc" style="color:#aaa; font-size:14px; margin:10px 0 25px 0; line-height:1.5;">...</p>
+                        
+                        <div id="c-info-admin-btn" style="margin-bottom:20px; display:flex; flex-direction:column; gap:10px;"></div>
+                        
+                        <div style="background:rgba(0,0,0,0.3); border-radius:12px; padding:20px; text-align:left; border:1px solid rgba(255,255,255,0.05);">
+                            <h3 style="color:var(--primary); margin:0 0 15px 0; border-bottom:1px solid rgba(102,252,241,0.2); padding-bottom:8px; font-size:16px; font-family:'Rajdhani'; letter-spacing:1px; text-transform:uppercase;" data-i18n="base_members">Membros da Base</h3>
+                            <div id="c-info-members" style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto; padding-right:5px;"></div>
+                        </div>
+                        
+                        <div id="c-info-requests-container" style="display:none; width:100%; margin-top:20px; background:rgba(0,0,0,0.3); border-radius:12px; padding:20px; text-align:left; border:1px solid rgba(255,165,0,0.2);">
+                            <h3 style="color:orange; margin:0 0 15px 0; border-bottom:1px solid rgba(255,165,0,0.2); padding-bottom:8px; font-size:16px; font-family:'Rajdhani'; letter-spacing:1px; text-transform:uppercase;" data-i18n="entry_requests">Solicitações de Entrada</h3>
+                            <div id="c-info-requests" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        </div>
+                        
+                        <div id="c-info-destroy-btn" style="margin-top:25px; display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        

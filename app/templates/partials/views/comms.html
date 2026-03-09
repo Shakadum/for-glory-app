@@ -1,0 +1,24 @@
+        <div id="view-mycomms" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:white; font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="my_bases">🛡️ MINHAS BASES</span>
+                <button class="glass-btn" style="margin:0; flex:none; padding:8px 15px;" onclick="document.getElementById('modal-create-comm').classList.remove('hidden')" data-i18n="create_base">+ CRIAR BASE</button>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div id="my-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
+        
+        <div id="view-explore" class="view">
+            <div style="padding:20px; background:rgba(0,0,0,0.3); border-bottom:1px solid #333; text-align:center;">
+                <span style="color:var(--primary); font-family:'Rajdhani'; font-weight:bold; font-size:24px; letter-spacing:1px;" data-i18n="explore_bases">🌐 EXPLORAR BASES</span>
+            </div>
+            <div style="padding:20px; flex:1; overflow-y:auto; text-align:center;">
+                <div class="search-glass" style="max-width:400px; margin:0 auto 20px auto;">
+                    <input id="search-comm-input" placeholder="Buscar..." data-i18n="search_base" onkeypress="if(event.key==='Enter')searchComms()">
+                    <button type="button" onclick="searchComms()" style="background:none;border:none;color:var(--primary);font-size:18px;cursor:pointer;">🔍</button>
+                    <button type="button" onclick="clearCommSearch()" style="background:none;border:none;color:#ff5555;font-size:18px;cursor:pointer;padding-left:10px;">✕</button>
+                </div>
+                <div id="public-comms-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-bottom:40px;"></div>
+            </div>
+        </div>
+        

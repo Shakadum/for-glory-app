@@ -1,0 +1,43 @@
+<div id="modal-login" class="modal">
+    <div class="modal-box">
+        <h1 style="color:var(--primary);font-family:'Rajdhani';font-size:42px;margin:0 0 10px 0" data-i18n="login_title">FOR GLORY</h1>
+        <div id="login-form">
+            <input id="l-user" class="inp" placeholder="CODINOME" data-i18n="codename">
+            <input id="l-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password" onkeypress="if(event.key==='Enter')doLogin()">
+            <button onclick="doLogin()" class="btn-main" data-i18n="login">ENTRAR</button>
+            <div style="margin-top:20px;display:flex;justify-content:space-between">
+                <span onclick="toggleAuth('register')" class="btn-link" style="color:white;text-decoration:none;" data-i18n="create_acc">Criar Conta</span>
+                <span onclick="toggleAuth('forgot')" class="btn-link" style="color:var(--primary);text-decoration:none;" data-i18n="forgot">Esqueci Senha</span>
+            </div>
+            <div style="margin-top:15px;border-top:1px solid #333;padding-top:15px;">
+                <div class="lang-dropdown" id="lang-dropdown-login">
+                    <div class="lang-btn" id="lang-btn-login">🌍 Idioma</div>
+                    <div class="lang-content">
+                        <div class="lang-item" onclick="changeLanguage('pt')">🇧🇷 Português</div>
+                        <div class="lang-item" onclick="changeLanguage('en')">🇺🇸 English</div>
+                        <div class="lang-item" onclick="changeLanguage('es')">🇪🇸 Español</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="register-form" class="hidden">
+            <input id="r-user" class="inp" placeholder="NOVO USUÁRIO" data-i18n="new_user">
+            <input id="r-email" class="inp" placeholder="EMAIL" data-i18n="email_real">
+            <input id="r-pass" class="inp" type="password" placeholder="SENHA" data-i18n="password">
+            <button onclick="doRegister()" class="btn-main" data-i18n="enlist">ALISTAR-SE</button>
+            <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
+        </div>
+        <div id="forgot-form" class="hidden">
+            <h3 style="color:white" data-i18n="recover">RECUPERAR ACESSO</h3>
+            <input id="f-email" class="inp" placeholder="SEU EMAIL" data-i18n="reg_email">
+            <button onclick="requestReset()" class="btn-main" data-i18n="send_link">ENVIAR LINK</button>
+            <p onclick="toggleAuth('login')" class="btn-link" data-i18n="back">Voltar</p>
+        </div>
+        <div id="reset-form" class="hidden">
+            <h3 style="color:var(--primary)" data-i18n="new_pass_title">NOVA SENHA</h3>
+            <input id="new-pass" class="inp" type="password" placeholder="NOVA SENHA" data-i18n="new_pass">
+            <button onclick="doResetPassword()" class="btn-main" data-i18n="save_pass">SALVAR SENHA</button>
+        </div>
+    </div>
+</div>
+

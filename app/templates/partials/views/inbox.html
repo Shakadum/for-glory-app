@@ -1,0 +1,14 @@
+        <div id="view-inbox" class="view active">
+            <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div style="color:var(--primary);font-family:'Rajdhani';font-weight:bold;letter-spacing:2px;font-size:20px;" data-i18n="private_msgs">MENSAGENS PRIVADAS</div>
+                <button onclick="openCreateGroupModal()" class="glass-btn" style="padding:8px 12px; margin:0; flex:none;" data-i18n="group_x1">+ GRUPO X1</button>
+            </div>
+            <div id="inbox-list" style="padding:15px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1;"></div>
+        </div>
+        
+        <!-- Feed removido: placeholder invisível para manter compatibilidade -->
+        <div id="view-feed" class="view" style="display:none;">
+            <div id="feed-container"></div>
+            <button class="btn-float" onclick="document.getElementById('modal-upload').classList.remove('hidden')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+        

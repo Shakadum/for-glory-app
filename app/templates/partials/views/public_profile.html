@@ -1,0 +1,19 @@
+        <div id="view-public-profile" class="view">
+            <button onclick="goView('inbox', document.querySelectorAll('.nav-btn')[0])" style="position:absolute;top:20px;left:20px;z-index:10;background:rgba(0,0,0,0.6);color:white;border:1px solid rgba(255,255,255,0.12);padding:9px 16px;border-radius:50px;backdrop-filter:blur(12px);cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;" data-i18n="back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar</button>
+            <div class="profile-header-container">
+                <img id="pub-cover" src="" class="profile-cover" onerror="this.src='https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY'">
+                <div class="profile-pic-lg-wrap">
+                    <img id="pub-avatar" src="" class="profile-pic-lg" onerror="this.src='https://ui-avatars.com/api/?name=User&background=111&color=66fcf1'">
+                    <div id="pub-status-dot" class="status-dot status-dot-lg"></div>
+                </div>
+            </div>
+            <div style="text-align:center;margin-top:20px">
+                <h2 id="pub-name" style="color:white;font-family:'Rajdhani';margin:5px 0;">...</h2>
+                <div id="pub-emblems" style="margin-bottom:10px;"></div>
+                <p id="pub-bio" style="color:#888;margin:10px 0 20px 0;">...</p>
+                <div id="pub-medals-box" style="text-align:center;"></div>
+                <div id="pub-actions" style="margin-bottom:20px; display:flex; justify-content:center; flex-wrap:wrap; align-items:center; gap:10px;"></div>
+                <div id="pub-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;max-width:500px;margin:0 auto;"></div>
+            </div>
+        </div>
+    

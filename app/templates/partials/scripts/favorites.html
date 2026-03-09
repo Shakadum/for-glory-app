@@ -1,0 +1,176 @@
+<script>
+// ══════════════════════════════════════════════════════
+//  MEUS FAVORITOS — ForGlory
+// ══════════════════════════════════════════════════════
+(function(){
+    const KEY = 'fg_favorites';
+    function loadFavs() { try { return JSON.parse(localStorage.getItem(KEY)||'{}'); } catch{ return {}; } }
+    function saveFavs(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch{} }
+
+    window.addFavorite = function(type, item) {
+        const data = loadFavs();
+        if (!data[type]) data[type] = [];
+        if (!data[type].find(x => x.id === item.id)) {
+            data[type].unshift(item); saveFavs(data);
+            if (typeof showToast==='function') showToast('⭐ Adicionado aos favoritos!');
+        }
+        renderFavPanel(type);
+    };
+    window.removeFavorite = function(type, id) {
+        const data = loadFavs();
+        if (data[type]) data[type] = data[type].filter(x => x.id !== id);
+        saveFavs(data); renderFavPanel(type);
+    };
+    window.clearAllFavorites = function() {
+        if (!confirm('Limpar todos os favoritos?')) return;
+        saveFavs({});
+        ['quizzes','noticias','politicos','comparacoes'].forEach(t => renderFavPanel(t));
+    };
+    window.switchFavTab = function(tab) {
+        document.querySelectorAll('.fav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+        document.querySelectorAll('.fav-panel').forEach(p => p.style.display='none');
+        // Esconde botão Limpar na aba VIP
+        const clearBtn = document.getElementById('fav-clear-btn');
+        if (clearBtn) clearBtn.style.display = (tab==='vip') ? 'none' : '';
+        const panel = document.getElementById('fav-panel-'+tab);
+        if (panel) { panel.style.display=''; if (tab!=='vip') renderFavPanel(tab); }
+        if (tab==='vip') { setTimeout(checkFavVipStatus, 50); }
+    };
+
+    // ── SISTEMA DE TEMAS ──────────────────────────────────────────
+    const _THEME_CSS_ID = 'fg-theme-css';
+    const _THEME_KEY = 'fg_active_theme';
+    const _THEMES = {
+        default:  { name:'Padrão', icon:'⚡', css:null },
+        medieval: { name:'Fantasia Épica Medieval', icon:'⚔️', css:'/static/theme_medieval.css' },
+        anime:    { name:'Anime JRPG', icon:'🌸', css:'/static/theme_anime.css' },
+        retro:    { name:'Console 16-bit', icon:'👾', css:'/static/theme_retro.css' }
+    };
+
+    function _updateThemeBtns(themeId) {
+        Object.keys(_THEMES).forEach(id => {
+            const activeBadge = document.getElementById('theme-active-'+id);
+            const lockBadge   = document.getElementById('theme-lock-'+id);
+            const btn = document.getElementById('theme-btn-'+id);
+            if (!btn) return;
+            if (id === 'default') {
+                if (activeBadge) activeBadge.style.display = (themeId==='default') ? '' : 'none';
+                btn.style.borderColor = (themeId==='default') ? 'rgba(102,252,241,0.4)' : 'rgba(255,255,255,0.08)';
+                btn.style.background  = (themeId==='default') ? 'rgba(102,252,241,0.07)' : 'rgba(255,255,255,0.02)';
+            } else {
+                const isActive = themeId === id;
+                if (activeBadge) activeBadge.style.display = isActive ? '' : 'none';
+                if (lockBadge)   lockBadge.style.display   = isActive ? 'none' : '';
+                btn.style.borderColor = isActive ? 'rgba(212,175,55,0.5)' : 'rgba(212,175,55,0.2)';
+                btn.style.background  = isActive ? 'rgba(212,175,55,0.1)' : 'rgba(212,175,55,0.04)';
+            }
+        });
+    }
+
+    window.applyTheme = async function(themeId) {
+        if (!_THEMES[themeId]) return;
+        // Remove CSS anterior
+        const old = document.getElementById(_THEME_CSS_ID);
+        if (old) old.remove();
+        document.documentElement.removeAttribute('data-theme');
+
+        if (themeId !== 'default') {
+            const t = _THEMES[themeId];
+            const link = document.createElement('link');
+            link.id = _THEME_CSS_ID;
+            link.rel = 'stylesheet';
+            link.href = t.css + '?v=' + Date.now();
+            document.head.appendChild(link);
+            await new Promise(res => { link.onload=res; link.onerror=res; setTimeout(res,1200); });
+            document.documentElement.setAttribute('data-theme', themeId);
+        }
+        // Toggle medieval decorative elements
+        // Decorações medievais v2 (glass theme): CSS cuida do display, JS só limpa inline style
+        document.querySelectorAll('.med-title-banner,.med-corner,.med-torch').forEach(el => { el.style.display = 'none'; });
+
+        try { localStorage.setItem(_THEME_KEY, themeId); } catch(e){}
+        _updateThemeBtns(themeId);
+        if (typeof showToast==='function') showToast(_THEMES[themeId].icon+' Tema "'+_THEMES[themeId].name+'" ativado!');
+    };
+
+    // Restaura tema salvo ao carregar
+    (function() {
+        try {
+            const saved = localStorage.getItem(_THEME_KEY);
+            if (saved && saved !== 'default' && _THEMES[saved]) {
+                // Aplica sem aguardar (async background)
+                window.applyTheme(saved);
+            }
+        } catch(e) {}
+    })();
+    function renderFavPanel(type) {
+        const panel = document.getElementById('fav-panel-'+type);
+        if (!panel || panel.style.display==='none') return;
+        const items = (loadFavs()[type]||[]);
+        const icons = {quizzes:'🧠',noticias:'📰',politicos:'🏛️',comparacoes:'⚖️'};
+        const empty = {quizzes:'Salve quizzes que quiser revisitar',noticias:'Salve notícias interessantes',politicos:'Salve fichas de políticos',comparacoes:'Salve comparações de políticos'};
+        if (!items.length) {
+            panel.innerHTML='<div class="fav-empty"><div style="font-size:28px;margin-bottom:6px;">'+(icons[type]||'⭐')+'</div><div>'+(empty[type]||'Nenhum item salvo')+'</div></div>';
+            return;
+        }
+        panel.innerHTML = items.map(item => {
+            const safeId = (item.id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+            return '<div class="fav-item">' +
+                '<div class="fav-item-icon">'+(icons[type]||'⭐')+'</div>' +
+                '<div class="fav-item-info">' +
+                  '<div class="fav-item-title">'+(item.title||item.name||'')+'</div>' +
+                  (item.subtitle||item.role ? '<div class="fav-item-sub">'+(item.subtitle||item.role||'')+'</div>' : '') +
+                '</div>' +
+                '<button class="fav-remove" onclick="event.stopPropagation();removeFavorite(\''+type+'\',\''+safeId+'\')" title="Remover">✕</button>' +
+            '</div>';
+        }).join('');
+    }
+
+    // Hook goView
+    const _origGoView = window.goView;
+    window.goView = function(view, btn) {
+        if (_origGoView) _origGoView.call(this, view, btn);
+        if (view==='history') setTimeout(()=>{ switchFavTab('quizzes'); }, 60);
+        if (view==='vip-panel') setTimeout(()=>{ checkFavVipStatus(); }, 60);
+    };
+
+    // VIP inline
+    let _fb = 'monthly';
+    window.favVipBilling = function(type) {
+        _fb = type;
+        const m=document.getElementById('fav-vip-btn-m'), y=document.getElementById('fav-vip-btn-y');
+        const pr=document.getElementById('fav-vip-price'), sb=document.getElementById('fav-vip-sub'), ct=document.getElementById('fav-vip-cta');
+        if(m){m.style.background=type==='monthly'?'rgba(102,252,241,0.15)':'transparent';m.style.color=type==='monthly'?'#66fcf1':'#4b5563';}
+        if(y){y.style.background=type==='yearly'?'rgba(102,252,241,0.15)':'transparent';y.style.color=type==='yearly'?'#66fcf1':'#4b5563';}
+        if(pr) pr.innerHTML=type==='monthly'?'R$&nbsp;15<span style="font-size:13px;color:#6b7280;font-weight:400;">/mês</span>':'R$&nbsp;135<span style="font-size:13px;color:#6b7280;font-weight:400;">/ano</span>';
+        if(sb) sb.textContent=type==='monthly'?'Cobrado mensalmente · Cancele quando quiser':'Cobrado anualmente · Equivale a R$ 11,25/mês';
+        if(ct) ct.textContent=type==='monthly'?'ASSINAR VIP · R$ 15,00/mês':'ASSINAR VIP · R$ 135,00/ano';
+    };
+    window.favVipSubscribe = async function() {
+        const btn=document.getElementById('fav-vip-cta');
+        if(btn){btn.disabled=true;btn.textContent='Processando...';}
+        try {
+            const r=await authFetch('/subscription/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan_slug:'vip',billing:_fb})});
+            if(r&&r.ok){
+                const sec=document.getElementById('fav-vip-section');
+                if(sec) sec.style.display='none';
+                if(typeof showToast==='function') showToast('🎉 Bem-vindo ao VIP!');
+            } else { if(btn){btn.disabled=false;favVipBilling(_fb);} }
+        } catch(e){ if(btn){btn.disabled=false;favVipBilling(_fb);} }
+    };
+    window.checkFavVipStatus = async function() {
+        try {
+            const r=await authFetch('/my/plan');
+            if(r&&r.ok){ const d=await r.json();
+                if(d.plan_slug==='vip'){
+                    const sec=document.getElementById('fav-vip-section');
+                    if(sec) sec.style.display='none';
+                }
+            }
+        } catch(e){}
+    };
+    document.addEventListener('DOMContentLoaded',()=>renderFavPanel('quizzes'));
+})();
+</script>
+</body>
+</html>

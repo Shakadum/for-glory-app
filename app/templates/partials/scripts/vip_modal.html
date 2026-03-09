@@ -1,0 +1,241 @@
+<script>
+// ═══════════════════════════════════════════════════════
+//  VIP UPGRADE MODAL — ForGlory
+// ═══════════════════════════════════════════════════════
+(function(){
+    const PLANS = [
+        {
+            slug:'free', name:'Gratuito', icon:'🔓',
+            monthly:0, yearly:0,
+            color:'#6b7280', colorRgb:'107,114,128',
+            mult:'1×', badge:null,
+            features:[]
+        },
+        {
+            slug:'vip1', name:'Cidadão VIP', icon:'🥈',
+            monthly:9.90, yearly:99.00,
+            color:'#e2e8f0', colorRgb:'226,232,240',
+            mult:'2×', badge:'prata',
+            features:['name_color','font','border','bubble']
+        },
+        {
+            slug:'vip2', name:'Guardião', icon:'🥇',
+            monthly:24.90, yearly:249.00,
+            color:'#fbbf24', colorRgb:'251,191,36',
+            mult:'5×', badge:'ouro',
+            features:['name_color','font','border','bubble','faceplate_name','bio_style']
+        },
+        {
+            slug:'vip3', name:'Sentinela', icon:'💎',
+            monthly:49.90, yearly:499.00,
+            color:'#67e8f9', colorRgb:'103,232,249',
+            mult:'10×', badge:'diamante',
+            features:['name_color','font','border','bubble','faceplate_name','faceplate_base','bio_style','themes','support']
+        }
+    ];
+
+    const BENEFIT_LABELS = {
+        name_color:    {icon:'🎨', name:'Cor do nome',        desc:'Qualquer cor no seu nome em chats e perfil'},
+        font:          {icon:'✍️', name:'Fonte exclusiva',     desc:'Fontes únicas para nome, bio e nome da sua base'},
+        border:        {icon:'🖼️', name:'Borda de perfil',     desc:'Bordas animadas e gradientes na foto de perfil'},
+        bubble:        {icon:'💬', name:'Balões exclusivos',   desc:'Estilo personalizado nos seus balões de mensagem'},
+        faceplate_name:{icon:'🏷️', name:'Faceplate no nome',   desc:'Tag decorativa exclusiva ao lado do seu nome'},
+        faceplate_base:{icon:'🏰', name:'Faceplate da base',   desc:'Destaque no nome da comunidade que você criou'},
+        bio_style:     {icon:'📝', name:'Bio estilizada',      desc:'Balão de bio com formato e cor exclusivos'},
+        themes:        {icon:'🌈', name:'Temas do app',        desc:'Acesso a temas visuais exclusivos do ForGlory'},
+        support:       {icon:'⚡', name:'Suporte prioritário', desc:'Resposta em até 24h pela equipe ForGlory'}
+    };
+
+    let _billing = 'monthly';
+    let _selectedPlan = 'vip1';
+    let _currentPlan = 'free';
+
+    // ── OPEN ──────────────────────────────────────────────────────
+    window.openVipUpgrade = async function() {
+        const modal = document.getElementById('modal-vip-upgrade');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        // Fetch current plan
+        try {
+            const r = await authFetch('/my/plan');
+            if (r && r.ok) {
+                const d = await r.json();
+                _currentPlan = d.plan_slug || 'free';
+                _selectedPlan = _currentPlan === 'free' ? 'vip1' : _currentPlan;
+            }
+        } catch(e) { /* offline */ }
+        renderVupPlans();
+        updateVupPreview();
+        updateVupCta();
+        // Hide banner if paid
+        const banner = document.getElementById('vip-profile-banner');
+        if (banner && _currentPlan !== 'free') banner.style.display = 'none';
+    };
+
+    // ── CLOSE ─────────────────────────────────────────────────────
+    window.closeVipUpgrade = window.closeVipModal = function() {
+        const modal = document.getElementById('modal-vip-upgrade');
+        if (modal) modal.classList.add('hidden');
+        document.body.style.overflow = '';
+    };
+
+    // ── BILLING TOGGLE ────────────────────────────────────────────
+    window.setVupBilling = window.setVipBilling = function(type) {
+        _billing = type;
+        document.querySelectorAll('.vup-toggle-btn').forEach(b => {
+            b.classList.toggle('active', b.textContent.trim().startsWith(type === 'monthly' ? 'MENSAL' : 'ANUAL'));
+        });
+        renderVupPlans();
+        updateVupCta();
+    };
+
+    // ── RENDER PLAN CARDS ─────────────────────────────────────────
+    function renderVupPlans() {
+        const container = document.getElementById('vup-plans-container');
+        if (!container) return;
+        container.innerHTML = PLANS.map(p => {
+            const price = _billing === 'monthly' ? p.monthly : (p.yearly / 12);
+            const isSel = _selectedPlan === p.slug;
+            const isCur = _currentPlan === p.slug;
+            return `
+            <div class="vup-plan-card ${isSel?'selected':''} ${isCur?'current-plan':''}"
+                 style="--pc:${p.color};--pcr:${p.colorRgb};"
+                 onclick="selectVupPlan('${p.slug}')">
+                <div class="vup-plan-icon">${p.icon}</div>
+                <div class="vup-plan-name">${p.name}</div>
+                <div class="vup-plan-price">
+                    ${p.monthly === 0 ? 'Grátis' : 'R$ ' + price.toFixed(2).replace('.',',')}
+                    ${p.monthly > 0 ? '<span>/mês</span>' : ''}
+                </div>
+                ${_billing === 'yearly' && p.monthly > 0 ?
+                    `<div class="vup-plan-yearly">R$ ${p.yearly.toFixed(2).replace('.',',')} /ano</div>` : ''}
+                <div class="vup-plan-mult">${p.mult} Glory</div>
+            </div>`;
+        }).join('');
+    }
+
+    window.selectVupPlan = function(slug) {
+        _selectedPlan = slug;
+        renderVupPlans();
+        updateVupPreview();
+        updateVupCta();
+    };
+
+    // ── PREVIEW ───────────────────────────────────────────────────
+    function updateVupPreview() {
+        const plan = PLANS.find(p => p.slug === _selectedPlan) || PLANS[1];
+        const usernameEl = document.getElementById('vup-prev-username');
+        const faceplateEl = document.getElementById('vup-prev-faceplate');
+        const bioEl = document.getElementById('vup-prev-bio');
+        const bubbleEl = document.getElementById('vup-prev-bubble');
+        const avatarEl = document.querySelector('.vup-preview-avatar');
+
+        if (usernameEl) {
+            usernameEl.style.color = plan.features.includes('name_color') ? plan.color : '#e5e7eb';
+            const fonts = {vip1:'Rajdhani', vip2:'Syne', vip3:'Orbitron'};
+            usernameEl.style.fontFamily = fonts[plan.slug] ? `'${fonts[plan.slug]}'` : 'inherit';
+        }
+        if (faceplateEl) {
+            faceplateEl.style.display = plan.features.includes('faceplate_name') ? '' : 'none';
+            faceplateEl.style.background = `rgba(${plan.colorRgb},0.15)`;
+            faceplateEl.style.color = plan.color;
+            faceplateEl.style.borderColor = `rgba(${plan.colorRgb},0.3)`;
+        }
+        if (bioEl) {
+            if (plan.features.includes('bio_style')) {
+                bioEl.style.background = `rgba(${plan.colorRgb},0.08)`;
+                bioEl.style.borderLeft = `3px solid ${plan.color}`;
+                bioEl.style.borderRadius = '0 10px 10px 0';
+                bioEl.style.padding = '8px 12px';
+                bioEl.style.color = '#e5e7eb';
+            } else {
+                bioEl.style.cssText = '';
+            }
+        }
+        if (bubbleEl) {
+            if (plan.features.includes('bubble')) {
+                bubbleEl.style.background = `rgba(${plan.colorRgb},0.15)`;
+                bubbleEl.style.borderColor = `rgba(${plan.colorRgb},0.3)`;
+                bubbleEl.style.color = plan.color;
+            } else {
+                bubbleEl.style.cssText = '';
+            }
+        }
+        if (avatarEl) {
+            if (plan.features.includes('border')) {
+                avatarEl.style.border = `3px solid ${plan.color}`;
+                avatarEl.style.boxShadow = `0 0 16px rgba(${plan.colorRgb},0.4)`;
+            } else {
+                avatarEl.style.border = '2px solid rgba(255,255,255,0.1)';
+                avatarEl.style.boxShadow = 'none';
+            }
+        }
+    }
+
+    // ── CTA BUTTON ────────────────────────────────────────────────
+    function updateVupCta() {
+        const btn = document.getElementById('vip-modal-cta');
+        const note = document.getElementById('vip-modal-note');
+        if (!btn) return;
+        const plan = PLANS.find(p => p.slug === _selectedPlan);
+        if (!plan) return;
+        if (_selectedPlan === _currentPlan) {
+            btn.disabled = true;
+            btn.textContent = '✓ Plano Atual';
+            if (note) note.textContent = 'Você já está neste plano';
+        } else if (_selectedPlan === 'free') {
+            btn.disabled = false;
+            btn.textContent = 'FAZER DOWNGRADE';
+            btn.style.background = 'rgba(255,255,255,0.1)';
+            btn.style.color = '#6b7280';
+            if (note) note.textContent = 'Você perderá seus benefícios VIP';
+        } else {
+            btn.disabled = false;
+            const price = _billing === 'monthly' ? plan.monthly : plan.yearly;
+            const period = _billing === 'monthly' ? '/mês' : '/ano';
+            btn.textContent = `ASSINAR · R$ ${price.toFixed(2).replace('.',',')} ${period}`;
+            btn.style.background = `linear-gradient(135deg, ${plan.color}, ${plan.color}99)`;
+            btn.style.color = '#0b0c10';
+            if (note) note.textContent = 'Pagamento seguro · Cancele quando quiser · Sem taxas ocultas';
+        }
+    }
+
+    // ── SUBSCRIBE ─────────────────────────────────────────────────
+    window.vipModalSubscribe = window.confirmVipSubscription = async function() {
+        const plan = PLANS.find(p => p.slug === _selectedPlan);
+        if (!plan || plan.slug === _currentPlan) return;
+        const btn = document.getElementById('vip-modal-cta');
+        if (btn) { btn.disabled = true; btn.textContent = 'Processando...'; }
+        try {
+            const r = await authFetch('/subscription/create', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ plan_slug: _selectedPlan, billing: _billing })
+            });
+            if (r && r.ok) {
+                _currentPlan = _selectedPlan;
+                updateVupCta();
+                renderVupPlans();
+                const note = document.getElementById('vip-modal-note');
+                if (note) note.textContent = '✅ Plano ativado! Aproveite seus benefícios VIP.';
+                // Hide banner since now paid
+                const banner = document.getElementById('vip-profile-banner');
+                if (banner && _currentPlan !== 'free') banner.style.display = 'none';
+            } else {
+                if (btn) { btn.disabled = false; updateVupCta(); }
+            }
+        } catch(e) {
+            if (btn) { btn.disabled = false; updateVupCta(); }
+        }
+    };
+
+    // ── CLOSE ON BACKDROP ─────────────────────────────────────────
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('modal-vip-upgrade');
+        if (modal && e.target === modal) closeVipUpgrade();
+    });
+})();
+</script>
+
+

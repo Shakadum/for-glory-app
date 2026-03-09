@@ -1,0 +1,238 @@
+<!-- ══ MODAL VIP UPGRADE ══ -->
+<div id="modal-vip-upgrade" class="hidden">
+    <div class="vup-box">
+        <button class="vup-close" onclick="closeVipUpgrade()">✕</button>
+
+        <div class="vup-header">
+            <span class="vup-crown">👑</span>
+            <div class="vup-title">FOR GLORY VIP</div>
+            <div class="vup-subtitle">Personalize tudo. Mostre quem você é.</div>
+
+            <!-- Billing toggle -->
+            <div class="vup-billing-toggle">
+                <button class="vup-toggle-btn active" id="vup-btn-monthly" onclick="setVupBilling('monthly')">MENSAL</button>
+                <button class="vup-toggle-btn" id="vup-btn-yearly" onclick="setVupBilling('yearly')">
+                    ANUAL <span class="vup-save-badge">-17%</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Preview de como fica com VIP -->
+        <div class="vup-preview">
+            <div class="vup-preview-box">
+                <div class="vup-preview-label">✨ Visualização VIP</div>
+                <div class="vup-preview-name-row">
+                    <img class="vup-preview-avatar" src="https://ui-avatars.com/api/?name=VIP&background=66fcf1&color=0b0c10">
+                    <div>
+                        <div>
+                            <span class="vup-preview-username" id="vup-prev-username">SeuNome</span>
+                            <span class="vup-preview-faceplate" id="vup-prev-faceplate">⚔️ SENTINELA</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="vup-preview-bio" id="vup-prev-bio">Sua bio com estilo exclusivo VIP ✦</div>
+                <div class="vup-preview-msg">
+                    <div class="vup-preview-bubble">Mensagem com balão exclusivo 💬</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planos -->
+        <div class="vup-plans" id="vup-plans-container">
+            <!-- preenchido por JS -->
+        </div>
+
+        <!-- Benefícios detalhados -->
+        <div class="vup-benefits-section">
+            <div class="vup-benefits-title">O que você desbloqueia</div>
+            <div class="vup-benefits-grid">
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🎨</div>
+                    <div>
+                        <div class="vup-benefit-name">Cor do nome</div>
+                        <div class="vup-benefit-desc">Escolha qualquer cor para seu nome em chats e perfil</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">✍️</div>
+                    <div>
+                        <div class="vup-benefit-name">Fonte exclusiva</div>
+                        <div class="vup-benefit-desc">Fontes únicas para nome, bio e nome da sua base</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🖼️</div>
+                    <div>
+                        <div class="vup-benefit-name">Borda de perfil</div>
+                        <div class="vup-benefit-desc">Bordas animadas e gradientes na foto de perfil</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">💬</div>
+                    <div>
+                        <div class="vup-benefit-name">Balões exclusivos</div>
+                        <div class="vup-benefit-desc">Estilo personalizado nos seus balões de mensagem</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🏷️</div>
+                    <div>
+                        <div class="vup-benefit-name">Faceplate no nome</div>
+                        <div class="vup-benefit-desc">Tag decorativa exclusiva ao lado do seu nome</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">🏰</div>
+                    <div>
+                        <div class="vup-benefit-name">Faceplate da base</div>
+                        <div class="vup-benefit-desc">Destaque no nome da comunidade que você criou</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">📝</div>
+                    <div>
+                        <div class="vup-benefit-name">Bio estilizada</div>
+                        <div class="vup-benefit-desc">Moldura e cor diferenciada na sua bio</div>
+                    </div>
+                </div>
+                <div class="vup-benefit">
+                    <div class="vup-benefit-icon">⭐</div>
+                    <div>
+                        <div class="vup-benefit-name">Glory multiplicado</div>
+                        <div class="vup-benefit-desc">Até 10x mais pontos em quizzes e interações</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="vup-cta">
+            <button class="vup-cta-btn" id="vup-cta-btn" onclick="confirmVipSubscription()">
+                ASSINAR AGORA
+            </button>
+            <div class="vup-cta-note">Cancele quando quiser · Sem taxas ocultas</div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══ MODAL VIP UPGRADE ══ -->
+<div id="modal-vip" onclick="if(event.target===this)closeVipModal()">
+    <div class="vip-sheet">
+        <div class="vip-handle"></div>
+        <div class="vip-hdr">
+            <div class="vip-hdr-title">FOR GLORY VIP</div>
+            <div class="vip-hdr-sub">Desbloqueie personalização total e multiplique seus pontos</div>
+            <button class="vip-hdr-close" onclick="closeVipModal()">✕</button>
+        </div>
+
+        <!-- Toggle mensal/anual -->
+        <div class="vip-toggle">
+            <button class="vip-toggle-btn on" id="vip-btn-monthly" onclick="setVipBilling('monthly')">MENSAL</button>
+            <button class="vip-toggle-btn" id="vip-btn-yearly" onclick="setVipBilling('yearly')">
+                ANUAL <span class="vip-save-pill">-17%</span>
+            </button>
+        </div>
+
+        <!-- Plan cards -->
+        <div class="vip-cards" id="vip-modal-cards"></div>
+
+        <!-- Preview section -->
+        <div class="vip-preview" id="vip-modal-preview">
+            <div class="vip-preview-lbl">PRÉVIA DO SEU PERFIL</div>
+            <div class="vip-preview-row">
+                <div class="vip-preview-av" id="vmp-av">👤</div>
+                <div>
+                    <div class="vip-preview-name" id="vmp-name">Seu Nome</div>
+                    <div class="vip-preview-bio" id="vmp-bio">✨ Membro VIP For Glory</div>
+                </div>
+            </div>
+            <div class="vip-preview-bubble">
+                <div class="vip-bubble" id="vmp-bubble">Olá! Mensagem com estilo VIP 🎯</div>
+            </div>
+        </div>
+
+        <!-- Benefits -->
+        <div class="vip-section">
+            <div class="vip-section-title">🎨 Personalização Visual</div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(139,92,246,0.15);">🔤</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Fonte do nome personalizada</div>
+                    <div class="vip-benefit-desc">Escolha entre 6 fontes exclusivas para seu nome, bio e nome da base</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(139,92,246,0.15);color:#a78bfa;">VIP+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(251,191,36,0.15);">🎨</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Cor do nome e bio</div>
+                    <div class="vip-benefit-desc">Pinte seu nome, bio e nome da sua base com qualquer cor</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(251,191,36,0.12);color:#fbbf24;">PRATA+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(102,252,241,0.12);">🖼️</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Borda de foto de perfil</div>
+                    <div class="vip-benefit-desc">Bordas animadas, gradientes e efeitos exclusivos na sua foto</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(102,252,241,0.1);color:#66fcf1;">PRATA+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(245,158,11,0.15);">🏷️</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Faceplate no nome</div>
+                    <div class="vip-benefit-desc">Plaquinha decorativa ao lado do seu nome e do nome da sua base</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(245,158,11,0.12);color:#f59e0b;">OURO+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(239,68,68,0.12);">💬</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Balões de mensagem personalizados</div>
+                    <div class="vip-benefit-desc">Formato, cor e estilo do seu balão de chat exclusivos</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(245,158,11,0.12);color:#f59e0b;">OURO+</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(16,185,129,0.12);">📝</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Balão de bio estilizado</div>
+                    <div class="vip-benefit-desc">Bio com moldura especial no perfil público — destaque entre todos</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(16,185,129,0.12);color:#10b981;">SENTINELA</span>
+            </div>
+        </div>
+
+        <div class="vip-section">
+            <div class="vip-section-title">⚡ Glory & Quizzes</div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(102,252,241,0.1);">✨</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Multiplicador de Glory Points</div>
+                    <div class="vip-benefit-desc">Ganhe 2x, 5x ou 10x mais pontos em quizzes e interações</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(102,252,241,0.1);color:#66fcf1;">TODOS</span>
+            </div>
+            <div class="vip-benefit">
+                <div class="vip-benefit-ico" style="background:rgba(139,92,246,0.15);">🧠</div>
+                <div class="vip-benefit-body">
+                    <div class="vip-benefit-name">Quizzes ilimitados por dia</div>
+                    <div class="vip-benefit-desc">Sem limite diário — estude política o quanto quiser</div>
+                </div>
+                <span class="vip-benefit-tag" style="background:rgba(139,92,246,0.15);color:#a78bfa;">SENTINELA</span>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="vip-cta">
+            <button class="vip-cta-btn" id="vip-modal-cta" onclick="vipModalSubscribe()">
+                ASSINAR PLANO
+            </button>
+            <div class="vip-cta-note" id="vip-modal-note">Pagamento seguro · Cancele quando quiser</div>
+        </div>
+    </div>
+</div>
+
+
