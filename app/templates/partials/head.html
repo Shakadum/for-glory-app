@@ -771,6 +771,28 @@
     .vip-cta-note { text-align:center; font-size:11px; color:#4b5563; margin-top:9px; }
 </style>
 
+
+    <!-- Tema: aplica ANTES do render para evitar flash de elementos medievais -->
+    <script>
+    (function() {
+        try {
+            var saved = localStorage.getItem('fg_active_theme');
+            var themes = {
+                medieval: '/static/theme_medieval.css',
+                anime:    '/static/theme_anime.css',
+                retro:    '/static/theme_retro.css'
+            };
+            if (saved && saved !== 'default' && themes[saved]) {
+                document.documentElement.setAttribute('data-theme', saved);
+                var link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.id = 'fg-theme-css';
+                link.href = themes[saved] + '?v=' + Date.now();
+                document.head.appendChild(link);
+            }
+        } catch(e) {}
+    })();
+    </script>
 </head>
 <body>
 <div id="toast">Notificação</div>

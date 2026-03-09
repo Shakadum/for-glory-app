@@ -9,6 +9,18 @@ from .data.politicians import CURATED_POLITICIANS
 
 _HDR = {"User-Agent": "ForGloryApp/2.0 (transparency@forglory.online)"}
 
+
+async def _get(url, params=None, timeout=10):
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
+            r = await c.get(url, params=params, headers=_HDR)
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None
+
+
 _PHOTO_CACHE: dict = {}
 _PHOTO_CACHE_TTL = 43200  # 12 horas
 
