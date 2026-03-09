@@ -484,6 +484,8 @@ def get_user_badges(xp, user_id, role):
         "next_rank": next_rank,
         "percent": percent,
         "special_emblem": special_emblem,
+        "vip_border": getattr(user, "vip_border", "none") or "none",
+        "vip_name_color": getattr(user, "vip_name_color", None),
         "medals": medals
     }
 

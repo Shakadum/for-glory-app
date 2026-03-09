@@ -244,6 +244,25 @@ class Subscription(Base):
     plan                 = relationship('Plan')
 
 
+
+class VipPerk(Base):
+    """Controle de desbloqueio VIP por usuário.
+    Separa o estado 'já desbloqueou ouro' (permanente) do 'assinatura ativa'.
+    """
+    __tablename__ = 'vip_perks'
+
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    user_id                 = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'),
+                                     nullable=False, unique=True, index=True)
+    # Meses acumulados com assinatura ativa (para desbloquear ouro nos 12 meses)
+    total_vip_months        = Column(Integer, default=0)
+    # Flag permanente: ouro já foi desbloqueado alguma vez (não reseta ao cancelar)
+    gold_border_unlocked    = Column(Integer, default=0)  # 0|1
+    gold_border_unlocked_at = Column(DateTime(timezone=True), nullable=True)
+    # Assinatura anual: desbloqueia ouro na hora
+    annual_sub_unlocked     = Column(Integer, default=0)  # 0|1
+    updated_at              = Column(DateTime(timezone=True), default=utcnow)
+
 class Payment(Base):
     __tablename__ = 'payments'
     id              = Column(Integer, primary_key=True, autoincrement=True)

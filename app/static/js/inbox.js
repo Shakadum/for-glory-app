@@ -166,10 +166,10 @@ async function fetchChatMessages(id, type, loadToken) {
                         h = buildCallEventHtml(msgId, d.content || '', timeHtml);
                     } else {
                         h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
-                        <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                        <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'" data-vip-border="${d.vip_border||'none'}" data-vip-size="40">
                         <div>
-                            <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
-                            <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
+                            <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})"><span style="${d.vip_name_color ? 'color:'+d.vip_name_color+';text-shadow:0 0 8px '+d.vip_name_color+'66' : ''}">${escapeHtml(safeDisplayName(d))}</span> ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
+                            <div class="msg-bubble${d.vip_border==='ouro'&&!m?' vip-bubble-ouro':''}">${c}${timeHtml}${delBtn}</div>
                         </div>
                     </div>`;
                     }
@@ -177,6 +177,7 @@ async function fetchChatMessages(id, type, loadToken) {
                 }
             });
             if (isAtBottom) list.scrollTop = list.scrollHeight;
+            if(typeof applyAllVipBorders==="function") applyAllVipBorders();
         }
     } catch (e) { console.error(e); }
 }
@@ -362,7 +363,7 @@ function connectDmWS(id, name, type, loadToken) {
                 h = buildCallEventHtml(msgId, d.content || '', timeHtml);
             } else {
                 h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
-                <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'">
+                <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'" data-vip-border="${d.vip_border||'none'}" data-vip-size="40">
                 <div>
                     <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                     <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>

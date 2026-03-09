@@ -214,6 +214,7 @@ def cancel_subscription(
 
 @router.post("/webhook/payment")
 async def payment_webhook(payload: dict = Body(...), db: Session = Depends(get_db)):
+    from app.api.routers.vip_perks import increment_vip_month
     """
     Generic payment webhook handler.
     In production: verify HMAC signature from MercadoPago/Stripe before processing.

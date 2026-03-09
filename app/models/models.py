@@ -42,6 +42,12 @@ class User(Base):
     is_invisible = Column(Integer, default=0)
     role = Column(String, default='membro')
 
+    # ── VIP Cosmetics ────────────────────────────────────────────
+    # 'none' | 'prata' | 'ouro'
+    vip_border       = Column(String(20), default='none')
+    # Cor customizada do nome (hex, ex: '#ffd700') — None = padrão
+    vip_name_color   = Column(String(10), nullable=True)
+
     friends = relationship(
         'User',
         secondary=friendship,
