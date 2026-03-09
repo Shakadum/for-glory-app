@@ -6,7 +6,22 @@
 
 async function loadQuizPanel() {
     await loadGloryHeader();
-    await loadQuizzes();
+    // Renderizar abas de quiz
+    const qContainer = document.getElementById('quiz-list');
+    if (qContainer) {
+        qContainer.insertAdjacentHTML('beforebegin', `
+            <div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:1px solid #1e293b;padding-bottom:10px;">
+                <button id="qtab-daily" onclick="switchQuizTab('daily')"
+                    style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:7px 14px;font-family:'Rajdhani';font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">
+                    🔥 DIÁRIOS (30)
+                </button>
+                <button id="qtab-all" onclick="switchQuizTab('all')"
+                    style="background:rgba(255,255,255,0.06);color:#9ca3af;border:1px solid #1e293b;border-radius:8px;padding:7px 14px;font-family:'Rajdhani';font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">
+                    📚 TODOS
+                </button>
+            </div>`);
+    }
+    await loadDailyQuizzes();
     await loadQuizRanking();
 
 async function loadGloryHeader() {
@@ -66,7 +81,8 @@ async function loadQuizzes() {
                         <span style="font-size:10px;color:#4b5563;">${q.difficulty==='easy'?'Fácil':q.difficulty==='hard'?'Difícil':'Médio'}</span>
                     </div>
                 </div>
-                <div style="flex-shrink:0;">
+                <div style="flex-shrink:0;display:flex;align-items:center;gap:6px;">
+                    <button class="fav-star-btn" onclick="toggleFavQuiz({id:${q.id},title:${JSON.stringify(q.title)},category:${JSON.stringify(q.category)},difficulty:${JSON.stringify(q.difficulty)}})" title="Favoritar" style="font-size:16px;">⭐</button>
                     ${done
                         ? '<span style="font-size:11px;color:#10b981;">✓ Feito</span>'
                         : `<button onclick="startQuiz(${q.id},'${escapeHtml(q.title)}')" style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:8px 14px;font-family:'Rajdhani';font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">JOGAR</button>`
@@ -231,3 +247,147 @@ async function submitQuizAnswers(quizId, answers) {
         loadGloryHeader();
     } catch(e) { console.error('submitQuizAnswers:', e); showToast('Erro ao enviar respostas.'); }
 }}
+
+function toggleFavQuiz(item) {
+    const data = JSON.parse(localStorage.getItem('fg_favorites') || '{}');
+    const list = data.quizzes || [];
+    const exists = list.find(x => x.id === item.id);
+    if (exists) {
+        data.quizzes = list.filter(x => x.id !== item.id);
+        if (typeof showToast === 'function') showToast('Removido dos favoritos');
+    } else {
+        data.quizzes = [item, ...list].slice(0, 50);
+        if (typeof showToast === 'function') showToast('⭐ Quiz favoritado!');
+    }
+    localStorage.setItem('fg_favorites', JSON.stringify(data));
+}
+
+// ── Abas de quiz ─────────────────────────────────────────────────────────────
+function switchQuizTab(tab) {
+    document.getElementById('qtab-daily').style.background = tab==='daily' ? '#66fcf1' : 'rgba(255,255,255,0.06)';
+    document.getElementById('qtab-daily').style.color = tab==='daily' ? '#0b0c10' : '#9ca3af';
+    document.getElementById('qtab-all').style.background = tab==='all' ? '#66fcf1' : 'rgba(255,255,255,0.06)';
+    document.getElementById('qtab-all').style.color = tab==='all' ? '#0b0c10' : '#9ca3af';
+    if (tab==='daily') loadDailyQuizzes(); else loadQuizzes();
+}
+
+// ── Quizzes diários por IA ────────────────────────────────────────────────────
+const CAT_ICONS = {
+    política_local:'🏛️', noticias_locais:'📰', geopolitica:'🌍',
+    noticias_globais:'🌐', historia:'📜', geografia:'🗺️',
+};
+const CAT_LABELS = {
+    política_local:'Política Local', noticias_locais:'Notícias do Dia',
+    geopolitica:'Geopolítica', noticias_globais:'Mundo', historia:'História', geografia:'Geografia',
+};
+const CAT_COLORS = {
+    política_local:'#3b82f6', noticias_locais:'#ef4444', geopolitica:'#ff6b6b',
+    noticias_globais:'#ff9f43', historia:'#8b5cf6', geografia:'#10b981',
+};
+
+async function loadDailyQuizzes() {
+    const container = document.getElementById('quiz-list');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;color:#4b5563;padding:30px;font-size:13px;">⏳ Carregando quizzes do dia...</div>';
+
+    // Detectar país do usuário (usa o contexto de geolocalização da transparência se disponível)
+    const country = window.__userCountry || 'BR';
+
+    try {
+        // Checar se já foram gerados
+        const statusR = await fetch(`/quizzes/daily/status?country=${country}`);
+        const status = await statusR.json();
+
+        if (!status.ready) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:30px;">
+                    <div style="font-size:36px;margin-bottom:12px;">⚙️</div>
+                    <div style="color:#9ca3af;font-size:14px;margin-bottom:16px;">Gerando quizzes do dia...</div>
+                    <div style="color:#4b5563;font-size:12px;margin-bottom:20px;">Isso leva ~30 segundos na primeira vez do dia</div>
+                    <button onclick="triggerAndLoadDaily('${country}')"
+                        style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:10px 20px;font-family:'Rajdhani';font-weight:700;font-size:13px;cursor:pointer;">
+                        ▶ GERAR AGORA
+                    </button>
+                </div>`;
+            return;
+        }
+
+        const r = await authFetch(`/quizzes/daily?country=${country}`);
+        const data = await r.json();
+        const quizzes = data.quizzes || [];
+
+        if (!quizzes.length) {
+            container.innerHTML = '<div style="color:#888;text-align:center;padding:30px;">Nenhum quiz gerado ainda hoje.</div>';
+            return;
+        }
+
+        // Agrupar por categoria
+        const byCategory = {};
+        for (const q of quizzes) {
+            if (!byCategory[q.category]) byCategory[q.category] = [];
+            byCategory[q.category].push(q);
+        }
+
+        const catOrder = ['política_local','noticias_locais','geopolitica','noticias_globais','historia','geografia'];
+        let html = `<div style="color:#4b5563;font-size:11px;margin-bottom:12px;text-align:right;">🗓️ ${new Date().toLocaleDateString('pt-BR')} · ${quizzes.length} quizzes</div>`;
+
+        for (const cat of catOrder) {
+            const items = byCategory[cat] || [];
+            if (!items.length) continue;
+            const color = CAT_COLORS[cat] || '#888';
+            const icon = CAT_ICONS[cat] || '🧠';
+            const label = CAT_LABELS[cat] || cat;
+
+            html += `<div style="margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-bottom:1px solid #1a1a2e;">
+                    <span style="font-size:16px;">${icon}</span>
+                    <span style="color:${color};font-family:'Rajdhani';font-weight:700;font-size:13px;letter-spacing:0.5px;">${label.toUpperCase()}</span>
+                    <span style="color:#374151;font-size:11px;">${items.length} quizzes</span>
+                </div>
+            </div>`;
+
+            html += items.map(q => {
+                const diff = q.difficulty==='easy'?'Fácil':q.difficulty==='hard'?'Difícil':'Médio';
+                const diffColor = q.difficulty==='easy'?'#10b981':q.difficulty==='hard'?'#ef4444':'#f59e0b';
+                return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${color};border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;color:#e5e7eb;font-family:'DM Sans';font-weight:600;line-height:1.3;">${escapeHtml(q.title)}</div>
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:5px;">
+                            <span style="font-size:10px;color:${diffColor};font-family:'Rajdhani';font-weight:700;">${diff}</span>
+                            <span style="font-size:10px;color:#374151;">·</span>
+                            <span style="font-size:10px;color:#374151;">${q.question_count} perguntas</span>
+                            ${q.expires_at ? `<span style="font-size:10px;color:#374151;">· até ${q.expires_at}</span>` : ''}
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                        <button class="fav-star-btn" onclick="toggleFavQuiz({id:${q.id},title:${JSON.stringify(q.title)},category:${JSON.stringify(q.category)},difficulty:${JSON.stringify(q.difficulty)}})" title="Favoritar">⭐</button>
+                        <button onclick="startQuiz(${q.id},'${escapeHtml(q.title)}')"
+                            style="background:#66fcf1;color:#0b0c10;border:none;border-radius:8px;padding:7px 12px;font-family:'Rajdhani';font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;white-space:nowrap;">
+                            JOGAR
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        container.innerHTML = html;
+    } catch(e) {
+        console.error('loadDailyQuizzes:', e);
+        container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Erro ao carregar quizzes do dia.</div>';
+    }
+}
+
+async function triggerAndLoadDaily(country) {
+    const container = document.getElementById('quiz-list');
+    if (container) container.innerHTML = '<div style="text-align:center;color:#4b5563;padding:30px;font-size:13px;">⚙️ Gerando 30 quizzes... aguarde ~30s</div>';
+    try {
+        await authFetch('/quizzes/generate-daily', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({country}),
+        });
+        await loadDailyQuizzes();
+    } catch(e) {
+        if (container) container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Erro ao gerar quizzes.</div>';
+    }
+}

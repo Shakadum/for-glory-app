@@ -152,6 +152,7 @@ function renderExecCard(p, color) {
                 ${p.party ? `<span class="trans-exec-party" style="background:${color}18;border-color:${color}40;color:${color};">${escapeHtml(p.party)}</span>` : ''}
                 <div class="trans-exec-actions">
                     <button class="trans-exec-btn" onclick="event.stopPropagation();openPolitician(window.__polStore['${k}'])">Ver Ficha</button>
+                    <button class="fav-star-btn" onclick="event.stopPropagation();toggleFavPolitician(window.__polStore['${k}'])" title="Favoritar" style="font-size:16px;margin-left:4px;">⭐</button>
                     <button class="trans-cmp-sm ${inCmp?'active':''}"
                         onclick="event.stopPropagation();toggleCompare(window.__polStore['${k}'])"
                         title="Adicionar ao comparativo">${inCmp?'✓':'+Compare'}</button>
@@ -334,6 +335,7 @@ function renderProfile(p, d, container) {
                 </div>
                 ${avgR?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">${_stars(avgR)}<span style="color:#ffd93d;font-weight:700;">${avgR}</span><span style="color:#6b7280;font-size:12px;">(${r.count})</span></div>`:''}
             </div>
+            <button class="fav-star-btn" onclick="toggleFavPolitician(${JSON.stringify({id:p.id,name:p.name||d.full_name,role:p.role,party:p.party,photo:d.photo||p.photo})})" title="Favoritar" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px;">⭐</button>
             <button class="trans-compare-btn-lg ${inCmp?'active':''}" onclick="toggleCompare(window.__polStore['${_pk}'])">${inCmp?'✓ No comparativo':'+ Comparar'}</button>
         </div>
         ${bioHtml}${dadosHtml}${cargosHtml}${salHtml}${despHtml}${votHtml}${chargesHtml}${ratingHtml}${encyclopediaHtml}
@@ -526,3 +528,18 @@ function renderLocalPanelData(data) {
 // ── goView hook gerenciado centralmente em index.html ──
 // (initTransparency é chamado via switchMainTab e goView patch no HTML)
 
+
+function toggleFavPolitician(p) {
+    if (!p || !p.id) return;
+    const data = JSON.parse(localStorage.getItem('fg_favorites') || '{}');
+    const list = data.politicos || [];
+    const exists = list.find(x => x.id === p.id);
+    if (exists) {
+        data.politicos = list.filter(x => x.id !== p.id);
+        if (typeof showToast === 'function') showToast('Removido dos favoritos');
+    } else {
+        data.politicos = [{id:p.id, name:p.name||p.full_name||'', role:p.role||'', party:p.party||'', photo:p.photo||''}, ...list].slice(0, 50);
+        if (typeof showToast === 'function') showToast('⭐ Político favoritado!');
+    }
+    localStorage.setItem('fg_favorites', JSON.stringify(data));
+}

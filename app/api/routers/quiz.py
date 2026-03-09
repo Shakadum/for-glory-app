@@ -2,7 +2,7 @@
 Quiz router: listar quizzes, responder, ranking, histórico.
 Anti-trapaça: rate limit por dia, cooldown 30min, tempo mínimo server-side.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
@@ -318,3 +318,65 @@ def create_quiz(
 
     db.commit()
     return {"status": "ok", "quiz_id": quiz.id}
+
+
+# ═══════════════════════════════════════════════════════════
+# QUIZZES DIÁRIOS GERADOS POR IA
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/quizzes/daily")
+async def list_daily_quizzes(
+    country: str = Query("BR"),
+    db: Session = Depends(get_db),
+):
+    """Lista os 30 quizzes do dia para o país do usuário."""
+    from datetime import date
+    today_prefix = f"daily_{date.today().strftime('%Y%m%d')}_{country.upper()}"
+    quizzes = (
+        db.query(Quiz)
+        .filter(
+            Quiz.source_id.like(f"{today_prefix}%"),
+            Quiz.is_active == 1,
+        )
+        .order_by(Quiz.category, Quiz.id)
+        .all()
+    )
+    # Se não há quizzes para hoje, retornar lista vazia (geração é assíncrona)
+    result = []
+    for q in quizzes:
+        attempts = [a for a in q.attempts] if q.attempts else []
+        result.append({
+            "id": q.id,
+            "title": q.title,
+            "category": q.category,
+            "difficulty": q.difficulty,
+            "question_count": len(q.questions),
+            "attempted": False,  # será filtrado por user no frontend se autenticado
+            "is_daily": True,
+            "expires_at": q.expires_at.strftime("%d/%m %H:%M") if q.expires_at else None,
+        })
+    return {"quizzes": result, "total": len(result), "country": country}
+
+
+@router.post("/quizzes/generate-daily")
+async def trigger_daily_generation(
+    data: dict = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """Dispara a geração dos quizzes do dia. Pode ser chamado pelo cron ou por admin."""
+    from app.api.routers.quiz_generator import generate_daily_quizzes
+    country = str(data.get("country", "BR")).upper()
+    result = await generate_daily_quizzes(country)
+    return result
+
+
+@router.get("/quizzes/daily/status")
+async def daily_quiz_status(country: str = Query("BR"), db: Session = Depends(get_db)):
+    """Verifica se os quizzes do dia já foram gerados."""
+    from datetime import date
+    today_prefix = f"daily_{date.today().strftime('%Y%m%d')}_{country.upper()}"
+    count = db.query(Quiz).filter(
+        Quiz.source_id.like(f"{today_prefix}%"),
+        Quiz.is_active == 1,
+    ).count()
+    return {"generated": count, "ready": count >= 25, "country": country}

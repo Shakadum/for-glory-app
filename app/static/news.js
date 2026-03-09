@@ -147,10 +147,12 @@ function renderNewsCards(data) {
                     <span>${escapeHtml(featured.published_at)}</span>
                 </div>
             </div>
-        </a>`;
+        </a>
+        <button class="fav-star-btn" onclick="event.preventDefault();event.stopPropagation();toggleFavNews({id:${JSON.stringify(featured.url)},title:${JSON.stringify(featured.title)},url:${JSON.stringify(featured.url)},source:${JSON.stringify(featured.source)},category:${JSON.stringify(featured.category)}})" title="Favoritar">⭐</button>`;
 
     const cardsHtml = remaining.map(a => `
-        <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="news-card">
+        <div style="position:relative;">
+          <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="news-card">
             ${a.image ? `<img src="${escapeHtml(a.image)}" class="news-card-img" onerror="this.style.display='none'">` : ''}
             <div class="news-card-body">
                 <span class="news-cat-badge" style="background:${catColor(a.category)}20; color:${catColor(a.category)}; border-color:${catColor(a.category)}40;">${a.category.toUpperCase()}</span>
@@ -162,7 +164,9 @@ function renderNewsCards(data) {
                     <span>${escapeHtml(a.published_at)}</span>
                 </div>
             </div>
-        </a>`).join('');
+          </a>
+          <button class="fav-star-btn" onclick="toggleFavNews({id:${JSON.stringify(a.url)},title:${JSON.stringify(a.title)},url:${JSON.stringify(a.url)},source:${JSON.stringify(a.source)},category:${JSON.stringify(a.category)}})" title="Favoritar">⭐</button>
+        </div>`).join('');
 
     container.innerHTML = featuredHtml + `<div class="news-grid">${cardsHtml}</div>`;
 }
@@ -192,3 +196,17 @@ function applyNewsTravel() {
 // ── goView hook gerenciado centralmente em index.html ──
 // (initNews é chamado via switchMainTab e goView patch no HTML)
 
+
+function toggleFavNews(item) {
+    const data = JSON.parse(localStorage.getItem('fg_favorites') || '{}');
+    const list = data.noticias || [];
+    const exists = list.find(x => x.id === item.id);
+    if (exists) {
+        data.noticias = list.filter(x => x.id !== item.id);
+        if (typeof showToast === 'function') showToast('Removido dos favoritos');
+    } else {
+        data.noticias = [item, ...list].slice(0, 50);
+        if (typeof showToast === 'function') showToast('⭐ Notícia favoritada!');
+    }
+    localStorage.setItem('fg_favorites', JSON.stringify(data));
+}

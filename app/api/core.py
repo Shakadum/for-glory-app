@@ -322,6 +322,8 @@ async def _startup():
     except Exception as _e:
         import logging
         logging.getLogger("ForGlory").warning(f"MayorCache/transparency startup ignorado: {_e}")
+    import asyncio as _asyncio
+    _asyncio.create_task(_quiz_daily_scheduler())
     await init_redis()
 
 @app.on_event("shutdown")
@@ -530,3 +532,39 @@ def handle_group_message(db: Session, ch: str, uid: int, txt: str):
 # ----------------------------------------------------------------------
 # ROTA PRINCIPAL (FRONTEND)
 # ----------------------------------------------------------------------
+
+
+# ═══════════════════════════════════════════════════════════════
+# SCHEDULER — geração automática de quizzes diários
+# ═══════════════════════════════════════════════════════════════
+
+async def _quiz_daily_scheduler():
+    """Loop que gera os quizzes às 00:05 BRT todo dia."""
+    import asyncio
+    from datetime import date
+    logger.info("[QuizScheduler] Iniciado")
+    last_run_date = None
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            # BRT = UTC-3
+            brt_hour = (now.hour - 3) % 24
+            today = date.today()
+            # Rodar às 00:05 BRT (03:05 UTC) ou na inicialização se ainda não rodou hoje
+            should_run = (
+                (brt_hour == 0 and now.minute >= 5 and last_run_date != today)
+                or (last_run_date != today and brt_hour >= 1)
+            )
+            if should_run:
+                last_run_date = today
+                logger.info(f"[QuizScheduler] Gerando quizzes diários — {today}")
+                from app.api.routers.quiz_generator import generate_daily_quizzes
+                for country in ["BR"]:  # adicione mais países conforme necessário
+                    try:
+                        result = await generate_daily_quizzes(country)
+                        logger.info(f"[QuizScheduler] {country}: {result}")
+                    except Exception as e:
+                        logger.error(f"[QuizScheduler] Erro {country}: {e}")
+        except Exception as e:
+            logger.error(f"[QuizScheduler] Loop error: {e}")
+        await asyncio.sleep(300)  # checar a cada 5 minutos
