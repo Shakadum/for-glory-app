@@ -358,9 +358,6 @@ async def fetch_photo_from_wikipedia(wiki_title: str) -> str:
     return wiki.get("photo","")
 
 
-# ── ENDPOINTS ─────────────────────────────────────────────────
-@router.get("/transparency/search")
-
 
 async def _wikidata_sparql(sparql: str, timeout: int = 15) -> list:
     """Executa query SPARQL no Wikidata. Retorna lista de bindings ou []."""
