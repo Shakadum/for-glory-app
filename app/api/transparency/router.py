@@ -190,19 +190,6 @@ async def get_cities_by_uf(uf: str):
 
 
 
-@router.get("/transparency/debug-local")
-async def debug_local_politicians(
-    request: FARequest,
-    uf_override: Optional[str] = Query(None),
-    city_override: Optional[str] = Query(None),
-):
-    """Endpoint temporário de diagnóstico — retorna o traceback completo no body."""
-    import traceback as _tb
-    try:
-        result = await _get_local_impl(request, uf_override, city_override)
-        return {"ok": True, "sections_count": len(result.get("sections", []))}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc), "traceback": _tb.format_exc()}
 
 @router.get("/transparency/local")
 async def get_local_politicians(
