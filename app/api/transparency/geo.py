@@ -86,7 +86,7 @@ async def get_senadores_by_uf(uf: str) -> list:
 
 
 async def get_local_politicians(request, uf_override=None, city_override=None):
-    ip = request.headers.get("X-Forwarded-For", request.client.host or "127.0.0.1")
+    ip = request.headers.get("X-Forwarded-For") or (request.client.host if request.client else None) or "127.0.0.1"
     ip = ip.split(",")[0].strip()
     geo = await _resolve_geo(ip)
 
