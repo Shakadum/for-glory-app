@@ -6,7 +6,7 @@ from .data.charges import _CHARGES_DB
 from .data.politicians import CURATED_POLITICIANS
 from .enrichment import enrich_with_photo
 from .mayor_cache import _get_mayor_dynamic, search_city_politicians_wikidata
-from .sources import _get, get_deputados_by_uf, get_senadores_by_uf
+from .sources import _get
 
 
 STF_MINISTERS = [
