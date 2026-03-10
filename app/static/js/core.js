@@ -397,10 +397,48 @@ function renderMedals(boxId, medalsData, isPublic = false) {
     box.innerHTML = `<h3 style="color:var(--primary); font-family:'Rajdhani'; letter-spacing:1px; text-align:center; margin-top:30px; border-bottom:1px solid #333; padding-bottom:10px; display:inline-block;">${t('medals')}</h3><div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom: 30px;">${mHtml}</div>`;
 }
 
+window.FGCosmetics = window.FGCosmetics || {
+    profileFrames: {
+        vip_gold: '/static/cosmetics/profile_frames/bg-Borda_VIP_Ouro.jpg',
+        vip_silver: '/static/cosmetics/profile_frames/bg-Borda_VIP_Prata.jpg'
+    }
+};
+
+function resolveProfileFrameAsset(data){
+    if(!data) return '';
+
+    const direct = data.profile_frame_url || data.avatar_frame_url || data.frame_url || '';
+    if(direct && !String(direct).includes('undefined')) return String(direct);
+
+    const key = data.profile_frame || data.avatar_frame || data.frame_key || data.profile_border || '';
+    if(key && window.FGCosmetics.profileFrames[key]) return window.FGCosmetics.profileFrames[key];
+
+    const emblem = String(data.special_emblem || '').toLowerCase();
+
+    // fallback opcional para o estado atual do app
+    if(emblem.includes('vip')) return window.FGCosmetics.profileFrames.vip_gold || '';
+    if(emblem.includes('fundador')) return window.FGCosmetics.profileFrames.vip_gold || '';
+
+    return '';
+}
+
+function applyProfileFrame(frameElement, data){
+    if(!frameElement) return;
+    const frameSrc = resolveProfileFrameAsset(data);
+
+    if(frameSrc){
+        frameElement.src = frameSrc;
+        frameElement.style.display = 'block';
+    } else {
+        frameElement.removeAttribute('src');
+        frameElement.style.display = 'none';
+    }
+}
+
 function updateUI(){
     if(!user) return;
     let safeAvatar = user.avatar_url; if(!safeAvatar || safeAvatar.includes("undefined")) safeAvatar = `https://ui-avatars.com/api/?name=${user.username}&background=1f2833&color=66fcf1&bold=true`;
-    document.getElementById('nav-avatar').src = safeAvatar; document.getElementById('p-avatar').src = safeAvatar;
+    document.getElementById('nav-avatar').src = safeAvatar; document.getElementById('p-avatar').src = safeAvatar; applyProfileFrame(document.getElementById('p-avatar-frame'), user);
     let pCover = document.getElementById('p-cover'); pCover.src = user.cover_url || "https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY"; pCover.style.display = 'block';
     document.getElementById('p-name').innerText = user.username || "Soldado"; document.getElementById('p-bio').innerText = user.bio || "Na base de operações."; 
     document.getElementById('p-emblems').innerHTML = formatRankInfo(user.rank, user.special_emblem, user.color);

@@ -12,6 +12,7 @@ async function openPublicProfile(uid){
         let d = await r.json();
 
         document.getElementById('pub-avatar').src = d.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(d.username||'U')}&background=111&color=66fcf1`;
+applyProfileFrame(document.getElementById('pub-avatar-frame'), d);
         document.getElementById('pub-cover').src = d.cover_url || "https://placehold.co/600x200/0b0c10/66fcf1?text=FOR+GLORY";
         document.getElementById('pub-name').innerText = d.username || '';
         document.getElementById('pub-bio').innerText = d.bio || '';

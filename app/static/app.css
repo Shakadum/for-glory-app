@@ -622,9 +622,65 @@ body {
 /* ── Profile ───────────────────────────────────────────────── */
 .profile-header-container { position: relative; width: 100%; height: 180px; margin-bottom: 70px; }
 .profile-cover { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; mask-image: linear-gradient(to bottom, black 50%, transparent 100%); background: #111; }
-.profile-pic-lg-wrap { position: absolute; bottom: -60px; left: 50%; transform: translateX(-50%); z-index: 10; width: 120px; height: 120px; }
-.profile-pic-lg { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid var(--dark-bg); box-shadow: 0 0 24px rgba(102,252,241,0.25); cursor: pointer; background: var(--card-bg); display: block; }
+.profile-pic-lg-wrap {
+    position: absolute;
+    bottom: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 120px;
+    height: 120px;
+    overflow: visible;
+}
 
+.profile-pic-lg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 78%;
+    height: 78%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--dark-bg);
+    box-shadow: 0 0 24px rgba(102,252,241,0.25);
+    cursor: pointer;
+    background: var(--card-bg);
+    display: block;
+    z-index: 1;
+}
+
+.profile-frame-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150%;
+    height: 150%;
+    transform: translate(-50%, -50%);
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    z-index: 3;
+    display: none;
+    filter: drop-shadow(0 0 10px rgba(255,215,0,0.18));
+}
+
+.status-dot-lg {
+    z-index: 4;
+}
+
+/* mobile */
+@media (max-width: 768px) {
+    .profile-pic-lg-wrap {
+        width: 100px;
+        height: 100px;
+        bottom: -50px;
+    }
+    .profile-frame-overlay {
+        width: 148%;
+        height: 148%;
+    }
+}
 .av-wrap { position: relative; display: inline-block; cursor: pointer; margin: 0; }
 .status-dot { position: absolute; bottom: 0; right: 0; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--card-bg); background: #374151; transition: 0.3s; z-index: 5; }
 .status-dot.online { background: var(--success); box-shadow: 0 0 6px var(--success); }
