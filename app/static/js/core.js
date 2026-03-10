@@ -662,4 +662,5 @@ function goView(v, btnElem){
     document.getElementById('view-'+v).classList.add('active');
     if(v !== 'public-profile' && v !== 'dm' && v !== 'comm-dashboard') { document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); if(btnElem) btnElem.classList.add('active'); else if(event && event.target && event.target.closest) event.target.closest('.nav-btn')?.classList.add('active'); }
     if(v === 'inbox') loadInbox(); if(v === 'mycomms') loadMyComms(); if(v === 'explore') loadPublicComms(); if(v === 'history') loadMyHistory(); if(v === 'feed') loadFeed();
+    if(v === 'vip-panel' && typeof loadVipPanel === 'function') loadVipPanel();
 }

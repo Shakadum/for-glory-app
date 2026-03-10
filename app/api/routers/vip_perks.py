@@ -120,6 +120,7 @@ def compute_vip_status(user: User, db: Session) -> dict:
         },
         "bubble_ouro": "/static/vip_bubble_prata.jpg" if gold_available else None,
         "current_bubble": getattr(user, "vip_bubble", "none") or "none",
+        "current_font": getattr(user, "vip_name_font", None),
     }
 
 
@@ -203,24 +204,6 @@ def set_vip_bubble(
     if bubble == "prata" and not status["silver_available"]:
         return {"error": "Balão Prata requer assinatura VIP ativa"}
 
-    user.vip_bubble = bubble
-    db.commit()
-    return {"status": "ok", "bubble": bubble}
-
-
-@router.post("/my/vip-perks/set-bubble")
-def set_vip_bubble(
-    data: dict = Body(...),
-    user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Define o balão de chat ativo."""
-    bubble = str(data.get("bubble", "none")).lower()
-    if bubble not in ("none", "prata"):
-        return {"error": "Balão inválido"}
-    status = compute_vip_status(user, db)
-    if bubble == "prata" and not status["silver_available"]:
-        return {"error": "Balão Prata requer assinatura VIP ativa"}
     user.vip_bubble = bubble
     db.commit()
     return {"status": "ok", "bubble": bubble}
