@@ -29,45 +29,42 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
     const parent = imgEl.parentElement;
     if (!parent || parent.classList.contains('vip-av-wrap')) return;
 
-    // Gradiente CSS — sem imagem, sem fundo branco
-    const gradient = border === 'ouro'
-        ? 'conic-gradient(#FFD700, #FFA500, #FFE066, #B8860B, #FFD700)'
-        : 'conic-gradient(#C0C0C0, #E8E8E8, #A8A8A8, #D0D0D0, #C0C0C0)';
-    const glow = border === 'ouro'
-        ? '0 0 8px 2px rgba(255,200,0,0.55)'
-        : '0 0 8px 2px rgba(192,192,192,0.45)';
+    const isGold = border === 'ouro';
+    const gradient = isGold
+        ? 'conic-gradient(from 0deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C, #FCF6BA, #BF953F)'
+        : 'conic-gradient(from 0deg, #8e8e8e, #e0e0e0, #b0b0b0, #f5f5f5, #8e8e8e, #d0d0d0, #8e8e8e)';
+    const glow = isGold
+        ? '0 0 10px 3px rgba(255,200,0,0.6), inset 0 0 4px rgba(255,200,0,0.3)'
+        : '0 0 8px 2px rgba(200,200,200,0.5)';
+    const thickness = Math.max(3, Math.round(size * 0.08));
 
-    const thickness = Math.max(3, Math.round(size * 0.07));
-    const gap       = Math.max(2, Math.round(size * 0.03));
-
-    // Wrapper externo com o gradiente como background
+    // Wrapper: círculo com gradiente de borda
     const wrap = document.createElement('div');
     wrap.className = 'vip-av-wrap';
-    wrap.style.cssText = [
-        `position:relative`,
-        `width:${size}px`,
-        `height:${size}px`,
-        `flex-shrink:0`,
-        `border-radius:50%`,
-        `background:${gradient}`,
-        `padding:${thickness}px`,
-        `box-shadow:${glow}`,
-        `box-sizing:border-box`,
-    ].join(';');
+    wrap.style.cssText =
+        `position:relative;` +
+        `width:${size}px;height:${size}px;` +
+        `flex-shrink:0;display:inline-flex;` +
+        `align-items:center;justify-content:center;` +
+        `border-radius:50%;` +
+        `background:${gradient};` +
+        `padding:${thickness}px;` +
+        `box-shadow:${glow};` +
+        `box-sizing:border-box;`;
+
+    // Inner div branco/neutro para criar o "gap"
+    const inner = document.createElement('div');
+    inner.style.cssText =
+        `width:100%;height:100%;border-radius:50%;overflow:hidden;` +
+        `background:#111;display:flex;align-items:center;justify-content:center;`;
 
     parent.insertBefore(wrap, imgEl);
-    wrap.appendChild(imgEl);
+    wrap.appendChild(inner);
+    inner.appendChild(imgEl);
 
-    // Inner ring (gap entre borda e foto)
-    wrap.style.padding = `${thickness}px`;
-
-    imgEl.style.cssText += [
-        `border-radius:50%`,
-        `width:100%`,
-        `height:100%`,
-        `object-fit:cover`,
-        `display:block`,
-    ].join(';');
+    imgEl.style.cssText =
+        `border-radius:50%;width:100%;height:100%;object-fit:cover;display:block;` +
+        (imgEl.style.cssText || '');
 }
 
 // ── Aplicar borda VIP globalmente (chat, lista, perfil) ──────────────────────
@@ -91,13 +88,28 @@ function applyVipNameColor(el, color) {
 }
 
 // ── Balão de chat VIP ouro ───────────────────────────────────────────────────
-function applyGoldBubble(bubbleEl) {
-    if (!bubbleEl) return;
-    bubbleEl.style.backgroundImage = 'url(/static/vip_bubble_prata.jpg)';
-    bubbleEl.style.backgroundSize = 'cover';
-    bubbleEl.style.backgroundPosition = 'center';
-    bubbleEl.style.color = '#fff';
-    bubbleEl.style.textShadow = '0 1px 2px rgba(0,0,0,0.8)';
+function applyVipBubble(bubbleEl, bubbleType) {
+    if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
+    if (bubbleType === 'prata') {
+        bubbleEl.style.background = 'linear-gradient(135deg, #2a2a2a 0%, #3d3d3d 50%, #2a2a2a 100%)';
+        bubbleEl.style.border     = '1px solid rgba(192,192,192,0.6)';
+        bubbleEl.style.boxShadow  = '0 0 8px rgba(192,192,192,0.25), inset 0 1px 0 rgba(255,255,255,0.1)';
+        bubbleEl.style.color      = '#e8e8e8';
+    }
+}
+
+// manter alias para compatibilidade
+function applyGoldBubble(bubbleEl) { applyVipBubble(bubbleEl, 'prata'); }
+
+// ── Aplicar balões VIP em todos os .msg-bubble com data-vip-bubble ─────────
+function applyAllVipBubbles() {
+    document.querySelectorAll('[data-vip-bubble]:not([data-bubble-applied])').forEach(el => {
+        const t = el.dataset.vipBubble;
+        if (t && t !== 'none') {
+            applyVipBubble(el, t);
+            el.dataset.bubbleApplied = '1';
+        }
+    });
 }
 
 // ── Painel de seleção de borda (dentro do VIP panel) ─────────────────────────
@@ -239,6 +251,8 @@ window.wrapAvatarWithBorder = wrapAvatarWithBorder;
 window.applyAllVipBorders   = applyAllVipBorders;
 window.applyVipNameColor    = applyVipNameColor;
 window.applyGoldBubble      = applyGoldBubble;
+window.applyVipBubble       = applyVipBubble;
+window.applyAllVipBubbles   = applyAllVipBubbles;
 window.renderVipBorderPanel = renderVipBorderPanel;
 window.selectVipBorder      = selectVipBorder;
 window.saveVipNameColor     = saveVipNameColor;
