@@ -29,33 +29,45 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
     const parent = imgEl.parentElement;
     if (!parent || parent.classList.contains('vip-av-wrap')) return;
 
-    const frameUrl = border === 'ouro'
-        ? '/static/vip_border_ouro.jpg'
-        : '/static/vip_border_prata.jpg';
+    // Gradiente CSS — sem imagem, sem fundo branco
+    const gradient = border === 'ouro'
+        ? 'conic-gradient(#FFD700, #FFA500, #FFE066, #B8860B, #FFD700)'
+        : 'conic-gradient(#C0C0C0, #E8E8E8, #A8A8A8, #D0D0D0, #C0C0C0)';
+    const glow = border === 'ouro'
+        ? '0 0 8px 2px rgba(255,200,0,0.55)'
+        : '0 0 8px 2px rgba(192,192,192,0.45)';
 
-    // Criar wrapper
+    const thickness = Math.max(3, Math.round(size * 0.07));
+    const gap       = Math.max(2, Math.round(size * 0.03));
+
+    // Wrapper externo com o gradiente como background
     const wrap = document.createElement('div');
     wrap.className = 'vip-av-wrap';
-    wrap.style.cssText = `position:relative;width:${size}px;height:${size}px;flex-shrink:0;`;
+    wrap.style.cssText = [
+        `position:relative`,
+        `width:${size}px`,
+        `height:${size}px`,
+        `flex-shrink:0`,
+        `border-radius:50%`,
+        `background:${gradient}`,
+        `padding:${thickness}px`,
+        `box-shadow:${glow}`,
+        `box-sizing:border-box`,
+    ].join(';');
 
     parent.insertBefore(wrap, imgEl);
     wrap.appendChild(imgEl);
 
-    // Aplicar border-radius no avatar
-    imgEl.style.borderRadius = '50%';
-    imgEl.style.width = `${Math.round(size * 0.72)}px`;
-    imgEl.style.height = `${Math.round(size * 0.72)}px`;
-    imgEl.style.position = 'absolute';
-    imgEl.style.top = '50%';
-    imgEl.style.left = '50%';
-    imgEl.style.transform = 'translate(-50%, -50%)';
+    // Inner ring (gap entre borda e foto)
+    wrap.style.padding = `${thickness}px`;
 
-    // Overlay da borda
-    const frame = document.createElement('img');
-    frame.src = frameUrl;
-    frame.className = 'vip-border-frame';
-    frame.style.cssText = `position:absolute;inset:0;width:100%;height:100%;pointer-events:none;object-fit:contain;`;
-    wrap.appendChild(frame);
+    imgEl.style.cssText += [
+        `border-radius:50%`,
+        `width:100%`,
+        `height:100%`,
+        `object-fit:cover`,
+        `display:block`,
+    ].join(';');
 }
 
 // ── Aplicar borda VIP globalmente (chat, lista, perfil) ──────────────────────
