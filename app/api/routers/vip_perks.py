@@ -60,6 +60,28 @@ def compute_vip_status(user: User, db: Session) -> dict:
     Retorna status completo das perks VIP do usuário.
     Chamado no /me e no painel VIP.
     """
+    # Fundadores têm tudo liberado imediatamente — sem depender de subscription ou vip_perks
+    if is_founder(user):
+        current_border = getattr(user, 'vip_border', 'none') or 'none'
+        return {
+            "is_vip": True,
+            "silver_available": True,
+            "gold_available": True,
+            "gold_unlocked_permanently": True,
+            "gold_unlocked_at": None,
+            "total_vip_months": 12,
+            "months_to_gold": 0,
+            "current_border": current_border,
+            "name_color": getattr(user, 'vip_name_color', None),
+            "borders": {
+                "prata": "/static/vip_border_prata.jpg",
+                "ouro":  "/static/vip_border_ouro.jpg",
+            },
+            "bubble_ouro": "/static/vip_bubble_prata.jpg",
+            "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
+            "current_font": getattr(user, 'vip_name_font', None),
+        }
+
     active = has_active_vip(user, db)
     perk   = get_or_create_perk(db, user.id)
 
@@ -69,16 +91,6 @@ def compute_vip_status(user: User, db: Session) -> dict:
     # Ouro: disponível se (a) assinatura ativa E (b) já desbloqueou antes OU 12 meses OU anual
     gold_unlocked = bool(perk.gold_border_unlocked)
     gold_available = active and gold_unlocked
-
-    # Fundador: garantir gold permanente no primeiro acesso
-    if is_founder(user) and not gold_unlocked:
-        perk.gold_border_unlocked = 1
-        perk.annual_sub_unlocked  = 1
-        if not perk.gold_border_unlocked_at:
-            perk.gold_border_unlocked_at = _utcnow()
-        db.commit()
-        gold_unlocked = True
-        gold_available = True
 
     # Checar se deve desbloquear ouro agora
     if active and not gold_unlocked:
