@@ -5,7 +5,7 @@
 /* global user, authFetch, safeAvatarUrl, showToast, t, goView, escapeHtml */
 
 async function loadVipPanel() {
-    await loadGloryHeader();
+    if (typeof loadGloryHeader === 'function') await loadGloryHeader();
     await loadVipPlans();
     if (typeof loadCosmetics === 'function') setTimeout(loadCosmetics, 150);
 
@@ -95,7 +95,7 @@ async function subscribePlan(slug) {
         if (r.ok) {
             showToast(`✅ Plano ${slug} ativado!`);
             loadVipPanel();
-            loadGloryHeader();
+            if (typeof loadGloryHeader === 'function') loadGloryHeader();
         } else {
             showToast(d.detail || 'Erro ao assinar plano');
         }

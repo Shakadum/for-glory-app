@@ -391,3 +391,4 @@ async function triggerAndLoadDaily(country) {
         if (container) container.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">Erro ao gerar quizzes.</div>';
     }
 }
+window.loadGloryHeader = loadGloryHeader;
