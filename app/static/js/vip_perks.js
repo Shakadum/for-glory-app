@@ -62,7 +62,8 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
 function applyAllVipBorders() {
     // Será chamado após carregar mensagens e listas
     // Usa dataset para não aplicar duas vezes
-    document.querySelectorAll('[data-vip-border][data-vip-border!="none"]:not([data-border-applied])').forEach(el => {
+    document.querySelectorAll('[data-vip-border]:not([data-border-applied])').forEach(el => {
+        if (el.dataset.vipBorder === 'none') return;
         const border = el.dataset.vipBorder;
         const size = parseInt(el.dataset.vipSize || '48');
         el.dataset.borderApplied = '1';

@@ -409,10 +409,20 @@ function updateUI(){
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
     // Aplicar cosméticos VIP no avatar do perfil
     const pAv = document.getElementById('p-avatar');
-    if (pAv && user.vip_border && user.vip_border !== 'none') {
-        pAv.dataset.vipBorder = user.vip_border;
-        pAv.dataset.vipSize   = '90';
-        if (typeof applyAllVipBorders === 'function') applyAllVipBorders();
+    if (pAv) {
+        const border = (user.vip_border && user.vip_border !== 'none') ? user.vip_border : null;
+        if (border) {
+            // Remover wrap anterior se já existia
+            const existingWrap = pAv.closest('.vip-av-wrap');
+            if (existingWrap && existingWrap.parentElement) {
+                existingWrap.parentElement.insertBefore(pAv, existingWrap);
+                existingWrap.remove();
+            }
+            pAv.dataset.vipBorder = border;
+            pAv.dataset.vipSize   = '90';
+            delete pAv.dataset.borderApplied;
+            if (typeof applyAllVipBorders === 'function') applyAllVipBorders();
+        }
     }
     const pName = document.getElementById('p-name');
     if (pName) {
