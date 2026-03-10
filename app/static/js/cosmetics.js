@@ -33,13 +33,24 @@ let __cosmPerks = null;
 async function loadCosmetics() {
     try {
         const r = await authFetch('/my/vip-perks');
+        if (!r.ok) {
+            console.error('[Cosmetics] /my/vip-perks retornou', r.status);
+            const txt = await r.text();
+            console.error('[Cosmetics] body:', txt);
+        }
         __cosmPerks = await r.json();
+        console.log('[Cosmetics] perks carregados:', JSON.stringify(__cosmPerks));
     } catch(e) {
+        console.error('[Cosmetics] erro ao carregar perks:', e);
+        // Fallback: checar se o usuário é fundador via window.user
+        const role = window.user?.role || window.__currentUser?.role || '';
+        const isFnd = role === 'fundador';
         __cosmPerks = {
-            is_vip:false, silver_available:false, gold_available:false,
-            gold_unlocked_permanently:false, total_vip_months:0, months_to_gold:12,
+            is_vip: isFnd, silver_available: isFnd, gold_available: isFnd,
+            gold_unlocked_permanently: isFnd, total_vip_months: isFnd ? 12 : 0, months_to_gold: isFnd ? 0 : 12,
             current_border:'none', current_bubble:'none', current_font:null, name_color:null,
         };
+        console.log('[Cosmetics] fallback founder:', isFnd, 'role:', role);
     }
     switchCosmeticsTab('borders');
 }

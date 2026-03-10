@@ -25,13 +25,24 @@ def _utcnow():
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_or_create_perk(db: Session, user_id: int) -> VipPerk:
-    perk = db.query(VipPerk).filter_by(user_id=user_id).first()
-    if not perk:
-        perk = VipPerk(user_id=user_id)
-        db.add(perk)
-        db.commit()
-        db.refresh(perk)
-    return perk
+    try:
+        perk = db.query(VipPerk).filter_by(user_id=user_id).first()
+        if not perk:
+            perk = VipPerk(user_id=user_id)
+            db.add(perk)
+            db.commit()
+            db.refresh(perk)
+        return perk
+    except Exception:
+        # Tabela vip_perks ainda não existe — retornar objeto vazio seguro
+        db.rollback()
+        fallback = VipPerk()
+        fallback.user_id = user_id
+        fallback.total_vip_months = 0
+        fallback.gold_border_unlocked = 0
+        fallback.gold_border_unlocked_at = None
+        fallback.annual_sub_unlocked = 0
+        return fallback
 
 
 def is_founder(user: User) -> bool:
@@ -152,7 +163,30 @@ def get_vip_perks(
     db: Session = Depends(get_db),
 ):
     """Status completo das perks VIP do usuário logado."""
-    return compute_vip_status(user, db)
+    try:
+        return compute_vip_status(user, db)
+    except Exception as e:
+        # Nunca retornar 500 — degradar graciosamente
+        role = getattr(user, 'role', '') or ''
+        is_fnd = role == 'fundador'
+        return {
+            "is_vip": is_fnd,
+            "silver_available": is_fnd,
+            "gold_available": is_fnd,
+            "gold_unlocked_permanently": is_fnd,
+            "gold_unlocked_at": None,
+            "total_vip_months": 12 if is_fnd else 0,
+            "months_to_gold": 0 if is_fnd else 12,
+            "current_border": getattr(user, 'vip_border', 'none') or 'none',
+            "name_color": None,
+            "borders": {
+                "prata": "/static/vip_border_prata.jpg" if is_fnd else None,
+                "ouro":  "/static/vip_border_ouro.jpg"  if is_fnd else None,
+            },
+            "bubble_ouro": "/static/vip_bubble_prata.jpg" if is_fnd else None,
+            "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
+            "current_font": None,
+        }
 
 
 @router.post("/my/vip-perks/set-border")
