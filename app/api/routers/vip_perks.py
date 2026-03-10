@@ -34,12 +34,21 @@ def get_or_create_perk(db: Session, user_id: int) -> VipPerk:
     return perk
 
 
+def is_founder(user: User) -> bool:
+    """Fundadores têm acesso vitalício — equivalente a VIP anual para sempre."""
+    return getattr(user, 'role', '') == 'fundador'
+
+
 def has_active_vip(user: User, db: Session) -> bool:
+    if is_founder(user):
+        return True
     sub = db.query(Subscription).filter_by(user_id=user.id, status='active').first()
     return sub is not None
 
 
 def is_annual_plan(user: User, db: Session) -> bool:
+    if is_founder(user):
+        return True  # fundador = plano anual vitalício
     sub = db.query(Subscription).filter_by(user_id=user.id, status='active').first()
     if not sub or not sub.plan:
         return False
@@ -60,6 +69,16 @@ def compute_vip_status(user: User, db: Session) -> dict:
     # Ouro: disponível se (a) assinatura ativa E (b) já desbloqueou antes OU 12 meses OU anual
     gold_unlocked = bool(perk.gold_border_unlocked)
     gold_available = active and gold_unlocked
+
+    # Fundador: garantir gold permanente no primeiro acesso
+    if is_founder(user) and not gold_unlocked:
+        perk.gold_border_unlocked = 1
+        perk.annual_sub_unlocked  = 1
+        if not perk.gold_border_unlocked_at:
+            perk.gold_border_unlocked_at = _utcnow()
+        db.commit()
+        gold_unlocked = True
+        gold_available = True
 
     # Checar se deve desbloquear ouro agora
     if active and not gold_unlocked:
