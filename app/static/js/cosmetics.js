@@ -266,6 +266,8 @@ async function selectCosmetic(type, id) {
         if (d.error) { showToast('❌ ' + d.error); return; }
         __cosmPerks = null;
         showToast(id === 'none' ? '✅ Visual padrão restaurado' : '✅ ' + id.charAt(0).toUpperCase() + id.slice(1) + ' ativado!');
+        // Atualizar user global e perfil
+        await _refreshUserAndProfile();
         await loadCosmetics();
         switchCosmeticsTab(type === 'border' ? 'borders' : 'bubbles');
     } catch(e) { showToast('Erro ao salvar'); }
@@ -278,6 +280,7 @@ async function selectFont(fontId) {
         if (d.error) { showToast('❌ ' + d.error); return; }
         if (__cosmPerks) __cosmPerks.current_font = fontId;
         showToast('✅ Fonte atualizada!');
+        await _refreshUserAndProfile();
         renderNomePanel();
     } catch(e) { showToast('Erro ao salvar fonte'); }
 }
@@ -290,8 +293,20 @@ async function saveNameColor(forceColor) {
         if (d.error) { showToast('❌ ' + d.error); return; }
         if (__cosmPerks) __cosmPerks.name_color = color || null;
         showToast(color ? '✅ Cor salva!' : 'Cor resetada para o padrão');
+        await _refreshUserAndProfile();
         renderNomePanel();
     } catch(e) { showToast('Erro ao salvar cor'); }
+}
+
+async function _refreshUserAndProfile() {
+    try {
+        const token = localStorage.getItem('token');
+        const me = await fetch('/users/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (me.ok) {
+            window.user = Object.assign(window.user || {}, await me.json());
+            if (typeof updateUI === 'function') updateUI();
+        }
+    } catch(e) { /* silencioso */ }
 }
 
 window.loadCosmetics      = loadCosmetics;
