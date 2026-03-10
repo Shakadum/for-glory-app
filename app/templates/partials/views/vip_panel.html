@@ -71,10 +71,36 @@
                     </div>
                 </div>
 
+                <!-- ── Cosméticos VIP ──────────────────────────────────── -->
+                <div id="vip-cosmetics-section">
+                    <div style="font-family:'Rajdhani';font-weight:800;font-size:14px;color:#c5c6c7;letter-spacing:.5px;margin-bottom:3px;">✨ COSMÉTICOS</div>
+                    <div style="font-size:11px;color:#4b5563;margin-bottom:12px;">Borda · Balão de chat · Fonte e cor do nome <span style="color:#ffd93d;">· Exclusivo VIP ⭐</span></div>
+
+                    <!-- Abas -->
+                    <div style="display:flex;gap:0;border-bottom:1px solid #1e1e2e;margin-bottom:14px;">
+                        <button id="cosm-tab-borders" onclick="switchCosmeticsTab('borders')"
+                            style="flex:1;padding:9px 4px;background:transparent;border:none;
+                            border-bottom:2px solid var(--primary,#66fcf1);color:var(--primary,#66fcf1);
+                            font-family:'Rajdhani';font-weight:700;font-size:12px;letter-spacing:.5px;
+                            cursor:pointer;transition:color 0.2s;">🖼️ BORDA</button>
+                        <button id="cosm-tab-bubbles" onclick="switchCosmeticsTab('bubbles')"
+                            style="flex:1;padding:9px 4px;background:transparent;border:none;
+                            border-bottom:2px solid transparent;color:#555;
+                            font-family:'Rajdhani';font-weight:500;font-size:12px;letter-spacing:.5px;
+                            cursor:pointer;transition:color 0.2s;">💬 BALÃO</button>
+                        <button id="cosm-tab-nome" onclick="switchCosmeticsTab('nome')"
+                            style="flex:1;padding:9px 4px;background:transparent;border:none;
+                            border-bottom:2px solid transparent;color:#555;
+                            font-family:'Rajdhani';font-weight:500;font-size:12px;letter-spacing:.5px;
+                            cursor:pointer;transition:color 0.2s;">✍️ NOME</button>
+                    </div>
+
+                    <!-- Painéis das abas -->
+                    <div id="cosm-panel-borders"></div>
+                    <div id="cosm-panel-bubbles" style="display:none;"></div>
+                    <div id="cosm-panel-nome"    style="display:none;"></div>
+                </div>
+
             </div>
         </div>
 
-<!-- Painel de Bordas VIP -->
-<div id="vip-border-panel" style="padding:0 16px 16px;">
-  <div style="color:#555;font-size:12px;text-align:center;padding:10px;">Carregando opções VIP...</div>
-</div>

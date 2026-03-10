@@ -80,7 +80,7 @@ function applyVipNameColor(el, color) {
 // ── Balão de chat VIP ouro ───────────────────────────────────────────────────
 function applyGoldBubble(bubbleEl) {
     if (!bubbleEl) return;
-    bubbleEl.style.backgroundImage = 'url(/static/vip_bubble_ouro.jpg)';
+    bubbleEl.style.backgroundImage = 'url(/static/vip_bubble_prata.jpg)';
     bubbleEl.style.backgroundSize = 'cover';
     bubbleEl.style.backgroundPosition = 'center';
     bubbleEl.style.color = '#fff';

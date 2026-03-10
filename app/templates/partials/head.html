@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Rajdhani:wght@600;700&family=Orbitron:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
     <script async defer src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
     <title>For Glory</title>
     <link rel="stylesheet" href="/static/app.css">
@@ -824,8 +824,17 @@ a.news-card-featured + .fav-star-btn,
 }
 
 /* ── Balão de chat VIP Ouro ───────────────────────────────────── */
+.msg-bubble.vip-bubble-prata {
+    background-image: url('/static/vip_bubble_prata.jpg') !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-color: transparent !important;
+    color: #fff !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+    border: none !important;
+}
 .msg-bubble.vip-bubble-ouro {
-    background-image: url('/static/vip_bubble_ouro.jpg') !important;
+    background-image: url('/static/vip_bubble_prata.jpg') !important;
     background-size: cover !important;
     background-position: center !important;
     background-color: transparent !important;

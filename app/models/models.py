@@ -45,8 +45,13 @@ class User(Base):
     # ── VIP Cosmetics ────────────────────────────────────────────
     # 'none' | 'prata' | 'ouro'
     vip_border       = Column(String(20), default='none')
+    # 'none' | 'prata'
+    vip_bubble       = Column(String(20), default='none')
     # Cor customizada do nome (hex, ex: '#ffd700') — None = padrão
     vip_name_color   = Column(String(10), nullable=True)
+    # Fonte customizada do nome — None = padrão
+    vip_name_font    = Column(String(50), nullable=True)
+    vip_bubble       = Column(String(20), default='none')
 
     friends = relationship(
         'User',

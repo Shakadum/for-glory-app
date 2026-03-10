@@ -7,11 +7,7 @@
 async function loadVipPanel() {
     await loadGloryHeader();
     await loadVipPlans();
-    // Renderizar painel de bordas VIP
-    setTimeout(() => {
-        const el = document.getElementById('vip-border-panel');
-        if (el && typeof renderVipBorderPanel === 'function') renderVipBorderPanel(el);
-    }, 200);
+    if (typeof loadCosmetics === 'function') setTimeout(loadCosmetics, 150);
 
 async function loadVipPlans() {
     const container = document.getElementById('vip-plans');

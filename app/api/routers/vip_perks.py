@@ -99,7 +99,8 @@ def compute_vip_status(user: User, db: Session) -> dict:
             "prata": "/static/vip_border_prata.jpg" if silver_available else None,
             "ouro":  "/static/vip_border_ouro.jpg"  if gold_available   else None,
         },
-        "bubble_ouro": "/static/vip_bubble_ouro.jpg" if gold_available else None,
+        "bubble_ouro": "/static/vip_bubble_prata.jpg" if gold_available else None,
+        "current_bubble": getattr(user, "vip_bubble", "none") or "none",
     }
 
 
@@ -165,3 +166,61 @@ def set_name_color(
     user.vip_name_color = color or None
     db.commit()
     return {"status": "ok", "color": color}
+
+
+@router.post("/my/vip-perks/set-bubble")
+def set_vip_bubble(
+    data: dict = Body(...),
+    user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Define o balão de chat ativo."""
+    bubble = str(data.get("bubble", "none")).lower()
+    if bubble not in ("none", "prata"):
+        return {"error": "Balão inválido"}
+
+    status = compute_vip_status(user, db)
+
+    if bubble == "prata" and not status["silver_available"]:
+        return {"error": "Balão Prata requer assinatura VIP ativa"}
+
+    user.vip_bubble = bubble
+    db.commit()
+    return {"status": "ok", "bubble": bubble}
+
+
+@router.post("/my/vip-perks/set-bubble")
+def set_vip_bubble(
+    data: dict = Body(...),
+    user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Define o balão de chat ativo."""
+    bubble = str(data.get("bubble", "none")).lower()
+    if bubble not in ("none", "prata"):
+        return {"error": "Balão inválido"}
+    status = compute_vip_status(user, db)
+    if bubble == "prata" and not status["silver_available"]:
+        return {"error": "Balão Prata requer assinatura VIP ativa"}
+    user.vip_bubble = bubble
+    db.commit()
+    return {"status": "ok", "bubble": bubble}
+
+
+@router.post("/my/vip-perks/set-font")
+def set_vip_font(
+    data: dict = Body(...),
+    user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Define a fonte do nome (só VIP)."""
+    status = compute_vip_status(user, db)
+    if not status["is_vip"]:
+        return {"error": "Requer assinatura VIP ativa"}
+    font = str(data.get("font", "")).strip()
+    allowed = ("", "DM Sans", "Rajdhani", "Syne", "Orbitron", "Cinzel Decorative")
+    if font not in allowed:
+        return {"error": "Fonte inválida"}
+    user.vip_name_font = font or None
+    db.commit()
+    return {"status": "ok", "font": font}

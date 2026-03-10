@@ -501,7 +501,9 @@ def format_user_summary(user: User):
         "color": b['color'],
         "special_emblem": b['special_emblem'],
         "vip_border": getattr(user, 'vip_border', 'none') or 'none',
+        "vip_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
         "vip_name_color": getattr(user, 'vip_name_color', None),
+        "vip_name_font": getattr(user, 'vip_name_font', None),
     }
 
 # ----------------------------------------------------------------------

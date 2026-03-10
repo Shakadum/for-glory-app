@@ -22,7 +22,9 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
         "medals": b['medals'],
         "is_invisible": getattr(current_user, 'is_invisible', 0),
         "vip_border": getattr(current_user, 'vip_border', 'none') or 'none',
+        "vip_bubble": getattr(current_user, 'vip_bubble', 'none') or 'none',
         "vip_name_color": getattr(current_user, 'vip_name_color', None),
+        "vip_name_font": getattr(current_user, 'vip_name_font', None),
     }
 
 @router.post("/users/me/avatar")
