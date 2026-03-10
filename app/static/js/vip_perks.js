@@ -26,45 +26,66 @@ async function loadVipPerks(force = false) {
  */
 function wrapAvatarWithBorder(imgEl, border, size = 48) {
     if (!imgEl || !border || border === 'none') return;
+
+    // Remover borda anterior se já aplicada
+    removeVipBorder(imgEl);
+
+    const frameUrl = border === 'ouro'
+        ? '/static/vip_border_ouro.jpg'
+        : '/static/vip_border_prata.jpg';
+
     const parent = imgEl.parentElement;
-    if (!parent || parent.classList.contains('vip-av-wrap')) return;
+    if (!parent) return;
 
-    const isGold = border === 'ouro';
-    const gradient = isGold
-        ? 'conic-gradient(from 0deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C, #FCF6BA, #BF953F)'
-        : 'conic-gradient(from 0deg, #8e8e8e, #e0e0e0, #b0b0b0, #f5f5f5, #8e8e8e, #d0d0d0, #8e8e8e)';
-    const glow = isGold
-        ? '0 0 10px 3px rgba(255,200,0,0.6), inset 0 0 4px rgba(255,200,0,0.3)'
-        : '0 0 8px 2px rgba(200,200,200,0.5)';
-    const thickness = Math.max(3, Math.round(size * 0.08));
-
-    // Wrapper: círculo com gradiente de borda
+    // Wrapper posicionado
     const wrap = document.createElement('div');
     wrap.className = 'vip-av-wrap';
     wrap.style.cssText =
         `position:relative;` +
         `width:${size}px;height:${size}px;` +
-        `flex-shrink:0;display:inline-flex;` +
-        `align-items:center;justify-content:center;` +
-        `border-radius:50%;` +
-        `background:${gradient};` +
-        `padding:${thickness}px;` +
-        `box-shadow:${glow};` +
-        `box-sizing:border-box;`;
-
-    // Inner div branco/neutro para criar o "gap"
-    const inner = document.createElement('div');
-    inner.style.cssText =
-        `width:100%;height:100%;border-radius:50%;overflow:hidden;` +
-        `background:#111;display:flex;align-items:center;justify-content:center;`;
+        `flex-shrink:0;display:inline-block;`;
 
     parent.insertBefore(wrap, imgEl);
-    wrap.appendChild(inner);
-    inner.appendChild(imgEl);
+    wrap.appendChild(imgEl);
 
+    // Avatar: centralizado, circular, menor que o wrap
+    const av = Math.round(size * 0.70);
     imgEl.style.cssText =
-        `border-radius:50%;width:100%;height:100%;object-fit:cover;display:block;` +
-        (imgEl.style.cssText || '');
+        `position:absolute;` +
+        `top:50%;left:50%;` +
+        `transform:translate(-50%,-50%);` +
+        `width:${av}px;height:${av}px;` +
+        `border-radius:50%;object-fit:cover;`;
+
+    // Frame ornamentado por cima com mix-blend-mode:multiply
+    // → fundo branco do JPG desaparece, só o ornamento fica visível
+    const frame = document.createElement('img');
+    frame.src = frameUrl;
+    frame.className = 'vip-border-frame';
+    frame.style.cssText =
+        `position:absolute;inset:0;` +
+        `width:100%;height:100%;` +
+        `pointer-events:none;` +
+        `object-fit:contain;` +
+        `mix-blend-mode:multiply;`;
+    wrap.appendChild(frame);
+
+    wrap.dataset.vipBorderWrap = border;
+}
+
+function removeVipBorder(imgEl) {
+    if (!imgEl) return;
+    // Se está dentro de um wrap, tirar o img de volta e remover o wrap
+    const wrap = imgEl.closest('.vip-av-wrap');
+    if (wrap && wrap.parentElement) {
+        imgEl.style.cssText = '';
+        wrap.parentElement.insertBefore(imgEl, wrap);
+        wrap.remove();
+    }
+    imgEl.style.outline = '';
+    imgEl.style.outlineOffset = '';
+    imgEl.style.boxShadow = '';
+    delete imgEl.dataset.borderApplied;
 }
 
 // ── Aplicar borda VIP globalmente (chat, lista, perfil) ──────────────────────
@@ -91,11 +112,22 @@ function applyVipNameColor(el, color) {
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        bubbleEl.style.background = 'linear-gradient(135deg, #2a2a2a 0%, #3d3d3d 50%, #2a2a2a 100%)';
-        bubbleEl.style.border     = '1px solid rgba(192,192,192,0.6)';
-        bubbleEl.style.boxShadow  = '0 0 8px rgba(192,192,192,0.25), inset 0 1px 0 rgba(255,255,255,0.1)';
-        bubbleEl.style.color      = '#e8e8e8';
+        bubbleEl.style.background    = 'linear-gradient(135deg, #1e1e2e 0%, #2d2d3f 40%, #1a1a2a 100%)';
+        bubbleEl.style.border        = '1px solid rgba(180,180,220,0.5)';
+        bubbleEl.style.boxShadow     = '0 0 10px rgba(160,160,255,0.2), inset 0 1px 0 rgba(255,255,255,0.08)';
+        bubbleEl.style.color         = '#dde0ff';
+        bubbleEl.style.backdropFilter = 'blur(4px)';
     }
+}
+
+function applyAllVipBubbles() {
+    document.querySelectorAll('[data-vip-bubble]:not([data-bubble-applied])').forEach(el => {
+        const t = el.dataset.vipBubble;
+        if (t && t !== 'none') {
+            applyVipBubble(el, t);
+            el.dataset.bubbleApplied = '1';
+        }
+    });
 }
 
 // manter alias para compatibilidade
@@ -248,6 +280,7 @@ async function saveVipNameColor(forceColor) {
 
 window.loadVipPerks         = loadVipPerks;
 window.wrapAvatarWithBorder = wrapAvatarWithBorder;
+window.removeVipBorder       = removeVipBorder;
 window.applyAllVipBorders   = applyAllVipBorders;
 window.applyVipNameColor    = applyVipNameColor;
 window.applyGoldBubble      = applyGoldBubble;

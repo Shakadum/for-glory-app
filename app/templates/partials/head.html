@@ -800,48 +800,30 @@ a.news-card-featured + .fav-star-btn,
 /* ── VIP Bordas de Perfil ──────────────────────────────────────── */
 .vip-av-wrap {
     position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
+    display: inline-block;
     flex-shrink: 0;
-    box-sizing: border-box;
 }
-.vip-av-wrap > div {
-    border-radius: 50%;
-    overflow: hidden;
+.vip-border-frame {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    pointer-events: none;
+    object-fit: contain;
+    mix-blend-mode: multiply;
 }
-.vip-av-wrap img {
-    border-radius: 50%;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+[data-vip-bubble="prata"], .vip-bubble-prata {
+    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d3f 40%, #1a1a2a 100%) !important;
+    border: 1px solid rgba(180,180,220,0.5) !important;
+    box-shadow: 0 0 10px rgba(160,160,255,0.2), inset 0 1px 0 rgba(255,255,255,0.08) !important;
+    color: #dde0ff !important;
 }
-
-/* ── Balão de chat VIP Ouro ───────────────────────────────────── */
-.msg-bubble.vip-bubble-prata {
-    background-image: url('/static/vip_bubble_prata.jpg') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-color: transparent !important;
-    color: #fff !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
-    border: none !important;
-}
-.msg-bubble.vip-bubble-ouro {
-    background-image: url('/static/vip_bubble_prata.jpg') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-color: transparent !important;
-    color: #fff !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
-    border: none !important;
+[data-vip-border-active] { border-radius:50% !important; }
+[data-vip-bubble="prata"], .vip-bubble-prata {
+    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d3f 40%, #1a1a2a 100%) !important;
+    border: 1px solid rgba(180,180,220,0.5) !important;
+    box-shadow: 0 0 10px rgba(160,160,255,0.2), inset 0 1px 0 rgba(255,255,255,0.08) !important;
+    color: #dde0ff !important;
 }
 </style>
 

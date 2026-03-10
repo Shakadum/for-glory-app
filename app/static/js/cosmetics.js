@@ -119,21 +119,23 @@ function renderCard(item, perks, currentId, type) {
     // Preview
     let preview;
     if (type === 'border') {
-        preview = '<div style="position:relative;width:72px;height:72px;margin:0 auto 10px;">' +
-            '<div style="width:46px;height:46px;border-radius:50%;background:#111;border:2px solid #2a2a2a;' +
-            'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
-            'display:flex;align-items:center;justify-content:center;font-size:16px;">' +
-            (unlocked ? '👤' : '🔒') + '</div>' +
-            (item.preview ? '<img src="' + item.preview + '" style="position:absolute;inset:0;width:100%;height:100%;' +
-            'object-fit:contain;pointer-events:none;' + (!unlocked ? 'filter:grayscale(1) opacity(0.3);' : '') + '">' : '') +
+        // Preview: avatar simulado + borda JPG com mix-blend-mode:multiply (sem fundo branco)
+        const avSize = 50, wrapSize = 72;
+        const avatarStyle = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
+            `width:${avSize}px;height:${avSize}px;border-radius:50%;object-fit:cover;`;
+        const frameStyle = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
+            'pointer-events:none;mix-blend-mode:multiply;' + (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '');
+        preview = `<div style="position:relative;width:${wrapSize}px;height:${wrapSize}px;margin:0 auto 10px;background:#111;border-radius:50%;">` +
+            `<img src="https://ui-avatars.com/api/?name=VIP&background=1a1a2e&color=66fcf1&size=64&bold=true" style="${avatarStyle}">` +
+            (item.preview ? `<img src="${item.preview}" style="${frameStyle}">` : '') +
             '</div>';
     } else {
+        const bubbleStyle = item.id === 'prata'
+            ? 'background:linear-gradient(135deg,#1e1e2e,#2d2d3f,#1a1a2a);border:1px solid rgba(180,180,220,0.5);box-shadow:0 0 10px rgba(160,160,255,0.2);color:#dde0ff;'
+            : 'background:rgba(255,255,255,0.08);border:1px solid #2a2a2a;color:white;';
         preview = '<div style="margin:0 auto 10px;padding:0 4px;">' +
-            '<div style="border-radius:12px 12px 12px 0;padding:7px 11px;font-size:11px;color:white;' +
-            (item.preview
-                ? 'background-image:url(\'' + item.preview + '\');background-size:cover;background-position:center;text-shadow:0 1px 3px rgba(0,0,0,0.9);'
-                : 'background:' + (item.previewBg || 'rgba(255,255,255,0.08)') + ';border:1px solid #2a2a2a;') +
-            (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '') + '">' +
+            '<div style="border-radius:12px 12px 12px 0;padding:7px 11px;font-size:11px;' +
+            bubbleStyle + (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '') + '">' +
             'Olá! Prévia 👋</div></div>';
     }
 
