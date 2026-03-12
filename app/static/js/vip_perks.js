@@ -160,18 +160,19 @@ function applyVipNameColor(el, color) {
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        // Usa o PNG ornamentado como fundo do balão
-        bubbleEl.style.backgroundImage  = "url(/static/vip_bubble_prata.png)";
-        bubbleEl.style.backgroundSize   = '100% 100%';
-        bubbleEl.style.backgroundRepeat = 'no-repeat';
-        bubbleEl.style.border           = 'none';
-        bubbleEl.style.borderRadius     = '4px';
-        bubbleEl.style.color            = '#e8eaf6';
-        bubbleEl.style.textShadow       = '0 1px 3px rgba(0,0,0,0.8)';
-        bubbleEl.style.boxShadow        = '0 0 14px rgba(180,180,255,0.15)';
-        bubbleEl.style.padding          = '10px 16px';
-        bubbleEl.style.minWidth         = '80px';
-        bubbleEl.style.background       = 'none'; // reset qualquer background solid
+        // setProperty com 'important' sobrescreve background: var(--card-2) e
+        // background: linear-gradient(...) que vêm da classe CSS .msg-bubble.
+        // O shorthand 'background' inclui background-color=transparent, eliminando o fundo quadrado.
+        bubbleEl.style.setProperty('background', 'url(/static/vip_bubble_prata.png) center/100% 100% no-repeat', 'important');
+        bubbleEl.style.setProperty('border', 'none', 'important');
+        bubbleEl.style.setProperty('border-radius', '0', 'important');
+        bubbleEl.style.setProperty('box-shadow', 'none', 'important');
+        bubbleEl.style.setProperty('padding', '18px 20px 14px', 'important');
+        bubbleEl.style.setProperty('min-width', '120px', 'important');
+        bubbleEl.style.setProperty('min-height', '56px', 'important');
+        bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
+        bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
+        bubbleEl.style.setProperty('display', 'inline-block', 'important');
     }
 }
 
