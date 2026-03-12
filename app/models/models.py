@@ -116,6 +116,8 @@ class PrivateMessage(Base):
     content = Column(String)
     is_read = Column(Integer, default=0)
     timestamp = Column(DateTime, default=utcnow)
+    msg_vip_border = Column(String(20), default='none')
+    msg_vip_bubble = Column(String(20), default='none')
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -144,6 +146,8 @@ class GroupMessage(Base):
     sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content = Column(String)
     timestamp = Column(DateTime, default=utcnow)
+    msg_vip_border = Column(String(20), default='none')
+    msg_vip_bubble = Column(String(20), default='none')
 
     sender = relationship('User', foreign_keys=[sender_id])
 
@@ -190,6 +194,8 @@ class CommunityMessage(Base):
     sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     content = Column(String)
     timestamp = Column(DateTime, default=utcnow)
+    msg_vip_border = Column(String(20), default='none')
+    msg_vip_bubble = Column(String(20), default='none')
 
     sender = relationship('User', foreign_keys=[sender_id])
 

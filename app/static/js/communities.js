@@ -133,8 +133,8 @@ async function fetchCommMessages(chid){
                 }
             });
             if(isAtBottom)list.scrollTop=list.scrollHeight;
-            if(typeof applyAllVipBorders==='function') setTimeout(applyAllVipBorders, 50);
-            if(typeof applyAllVipBubbles==='function') setTimeout(applyAllVipBubbles, 60);
+            if(typeof applyAllVipBorders==='function') applyAllVipBorders();
+            if(typeof applyAllVipBubbles==='function') applyAllVipBubbles();
         }
     }catch(e){ console.error(e); }
 }

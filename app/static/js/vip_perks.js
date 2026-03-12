@@ -167,9 +167,9 @@ function applyVipBubble(bubbleEl, bubbleType) {
         bubbleEl.style.setProperty('border', 'none', 'important');
         bubbleEl.style.setProperty('border-radius', '0', 'important');
         bubbleEl.style.setProperty('box-shadow', 'none', 'important');
-        bubbleEl.style.setProperty('padding', '18px 20px 14px', 'important');
-        bubbleEl.style.setProperty('min-width', '120px', 'important');
-        bubbleEl.style.setProperty('min-height', '56px', 'important');
+        bubbleEl.style.setProperty('padding', '12px 20% 10px', 'important');
+        bubbleEl.style.setProperty('min-width', '100px', 'important');
+        bubbleEl.style.setProperty('min-height', '48px', 'important');
         bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
         bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
         bubbleEl.style.setProperty('display', 'inline-block', 'important');

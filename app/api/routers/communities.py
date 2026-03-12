@@ -335,6 +335,8 @@ def get_comm_msgs(chid: int, db: Session = Depends(get_db)):
         "avatar": m.sender.avatar_url,
         "username": m.sender.username,
         "can_delete": (datetime.now(timezone.utc) - ts_aware(m.timestamp)).total_seconds() <= 300,
+        "msg_vip_border": getattr(m, 'msg_vip_border', None) or 'none',
+        "msg_vip_bubble": getattr(m, 'msg_vip_bubble', None) or 'none',
     } for m in msgs]
 
 # ----------------------------------------------------------------------

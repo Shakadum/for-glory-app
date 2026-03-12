@@ -159,6 +159,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
 
                 u_sum = format_user_summary(sender)
                 now = datetime.now(timezone.utc)
+                sender_border = u_sum.get("vip_border", "none") or "none"
+                sender_bubble = u_sum.get("vip_bubble", "none") or "none"
 
                 payload = {
                     "type": "msg",
@@ -168,6 +170,10 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     "rank": u_sum.get("rank"),
                     "color": u_sum.get("color"),
                     "special_emblem": u_sum.get("special_emblem"),
+                    "vip_border": sender_border,
+                    "vip_bubble": sender_bubble,
+                    "vip_name_color": u_sum.get("vip_name_color"),
+                    "vip_name_font": u_sum.get("vip_name_font"),
                     "content": content,
                     "timestamp": now.isoformat(),
                     "can_delete": True,
@@ -178,7 +184,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     if len(parts) == 3:
                         a, b = int(parts[1]), int(parts[2])
                         to_uid = b if uid == a else a
-                        pm = PrivateMessage(sender_id=uid, receiver_id=to_uid, content=content, timestamp=now)
+                        pm = PrivateMessage(sender_id=uid, receiver_id=to_uid, content=content, timestamp=now,
+                                            msg_vip_border=sender_border, msg_vip_bubble=sender_bubble)
                         db.add(pm); db.commit(); db.refresh(pm)
                         payload["id"] = pm.id
                         await manager.broadcast(payload, ch)
@@ -189,7 +196,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     parts = ch.split("_")
                     if len(parts) == 2:
                         gid = int(parts[1])
-                        gm = GroupMessage(group_id=gid, sender_id=uid, content=content, timestamp=now)
+                        gm = GroupMessage(group_id=gid, sender_id=uid, content=content, timestamp=now,
+                                          msg_vip_border=sender_border, msg_vip_bubble=sender_bubble)
                         db.add(gm); db.commit(); db.refresh(gm)
                         payload["id"] = gm.id
                         await manager.broadcast(payload, ch)
@@ -199,7 +207,8 @@ async def ws_end(ws: WebSocket, ch: str, uid: int):
                     parts = ch.split("_")
                     if len(parts) == 2:
                         channel_id = int(parts[1])
-                        cm = CommunityMessage(channel_id=channel_id, sender_id=uid, content=content, timestamp=now)
+                        cm = CommunityMessage(channel_id=channel_id, sender_id=uid, content=content, timestamp=now,
+                                              msg_vip_border=sender_border, msg_vip_bubble=sender_bubble)
                         db.add(cm); db.commit(); db.refresh(cm)
                         payload["id"] = cm.id
                         await manager.broadcast(payload, ch)
