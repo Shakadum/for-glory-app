@@ -88,7 +88,7 @@ def compute_vip_status(user: User, db: Session) -> dict:
                 "prata": "/static/vip_border_prata.png",
                 "ouro":  "/static/vip_border_ouro.png",
             },
-            "bubble_ouro": "/static/vip_bubble_prata.jpg",
+            "bubble_ouro": "/static/vip_bubble_prata.png",
             "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
             "current_font": getattr(user, 'vip_name_font', None),
         }
@@ -141,7 +141,7 @@ def compute_vip_status(user: User, db: Session) -> dict:
             "prata": "/static/vip_border_prata.png" if silver_available else None,
             "ouro":  "/static/vip_border_ouro.png"  if gold_available   else None,
         },
-        "bubble_ouro": "/static/vip_bubble_prata.jpg" if gold_available else None,
+        "bubble_ouro": "/static/vip_bubble_prata.png" if gold_available else None,
         "current_bubble": getattr(user, "vip_bubble", "none") or "none",
         "current_font": getattr(user, "vip_name_font", None),
     }
@@ -183,7 +183,7 @@ def get_vip_perks(
                 "prata": "/static/vip_border_prata.png" if is_fnd else None,
                 "ouro":  "/static/vip_border_ouro.png"  if is_fnd else None,
             },
-            "bubble_ouro": "/static/vip_bubble_prata.jpg" if is_fnd else None,
+            "bubble_ouro": "/static/vip_bubble_prata.png" if is_fnd else None,
             "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
             "current_font": None,
         }

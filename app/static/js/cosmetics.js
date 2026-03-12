@@ -16,7 +16,7 @@ const BORDERS_CATALOG = [
 
 const BUBBLES_CATALOG = [
     { id:'none',  label:'Padrão',    desc:'Balão padrão do app',         preview:null,                        previewBg:'rgba(255,255,255,0.08)', unlock:'free'       },
-    { id:'prata', label:'VIP Prata', desc:'Balão metálico prateado',     preview:'/static/vip_bubble_prata.jpg', previewBg:null,                unlock:'vip_active', lockMsg:'Assine o plano VIP para desbloquear' },
+    { id:'prata', label:'VIP Prata', desc:'Balão metálico prateado',     preview:'/static/vip_bubble_prata.png', previewBg:null,                unlock:'vip_active', lockMsg:'Assine o plano VIP para desbloquear' },
 ];
 
 const FONTS_CATALOG = [
@@ -131,10 +131,10 @@ function renderCard(item, perks, currentId, type) {
             '</div>';
     } else {
         const bubbleStyle = item.id === 'prata'
-            ? 'background:linear-gradient(135deg,#1e1e2e,#2d2d3f,#1a1a2a);border:1px solid rgba(180,180,220,0.5);box-shadow:0 0 10px rgba(160,160,255,0.2);color:#dde0ff;'
-            : 'background:rgba(255,255,255,0.08);border:1px solid #2a2a2a;color:white;';
+            ? `background-image:url('/static/vip_bubble_prata.png');background-size:100% 100%;background-repeat:no-repeat;border:none;border-radius:4px;color:#e8eaf6;text-shadow:0 1px 3px rgba(0,0,0,0.8);`
+            : 'background:rgba(255,255,255,0.08);border:1px solid #2a2a2a;color:white;border-radius:12px 12px 12px 0;';
         preview = '<div style="margin:0 auto 10px;padding:0 4px;">' +
-            '<div style="border-radius:12px 12px 12px 0;padding:7px 11px;font-size:11px;' +
+            '<div style="display:inline-block;padding:8px 14px;font-size:11px;' +
             bubbleStyle + (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '') + '">' +
             'Olá! Prévia 👋</div></div>';
     }

@@ -156,15 +156,22 @@ function applyVipNameColor(el, color) {
     el.style.textShadow = `0 0 8px ${color}66`;
 }
 
-// ── Balão de chat VIP ouro ───────────────────────────────────────────────────
+// ── Balão de chat VIP Prata ───────────────────────────────────────────────────
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        bubbleEl.style.background    = 'linear-gradient(135deg, #1e1e2e 0%, #2d2d3f 40%, #1a1a2a 100%)';
-        bubbleEl.style.border        = '1px solid rgba(180,180,220,0.5)';
-        bubbleEl.style.boxShadow     = '0 0 10px rgba(160,160,255,0.2), inset 0 1px 0 rgba(255,255,255,0.08)';
-        bubbleEl.style.color         = '#dde0ff';
-        bubbleEl.style.backdropFilter = 'blur(4px)';
+        // Usa o PNG ornamentado como fundo do balão
+        bubbleEl.style.backgroundImage  = 'url('/static/vip_bubble_prata.png')';
+        bubbleEl.style.backgroundSize   = '100% 100%';
+        bubbleEl.style.backgroundRepeat = 'no-repeat';
+        bubbleEl.style.border           = 'none';
+        bubbleEl.style.borderRadius     = '4px';
+        bubbleEl.style.color            = '#e8eaf6';
+        bubbleEl.style.textShadow       = '0 1px 3px rgba(0,0,0,0.8)';
+        bubbleEl.style.boxShadow        = '0 0 14px rgba(180,180,255,0.15)';
+        bubbleEl.style.padding          = '10px 16px';
+        bubbleEl.style.minWidth         = '80px';
+        bubbleEl.style.background       = 'none'; // reset qualquer background solid
     }
 }
 
@@ -180,17 +187,6 @@ function applyAllVipBubbles() {
 
 // manter alias para compatibilidade
 function applyGoldBubble(bubbleEl) { applyVipBubble(bubbleEl, 'prata'); }
-
-// ── Aplicar balões VIP em todos os .msg-bubble com data-vip-bubble ─────────
-function applyAllVipBubbles() {
-    document.querySelectorAll('[data-vip-bubble]:not([data-bubble-applied])').forEach(el => {
-        const t = el.dataset.vipBubble;
-        if (t && t !== 'none') {
-            applyVipBubble(el, t);
-            el.dataset.bubbleApplied = '1';
-        }
-    });
-}
 
 // ── Painel de seleção de borda (dentro do VIP panel) ─────────────────────────
 async function renderVipBorderPanel(container) {
