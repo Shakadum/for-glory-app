@@ -85,8 +85,8 @@ def compute_vip_status(user: User, db: Session) -> dict:
             "current_border": current_border,
             "name_color": getattr(user, 'vip_name_color', None),
             "borders": {
-                "prata": "/static/vip_border_prata.jpg",
-                "ouro":  "/static/vip_border_ouro.jpg",
+                "prata": "/static/vip_border_prata.png",
+                "ouro":  "/static/vip_border_ouro.png",
             },
             "bubble_ouro": "/static/vip_bubble_prata.jpg",
             "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',
@@ -138,8 +138,8 @@ def compute_vip_status(user: User, db: Session) -> dict:
         "name_color": getattr(user, 'vip_name_color', None),
         # Url das imagens
         "borders": {
-            "prata": "/static/vip_border_prata.jpg" if silver_available else None,
-            "ouro":  "/static/vip_border_ouro.jpg"  if gold_available   else None,
+            "prata": "/static/vip_border_prata.png" if silver_available else None,
+            "ouro":  "/static/vip_border_ouro.png"  if gold_available   else None,
         },
         "bubble_ouro": "/static/vip_bubble_prata.jpg" if gold_available else None,
         "current_bubble": getattr(user, "vip_bubble", "none") or "none",
@@ -180,8 +180,8 @@ def get_vip_perks(
             "current_border": getattr(user, 'vip_border', 'none') or 'none',
             "name_color": None,
             "borders": {
-                "prata": "/static/vip_border_prata.jpg" if is_fnd else None,
-                "ouro":  "/static/vip_border_ouro.jpg"  if is_fnd else None,
+                "prata": "/static/vip_border_prata.png" if is_fnd else None,
+                "ouro":  "/static/vip_border_ouro.png"  if is_fnd else None,
             },
             "bubble_ouro": "/static/vip_bubble_prata.jpg" if is_fnd else None,
             "current_bubble": getattr(user, 'vip_bubble', 'none') or 'none',

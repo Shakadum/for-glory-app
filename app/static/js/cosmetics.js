@@ -10,8 +10,8 @@
 
 const BORDERS_CATALOG = [
     { id:'none',  label:'Sem Borda',  desc:'Visual padrão',            preview:null,                        unlock:'free'       },
-    { id:'prata', label:'VIP Prata',  desc:'Assinantes VIP ativos',    preview:'/static/vip_border_prata.jpg', unlock:'vip_active', lockMsg:'Assine o plano VIP para desbloquear' },
-    { id:'ouro',  label:'VIP Ouro',   desc:'12 meses VIP ou plano anual', preview:'/static/vip_border_ouro.jpg', unlock:'vip_gold',   lockMsg:null },
+    { id:'prata', label:'VIP Prata',  desc:'Assinantes VIP ativos',    preview:'/static/vip_border_prata.png', unlock:'vip_active', lockMsg:'Assine o plano VIP para desbloquear' },
+    { id:'ouro',  label:'VIP Ouro',   desc:'12 meses VIP ou plano anual', preview:'/static/vip_border_ouro.png', unlock:'vip_gold',   lockMsg:null },
 ];
 
 const BUBBLES_CATALOG = [
@@ -119,12 +119,12 @@ function renderCard(item, perks, currentId, type) {
     // Preview
     let preview;
     if (type === 'border') {
-        // Preview: avatar simulado + borda JPG com mix-blend-mode:multiply (sem fundo branco)
+        // Preview: avatar simulado + borda PNG com transparência real
         const avSize = 50, wrapSize = 72;
         const avatarStyle = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
             `width:${avSize}px;height:${avSize}px;border-radius:50%;object-fit:cover;`;
         const frameStyle = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
-            'pointer-events:none;mix-blend-mode:multiply;' + (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '');
+            'pointer-events:none;' + (!unlocked ? 'filter:grayscale(1) opacity(0.35);' : '');
         preview = `<div style="position:relative;width:${wrapSize}px;height:${wrapSize}px;margin:0 auto 10px;background:#111;border-radius:50%;">` +
             `<img src="https://ui-avatars.com/api/?name=VIP&background=1a1a2e&color=66fcf1&size=64&bold=true" style="${avatarStyle}">` +
             (item.preview ? `<img src="${item.preview}" style="${frameStyle}">` : '') +

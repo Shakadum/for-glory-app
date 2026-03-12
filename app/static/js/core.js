@@ -399,8 +399,12 @@ function renderMedals(boxId, medalsData, isPublic = false) {
 
 window.FGCosmetics = window.FGCosmetics || {
     profileFrames: {
-        vip_gold: '/static/cosmetics/profile_frames/bg-Borda_VIP_Ouro.jpg',
-        vip_silver: '/static/cosmetics/profile_frames/bg-Borda_VIP_Prata.jpg'
+        // chaves canônicas usadas por user.vip_border
+        ouro:       '/static/vip_border_ouro.png',
+        prata:      '/static/vip_border_prata.png',
+        // aliases legados
+        vip_gold:   '/static/vip_border_ouro.png',
+        vip_silver: '/static/vip_border_prata.png',
     }
 };
 
@@ -410,14 +414,9 @@ function resolveProfileFrameAsset(data){
     const direct = data.profile_frame_url || data.avatar_frame_url || data.frame_url || '';
     if(direct && !String(direct).includes('undefined')) return String(direct);
 
-    const key = data.profile_frame || data.avatar_frame || data.frame_key || data.profile_border || '';
-    if(key && window.FGCosmetics.profileFrames[key]) return window.FGCosmetics.profileFrames[key];
-
-    const emblem = String(data.special_emblem || '').toLowerCase();
-
-    // fallback opcional para o estado atual do app
-    if(emblem.includes('vip')) return window.FGCosmetics.profileFrames.vip_gold || '';
-    if(emblem.includes('fundador')) return window.FGCosmetics.profileFrames.vip_gold || '';
+    // vip_border é o campo canônico do backend (prata | ouro | none)
+    const key = data.vip_border || data.profile_frame || data.avatar_frame || data.frame_key || data.profile_border || '';
+    if(key && key !== 'none' && window.FGCosmetics.profileFrames[key]) return window.FGCosmetics.profileFrames[key];
 
     return '';
 }
@@ -445,15 +444,8 @@ function updateUI(){
     let missingXP = user.next_xp - user.xp;
     document.getElementById('p-progression-box').innerHTML = `<div class="xp-box" style="margin: 20px auto; width: 90%; max-width: 400px; text-align: left; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #333;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span style="color: var(--primary); font-weight: bold; font-size: 14px;">${t('progression')}</span><span style="color: white; font-size: 14px; font-family:'Rajdhani'; font-weight:bold;">${user.xp} / ${user.next_xp} XP</span></div><div class="xp-track" style="width: 100%; background: #222; height: 10px; border-radius: 5px; overflow: hidden; box-shadow:inset 0 2px 5px rgba(0,0,0,0.5);"><div class="xp-fill" style="width: ${user.percent}%; height: 100%; background: linear-gradient(90deg, #1d4e4f, var(--primary)); transition: width 0.5s;"></div></div><div style="display:flex; justify-content:space-between; margin-top:8px; align-items:center;"><span class="xp-label" style="color: #888; font-size: 11px;">Falta ${missingXP} XP para ${user.next_rank}</span><button class="btn-link" style="margin:0; font-size:11px;" onclick="showRanksModal()">Ver Patentes</button></div></div>`;
     renderMedals('p-medals-box', user.medals, false); document.querySelectorAll('.my-avatar-mini').forEach(img => img.src = safeAvatar); updateStealthUI();
-    // Aplicar cosméticos VIP no avatar do perfil
-    const pAv = document.getElementById('p-avatar');
-    if (pAv) {
-        if (typeof removeVipBorder === 'function') removeVipBorder(pAv);
-        const border = user.vip_border && user.vip_border !== 'none' ? user.vip_border : null;
-        if (border && typeof wrapAvatarWithBorder === 'function') {
-            wrapAvatarWithBorder(pAv, border, 90);
-        }
-    }
+    // Borda VIP: usa o overlay estático #p-avatar-frame (já posicionado no HTML)
+    // wrapAvatarWithBorder() é reservado para avatares em listas/chat
     const pName = document.getElementById('p-name');
     if (pName) {
         if (user.vip_name_color) { pName.style.color = user.vip_name_color; pName.style.textShadow = '0 0 8px ' + user.vip_name_color + '66'; }

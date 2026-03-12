@@ -31,8 +31,8 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
     removeVipBorder(imgEl);
 
     const frameUrl = border === 'ouro'
-        ? '/static/vip_border_ouro.jpg'
-        : '/static/vip_border_prata.jpg';
+        ? '/static/vip_border_ouro.png'
+        : '/static/vip_border_prata.png';
 
     const parent = imgEl.parentElement;
     if (!parent) return;
@@ -57,8 +57,7 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
         `width:${av}px;height:${av}px;` +
         `border-radius:50%;object-fit:cover;`;
 
-    // Frame ornamentado por cima com mix-blend-mode:multiply
-    // → fundo branco do JPG desaparece, só o ornamento fica visível
+    // Frame ornamentado por cima — PNG com transparência real, sem blend mode
     const frame = document.createElement('img');
     frame.src = frameUrl;
     frame.className = 'vip-border-frame';
@@ -66,8 +65,7 @@ function wrapAvatarWithBorder(imgEl, border, size = 48) {
         `position:absolute;inset:0;` +
         `width:100%;height:100%;` +
         `pointer-events:none;` +
-        `object-fit:contain;` +
-        `mix-blend-mode:multiply;`;
+        `object-fit:contain;`;
     wrap.appendChild(frame);
 
     wrap.dataset.vipBorderWrap = border;
@@ -218,8 +216,8 @@ async function renderVipBorderPanel(container) {
             <div style="color:var(--primary);font-size:13px;font-weight:bold;margin-bottom:10px;">🖼️ Borda de perfil</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
                 ${borderOption('none', 'Sem borda', null, true, '')}
-                ${borderOption('prata', 'VIP Prata', '/static/vip_border_prata.jpg', perks.silver_available, 'Requer assinatura VIP')}
-                ${borderOption('ouro', 'VIP Ouro', '/static/vip_border_ouro.jpg', perks.gold_available,
+                ${borderOption('prata', 'VIP Prata', '/static/vip_border_prata.png', perks.silver_available, 'Requer assinatura VIP')}
+                ${borderOption('ouro', 'VIP Ouro', '/static/vip_border_ouro.png', perks.gold_available,
                     perks.gold_unlocked_permanently ? 'Reative a assinatura' : `${perks.months_to_gold} meses restantes`)}
             </div>
             ${goldProgressHtml}
