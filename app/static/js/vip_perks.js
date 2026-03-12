@@ -11,10 +11,60 @@ async function loadVipPerks(force = false) {
     try {
         const r = await authFetch('/my/vip-perks');
         __vipPerks = await r.json();
-        // Aplicar borda no avatar do usuário logado
-        if (window.__currentUser) applyVipBorder(window.__currentUser.id, __vipPerks.current_border);
+        // Aplicar borda no avatar do perfil ao carregar
+        const border = __vipPerks.current_border || 'none';
+        applyProfilePageBorder('p-avatar', border);
+        applyNavAvatarBorder(border);
         return __vipPerks;
     } catch(e) { return null; }
+}
+
+// ── Borda no avatar grande da página de perfil ────────────────────────────────
+/**
+ * Injeta/remove o frame VIP dentro do .profile-pic-lg-wrap sem restructurar o DOM.
+ * @param {string} avatarId  — 'p-avatar' | 'pub-avatar'
+ * @param {string} border    — 'none' | 'prata' | 'ouro'
+ */
+function applyProfilePageBorder(avatarId, border) {
+    const av = document.getElementById(avatarId);
+    if (!av) return;
+    const wrap = av.closest('.profile-pic-lg-wrap');
+    if (!wrap) return;
+
+    // Remover frame anterior
+    wrap.querySelectorAll('.vip-border-frame').forEach(el => el.remove());
+
+    if (!border || border === 'none') return;
+
+    const frameUrl = border === 'ouro'
+        ? '/static/vip_border_ouro.png'
+        : '/static/vip_border_prata.png';
+
+    const frame = document.createElement('img');
+    frame.src = frameUrl;
+    frame.className = 'vip-border-frame';
+    frame.alt = '';
+    frame.setAttribute('aria-hidden', 'true');
+    // 150% do wrap, centralizado — mesma lógica do antigo overlay CSS
+    frame.style.cssText =
+        'position:absolute;' +
+        'top:50%;left:50%;' +
+        'width:150%;height:150%;' +
+        'transform:translate(-50%,-50%);' +
+        'pointer-events:none;' +
+        'object-fit:contain;' +
+        'z-index:3;';
+    wrap.appendChild(frame);
+}
+
+// ── Borda no nav-avatar (sidebar) ─────────────────────────────────────────────
+function applyNavAvatarBorder(border) {
+    const navAv = document.getElementById('nav-avatar');
+    if (!navAv) return;
+    if (typeof removeVipBorder === 'function') removeVipBorder(navAv);
+    if (border && border !== 'none' && typeof wrapAvatarWithBorder === 'function') {
+        wrapAvatarWithBorder(navAv, border, 44);
+    }
 }
 
 // ── Aplicar borda VIP num elemento de avatar ─────────────────────────────────
@@ -276,14 +326,16 @@ async function saveVipNameColor(forceColor) {
     } catch(e) { showToast('Erro ao salvar cor'); }
 }
 
-window.loadVipPerks         = loadVipPerks;
-window.wrapAvatarWithBorder = wrapAvatarWithBorder;
-window.removeVipBorder       = removeVipBorder;
-window.applyAllVipBorders   = applyAllVipBorders;
-window.applyVipNameColor    = applyVipNameColor;
-window.applyGoldBubble      = applyGoldBubble;
-window.applyVipBubble       = applyVipBubble;
-window.applyAllVipBubbles   = applyAllVipBubbles;
-window.renderVipBorderPanel = renderVipBorderPanel;
-window.selectVipBorder      = selectVipBorder;
-window.saveVipNameColor     = saveVipNameColor;
+window.loadVipPerks          = loadVipPerks;
+window.wrapAvatarWithBorder  = wrapAvatarWithBorder;
+window.removeVipBorder        = removeVipBorder;
+window.applyAllVipBorders    = applyAllVipBorders;
+window.applyProfilePageBorder = applyProfilePageBorder;
+window.applyNavAvatarBorder  = applyNavAvatarBorder;
+window.applyVipNameColor     = applyVipNameColor;
+window.applyGoldBubble       = applyGoldBubble;
+window.applyVipBubble        = applyVipBubble;
+window.applyAllVipBubbles    = applyAllVipBubbles;
+window.renderVipBorderPanel  = renderVipBorderPanel;
+window.selectVipBorder       = selectVipBorder;
+window.saveVipNameColor      = saveVipNameColor;

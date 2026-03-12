@@ -650,21 +650,6 @@ body {
     z-index: 1;
 }
 
-.profile-frame-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 150%;
-    height: 150%;
-    transform: translate(-50%, -50%);
-    object-fit: contain;
-    pointer-events: none;
-    user-select: none;
-    z-index: 3;
-    display: none;
-    filter: drop-shadow(0 0 10px rgba(255,215,0,0.18));
-}
-
 .status-dot-lg {
     z-index: 4;
 }
@@ -675,10 +660,6 @@ body {
         width: 100px;
         height: 100px;
         bottom: -50px;
-    }
-    .profile-frame-overlay {
-        width: 148%;
-        height: 148%;
     }
 }
 .av-wrap { position: relative; display: inline-block; cursor: pointer; margin: 0; }
