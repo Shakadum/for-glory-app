@@ -160,23 +160,33 @@ function applyVipNameColor(el, color) {
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        // setProperty com 'important' sobrescreve background: var(--card-2) e
-        // background: linear-gradient(...) que vêm da classe CSS .msg-bubble.
-        // O shorthand 'background' inclui background-color=transparent, eliminando o fundo quadrado.
+        // Aplica estilos base
         bubbleEl.style.setProperty('background', 'url(/static/vip_bubble_prata.png) center/100% 100% no-repeat', 'important');
         bubbleEl.style.setProperty('border', 'none', 'important');
         bubbleEl.style.setProperty('border-radius', '0', 'important');
         bubbleEl.style.setProperty('box-shadow', 'none', 'important');
-        // padding em % = relativo à LARGURA do elemento
-        // top: 12% de W = 12%*W; ornamento topo ocupa 27%*H = 27%*0.416*W = 11.2%*W ✓
-        // bottom: 8% de W; ornamento base ocupa 17%*0.416*W = 7.1%*W ✓
-        // left: 10%; right: 12% — cobre os scrollworks laterais
-        bubbleEl.style.setProperty('padding', '12% 12% 8% 10%', 'important');
-        bubbleEl.style.setProperty('min-width', '200px', 'important');
-        bubbleEl.style.setProperty('min-height', '0', 'important');
         bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
         bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
         bubbleEl.style.setProperty('display', 'inline-block', 'important');
+        bubbleEl.style.setProperty('min-width', '220px', 'important');
+        // Padding inicial para o navegador fazer o primeiro layout
+        bubbleEl.style.setProperty('padding', '38px 80px 26px 72px', 'important');
+
+        // Após render: lê a largura real e ajusta padding proporcional ao PNG
+        // PNG: 976x406, ratio H/W=0.416
+        // Ornamento esquerdo/direito: ~22% da largura do elemento nos cantos
+        // Ornamento topo: ~32% da altura = 32% * 0.416 * W = 13.3% de W
+        // Ornamento base: ~20% da altura = 20% * 0.416 * W = 8.3% de W
+        requestAnimationFrame(function() {
+            const bw = bubbleEl.offsetWidth;
+            if (bw < 1) return;
+            const bh = bw * 0.416;          // altura do PNG escalado
+            const pt = Math.round(bh * 0.33);  // 33% da altura = topo do ornamento
+            const pb = Math.round(bh * 0.22);  // 22% da altura = base do ornamento
+            const pl = Math.round(bw * 0.14);  // 14% da largura = lateral esquerda
+            const pr = Math.round(bw * 0.17);  // 17% da largura = lateral direita
+            bubbleEl.style.setProperty('padding', pt+'px '+pr+'px '+pb+'px '+pl+'px', 'important');
+        });
     }
 }
 
