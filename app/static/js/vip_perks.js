@@ -167,9 +167,13 @@ function applyVipBubble(bubbleEl, bubbleType) {
         bubbleEl.style.setProperty('border', 'none', 'important');
         bubbleEl.style.setProperty('border-radius', '0', 'important');
         bubbleEl.style.setProperty('box-shadow', 'none', 'important');
-        bubbleEl.style.setProperty('padding', '12px 20% 10px', 'important');
-        bubbleEl.style.setProperty('min-width', '100px', 'important');
-        bubbleEl.style.setProperty('min-height', '48px', 'important');
+        // padding em % = relativo à LARGURA do elemento
+        // top: 12% de W = 12%*W; ornamento topo ocupa 27%*H = 27%*0.416*W = 11.2%*W ✓
+        // bottom: 8% de W; ornamento base ocupa 17%*0.416*W = 7.1%*W ✓
+        // left: 10%; right: 12% — cobre os scrollworks laterais
+        bubbleEl.style.setProperty('padding', '12% 12% 8% 10%', 'important');
+        bubbleEl.style.setProperty('min-width', '200px', 'important');
+        bubbleEl.style.setProperty('min-height', '0', 'important');
         bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
         bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
         bubbleEl.style.setProperty('display', 'inline-block', 'important');
