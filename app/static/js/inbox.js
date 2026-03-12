@@ -366,13 +366,15 @@ function connectDmWS(id, name, type, loadToken) {
                 h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                 <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'" data-vip-border="${d.vip_border||'none'}" data-vip-size="40">
                 <div>
-                    <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})">${escapeHtml(safeDisplayName(d))} ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
-                    <div class="msg-bubble">${c}${timeHtml}${delBtn}</div>
+                    <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})"><span style="${(d.vip_name_color?'color:'+d.vip_name_color+';text-shadow:0 0 8px '+d.vip_name_color+'66;':'')}${d.vip_name_font?'font-family:'+d.vip_name_font+',sans-serif;':''}">${escapeHtml(safeDisplayName(d))}</span> ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
+                    <div class="msg-bubble" ${!m && d.vip_bubble && d.vip_bubble!=='none' ? `data-vip-bubble="${d.vip_bubble}"` : ''}>${c}${timeHtml}${delBtn}</div>
                 </div>
             </div>`;
             }
             b.insertAdjacentHTML('beforeend', h);
             b.scrollTop = b.scrollHeight;
+            if(typeof applyAllVipBorders==='function') setTimeout(applyAllVipBorders, 50);
+            if(typeof applyAllVipBubbles==='function') setTimeout(applyAllVipBubbles, 60);
         }
         let isDmActive = document.getElementById('view-dm').classList.contains('active');
         if (isDmActive && currentChatType === '1v1' && currentChatId === d.user_id) {

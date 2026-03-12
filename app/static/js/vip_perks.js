@@ -161,7 +161,7 @@ function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
         // Usa o PNG ornamentado como fundo do balão
-        bubbleEl.style.backgroundImage  = 'url('/static/vip_bubble_prata.png')';
+        bubbleEl.style.backgroundImage  = "url(/static/vip_bubble_prata.png)";
         bubbleEl.style.backgroundSize   = '100% 100%';
         bubbleEl.style.backgroundRepeat = 'no-repeat';
         bubbleEl.style.border           = 'none';

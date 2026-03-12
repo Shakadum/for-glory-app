@@ -109,7 +109,24 @@ function bumpCommentCount(pid, delta=1){
     }catch(e){}
 }
 
-async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);let list=document.getElementById(`comment-list-${pid}`);if(r.ok){let comments=await r.json();if((comments||[]).length===0){list.innerHTML=`<p style='color:#888;font-size:12px;text-align:center;'>Vazio</p>`;return;}list.innerHTML=comments.map(c=>{let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';let txt=c.text;if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}return `<div class="comment-row" style="align-items:center;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})"><img src="${safeAvatarUrl(c.author_avatar, c.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="comment-av"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span> <span style="color:#e0e0e0;display:block;margin-top:3px;">${txt}</span></div>${delBtn}</div>`}).join('');updateStatusDots();}}catch(e){ console.error(e); }}
+async function loadComments(pid){try{let r=await fetch(`/post/${pid}/comments?nocache=${new Date().getTime()}`);
+    let list=document.getElementById(`comment-list-${pid}`);
+    if(r.ok){
+        let comments=await r.json();
+        if((comments||[]).length===0){list.innerHTML='<p style="color:#888;font-size:12px;text-align:center;">Vazio</p>';return;}
+        list.innerHTML=comments.map(c=>{
+            let delBtn=(c.author_id===user.id)?`<span onclick="window.deleteTarget={type:'comment', id:${c.id}}; document.getElementById('modal-delete').classList.remove('hidden');" style="color:#ff5555;cursor:pointer;margin-left:auto;font-size:14px;padding:0 5px;">🗑️</span>`:'';
+            let txt=c.text;
+            if(txt.startsWith('[AUDIO]')){txt=`<audio controls src="${txt.replace('[AUDIO]','')}" style="max-width:200px;height:35px;outline:none;margin-top:5px;"></audio>`;}
+            const bubbleAttr=(c.vip_bubble&&c.vip_bubble!=='none')?`data-vip-bubble="${c.vip_bubble}"`:'';
+            const nameStyle=(c.vip_name_color?`color:${c.vip_name_color};text-shadow:0 0 8px ${c.vip_name_color}66;`:'')+''+(c.vip_name_font?`font-family:'${c.vip_name_font}',sans-serif;`:'')+';';
+            return `<div class="comment-row" style="align-items:flex-start;"><div class="av-wrap" onclick="openPublicProfile(${c.author_id})" style="flex-shrink:0;"><img src="${safeAvatarUrl(c.author_avatar, c.author_name)}" onerror="this.src='/static/default-avatar.svg'" class="comment-av" data-vip-border="${c.vip_border||'none'}" data-vip-size="32"><div class="status-dot" data-uid="${c.author_id}" style="width:8px;height:8px;border-width:1px;"></div></div><div style="flex:1;"><b style="color:var(--primary);cursor:pointer;${nameStyle}" onclick="openPublicProfile(${c.author_id})">${c.author_name}</b> <span style="display:inline-block;margin-left:5px;">${formatRankInfo(c.author_rank,c.special_emblem,c.color)}</span><div class="msg-bubble" ${bubbleAttr} style="margin-top:4px;display:inline-block;">${txt}</div></div>${delBtn}</div>`;
+        }).join('');
+        updateStatusDots();
+        if(typeof applyAllVipBorders==='function') setTimeout(applyAllVipBorders,50);
+        if(typeof applyAllVipBubbles==='function') setTimeout(applyAllVipBubbles,60);
+    }
+}catch(e){ console.error(e); }}
 
 async function sendComment(pid) {
     try {
