@@ -180,11 +180,11 @@ function applyVipBubble(bubbleEl, bubbleType) {
         requestAnimationFrame(function() {
             const bw = bubbleEl.offsetWidth;
             if (bw < 1) return;
-            const bh = bw * 0.416;          // altura do PNG escalado
-            const pt = Math.round(bh * 0.33);  // 33% da altura = topo do ornamento
-            const pb = Math.round(bh * 0.22);  // 22% da altura = base do ornamento
-            const pl = Math.round(bw * 0.14);  // 14% da largura = lateral esquerda
-            const pr = Math.round(bw * 0.17);  // 17% da largura = lateral direita
+            const bh = bw * 0.416;           // altura do PNG escalado
+            const pt = Math.round(bh * 0.33); // topo ornamento (32% da altura)
+            const pb = Math.round(bh * 0.22); // base ornamento (20% da altura)
+            const pl = Math.round(bw * 0.19); // esquerda P90 = 17.7% + margem
+            const pr = Math.round(bw * 0.26); // direita P90 = 25% + margem
             bubbleEl.style.setProperty('padding', pt+'px '+pr+'px '+pb+'px '+pl+'px', 'important');
         });
     }

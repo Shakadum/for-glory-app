@@ -167,7 +167,7 @@ async function fetchChatMessages(id, type, loadToken) {
                     } else {
                         h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                         <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'" data-vip-border="${d.msg_vip_border||d.vip_border||'none'}" data-vip-size="40">
-                        <div>
+                        <div style="min-width:0;flex:1;">
                             <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})"><span style="${(d.vip_name_color ? 'color:'+d.vip_name_color+';text-shadow:0 0 8px '+d.vip_name_color+'66;' : '')}${d.vip_name_font ? 'font-family:\''+d.vip_name_font+'\',sans-serif;' : ''}">${escapeHtml(safeDisplayName(d))}</span> ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                             <div class="msg-bubble" ${(d.msg_vip_bubble||d.vip_bubble) && (d.msg_vip_bubble||d.vip_bubble)!=='none' ? `data-vip-bubble="${d.msg_vip_bubble||d.vip_bubble}"` : ''}>${c}${timeHtml}${delBtn}</div>
                         </div>
@@ -365,7 +365,7 @@ function connectDmWS(id, name, type, loadToken) {
             } else {
                 h = `<div id="${msgId}" class="msg-row ${m ? 'mine' : ''}">
                 <img src="${safeAvatarUrl(d.avatar, safeDisplayName(d))}" class="msg-av" onclick="openPublicProfile(${d.user_id})" style="cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=U&background=111&color=66fcf1'" data-vip-border="${d.vip_border||'none'}" data-vip-size="40">
-                <div>
+                <div style="min-width:0;flex:1;">
                     <div style="font-size:11px;color:#888;margin-bottom:2px;cursor:pointer;" onclick="openPublicProfile(${d.user_id})"><span style="${(d.vip_name_color?'color:'+d.vip_name_color+';text-shadow:0 0 8px '+d.vip_name_color+'66;':'')}${d.vip_name_font?'font-family:'+d.vip_name_font+',sans-serif;':''}">${escapeHtml(safeDisplayName(d))}</span> ${formatRankInfo(d.rank, d.special_emblem, d.color)}</div>
                     <div class="msg-bubble" ${d.vip_bubble && d.vip_bubble!=='none' ? `data-vip-bubble="${d.vip_bubble}"` : ''}>${c}${timeHtml}${delBtn}</div>
                 </div>
