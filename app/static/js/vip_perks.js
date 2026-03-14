@@ -160,23 +160,21 @@ function applyVipNameColor(el, color) {
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        // PNG: 976x406 (H/W=0.416). Calibrado para largura típica de ~280px.
-        // Ornamento esq P90=17.7%W, dir P90=25%W, topo=33%H=13.7%W, base=22%H=9.2%W
-        // A 280px: left=50px, right=70px, top=38px, bottom=26px
+        // PNG 976x406 (H/W=0.416). Largura FIXA = 240px para padding ser previsível.
+        // A 240px: H=100px | left=46px right=64px top=36px bottom=24px
+        // Área de texto resultante: 240-46-64=130px de largura (≈20 chars/linha)
         bubbleEl.style.setProperty('background', 'url(/static/vip_bubble_prata.png) center/100% 100% no-repeat', 'important');
         bubbleEl.style.setProperty('border', 'none', 'important');
         bubbleEl.style.setProperty('border-radius', '0', 'important');
         bubbleEl.style.setProperty('box-shadow', 'none', 'important');
         bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
         bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
-        bubbleEl.style.setProperty('display', 'inline-block', 'important');
-        bubbleEl.style.setProperty('max-width', '300px', 'important');
-        bubbleEl.style.setProperty('min-width', '180px', 'important');
-        bubbleEl.style.setProperty('width', 'auto', 'important');
+        bubbleEl.style.setProperty('display', 'block', 'important');
+        bubbleEl.style.setProperty('width', '240px', 'important');
         bubbleEl.style.setProperty('box-sizing', 'border-box', 'important');
         bubbleEl.style.setProperty('word-break', 'break-word', 'important');
         bubbleEl.style.setProperty('white-space', 'normal', 'important');
-        bubbleEl.style.setProperty('padding', '38px 72px 26px 52px', 'important');
+        bubbleEl.style.setProperty('padding', '36px 64px 24px 46px', 'important');
     }
 }
 
