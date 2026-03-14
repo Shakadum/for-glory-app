@@ -160,7 +160,9 @@ function applyVipNameColor(el, color) {
 function applyVipBubble(bubbleEl, bubbleType) {
     if (!bubbleEl || !bubbleType || bubbleType === 'none') return;
     if (bubbleType === 'prata') {
-        // Aplica estilos base
+        // PNG: 976x406 (H/W=0.416). Calibrado para largura típica de ~280px.
+        // Ornamento esq P90=17.7%W, dir P90=25%W, topo=33%H=13.7%W, base=22%H=9.2%W
+        // A 280px: left=50px, right=70px, top=38px, bottom=26px
         bubbleEl.style.setProperty('background', 'url(/static/vip_bubble_prata.png) center/100% 100% no-repeat', 'important');
         bubbleEl.style.setProperty('border', 'none', 'important');
         bubbleEl.style.setProperty('border-radius', '0', 'important');
@@ -168,25 +170,13 @@ function applyVipBubble(bubbleEl, bubbleType) {
         bubbleEl.style.setProperty('color', '#e0e8ff', 'important');
         bubbleEl.style.setProperty('text-shadow', '0 1px 4px rgba(0,0,0,0.9)', 'important');
         bubbleEl.style.setProperty('display', 'inline-block', 'important');
-        bubbleEl.style.setProperty('min-width', '220px', 'important');
-        // Padding inicial para o navegador fazer o primeiro layout
-        bubbleEl.style.setProperty('padding', '38px 80px 26px 72px', 'important');
-
-        // Após render: lê a largura real e ajusta padding proporcional ao PNG
-        // PNG: 976x406, ratio H/W=0.416
-        // Ornamento esquerdo/direito: ~22% da largura do elemento nos cantos
-        // Ornamento topo: ~32% da altura = 32% * 0.416 * W = 13.3% de W
-        // Ornamento base: ~20% da altura = 20% * 0.416 * W = 8.3% de W
-        requestAnimationFrame(function() {
-            const bw = bubbleEl.offsetWidth;
-            if (bw < 1) return;
-            const bh = bw * 0.416;           // altura do PNG escalado
-            const pt = Math.round(bh * 0.33); // topo ornamento (32% da altura)
-            const pb = Math.round(bh * 0.22); // base ornamento (20% da altura)
-            const pl = Math.round(bw * 0.19); // esquerda P90 = 17.7% + margem
-            const pr = Math.round(bw * 0.26); // direita P90 = 25% + margem
-            bubbleEl.style.setProperty('padding', pt+'px '+pr+'px '+pb+'px '+pl+'px', 'important');
-        });
+        bubbleEl.style.setProperty('max-width', '300px', 'important');
+        bubbleEl.style.setProperty('min-width', '180px', 'important');
+        bubbleEl.style.setProperty('width', 'auto', 'important');
+        bubbleEl.style.setProperty('box-sizing', 'border-box', 'important');
+        bubbleEl.style.setProperty('word-break', 'break-word', 'important');
+        bubbleEl.style.setProperty('white-space', 'normal', 'important');
+        bubbleEl.style.setProperty('padding', '38px 72px 26px 52px', 'important');
     }
 }
 
